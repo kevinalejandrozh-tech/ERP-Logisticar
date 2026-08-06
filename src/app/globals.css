@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+:root {
+  --navy: #16215c;
+  --blue: #2f6fed;
+  --blue-light: #e8f0fe;
+  --red: #e2412c;
+  --green: #21a866;
+  --amber: #f2b134;
+  --gray-100: #f4f5f8;
+  --gray-200: #e5e8ee;
+  --gray-400: #9aa1b0;
+  --text: #1a1f2e;
+
+  --font-display: "Segoe UI Semibold", "Segoe UI", sans-serif;
+  --font-body: "Segoe UI", system-ui, sans-serif;
+}
+
+body {
+  background: #dcdfe6;
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.font-display {
+  font-family: var(--font-display);
+}

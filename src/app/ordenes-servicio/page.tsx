@@ -1,0 +1,824 @@
+"use client";
+import { useEffect, useMemo, useState } from "react";
+import PageHeader from "@/components/PageHeader";
+import PageFooter from "@/components/PageFooter";
+import FotoCard from "@/components/FotoCard";
+const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
+type RequisicionItem = { cantidad: string; descripcion: string; costo: string };
+type EstadoOrden = "diagnostico_pendiente" | "autorizacion_pendiente" | "cerrar_orden" | "servicio_realizado";
+type Orden = {
+folio: string;
+fecha: string;
+ecoUnidad: string;
+fallaDetectada: string;
+estado: EstadoOrden;
+diagnostico?: string;
+responsable?: string;
+requisicion?: RequisicionItem[];
+fechaDiagnostico?: string;
+fechaIngreso?: string;
+fechaCierre?: string;
+quedoBien?: string;
+fotoReparacion?: string | null;
+};
+type RegistroUnidad = Record<string, string>;
+declare global {
+interface Window {
+jspdf: any;
+}
+}
+function cargarJsPDF(): Promise<void> {
+return new Promise((resolve, reject) => {
+if (window.jspdf) {
+resolve();
+return;
+}
+const script = document.createElement("script");
+script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+script.onload = () => resolve();
+script.onerror = () => reject(new Error("No se pudo cargar el generador de PDF."));
+document.body.appendChild(script);
+});
+}
+function formatearFecha(iso?: string) {
+if (!iso) return "—";
+return new Date(iso).toLocaleString("es-MX");
+}
+function horasDentroDelTaller(o: Orden, ahora: number): string {
+if (!o.fechaIngreso) return "—";
+const inicio = new Date(o.fechaIngreso).getTime();
+const fin = o.fechaCierre ? new Date(o.fechaCierre).getTime() : ahora;
+const horas = Math.max(0, (fin - inicio) / 3600000);
+return `${horas.toFixed(1)} hrs`;
+}
+const ESTADO_INFO: Record<EstadoOrden, { label: string; clases: string; clicable: boolean }> = {
+diagnostico_pendiente: { label: "Diagnóstico pendiente", clases: "bg-[var(--amber)] text-[#52350a]", clicable: true },
+autorizacion_pendiente: { label: "Autorización pendiente", clases: "bg-[var(--red)] text-white", clicable: false },
+cerrar_orden: { label: "Cerrar Orden de servicio", clases: "bg-[var(--blue)] text-white", clicable: true },
+servicio_realizado: { label: "Servicio Realizado", clases: "bg-[var(--green)] text-white", clicable: false },
+};
+export default function OrdenesServicioPage() {
+const [ordenes, setOrdenes] = useState<Orden[]>([]);
+const [cargando, setCargando] = useState(true);
+const [unidadesRegistradas, setUnidadesRegistradas] = useState<RegistroUnidad[]>([]);
+const [tick, setTick] = useState(Date.now());
+const [errorCarga, setErrorCarga] = useState("");
+// ---- Carga desde la nube (compartida entre dispositivos) ----
+const cargarOrdenes = async () => {
+try {
+const res = await fetch("/api/ordenes/list");
+const data = await res.json();
+if (res.ok) setOrdenes(data.registros || []);
+} catch {
+setErrorCarga("No se pudo conectar con la nube. Revisa tu conexión.");
+}
+};
+const cargarUnidades = async () => {
+try {
+const res = await fetch("/api/unidades/list");
+const data = await res.json();
+if (res.ok) setUnidadesRegistradas(data.registros || []);
+} catch {
+// se reintenta con el sondeo periódico
+}
+};
+useEffect(() => {
+(async () => {
+await Promise.all([cargarOrdenes(), cargarUnidades()]);
+setCargando(false);
+})();
+}, []);
+// Sondeo periódico para reflejar cambios hechos desde otros dispositivos
+useEffect(() => {
+const id = setInterval(() => {
+cargarOrdenes();
+cargarUnidades();
+}, 20000);
+return () => clearInterval(id);
+}, []);
+// Reloj para el contador de horas dentro del taller
+useEffect(() => {
+const id = setInterval(() => setTick(Date.now()), 60000);
+return () => clearInterval(id);
+}, []);
+const unidadInfo = (eco: string) => unidadesRegistradas.find((u) => u["ECO"] === eco);
+// ---- Formulario: nueva orden ----
+const [nuevaOrdenAbierta, setNuevaOrdenAbierta] = useState(false);
+const [nEco, setNEco] = useState("");
+const [nFalla, setNFalla] = useState("");
+const [creando, setCreando] = useState(false);
+const abrirNuevaOrden = () => {
+setNEco(unidadesRegistradas[0]?.["ECO"] || "");
+setNFalla("");
+setNuevaOrdenAbierta(true);
+};
+const guardarNuevaOrden = async () => {
+if (!nEco) {
+alert("Selecciona el ECO de la unidad.");
+return;
+}
+setCreando(true);
+try {
+const res = await fetch("/api/ordenes", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ ecoUnidad: nEco, fallaDetectada: nFalla }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al crear la orden.");
+setNuevaOrdenAbierta(false);
+await cargarOrdenes();
+} catch (err: any) {
+alert(err.message || "Error al crear la orden.");
+} finally {
+setCreando(false);
+}
+};
+// ---- Formulario: diagnostico (marcador "Diagnóstico pendiente") ----
+const [diagFolio, setDiagFolio] = useState<string | null>(null);
+const [diagComo, setDiagComo] = useState("");
+const [diagQuien, setDiagQuien] = useState("");
+const [diagItems, setDiagItems] = useState<RequisicionItem[]>([{ cantidad: "", descripcion: "", costo: "" }]);
+const [guardandoDiag, setGuardandoDiag] = useState(false);
+const abrirDiagnostico = (folio: string) => {
+setDiagFolio(folio);
+setDiagComo("");
+setDiagQuien("");
+setDiagItems([{ cantidad: "", descripcion: "", costo: "" }]);
+};
+const actualizarDiagItem = (i: number, campo: keyof RequisicionItem, valor: string) => {
+setDiagItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, [campo]: valor } : it)));
+};
+const guardarDiagnostico = async () => {
+if (!diagComo.trim() || !diagQuien.trim()) {
+alert("Captura cómo se arregla la falla y quién hará la reparación.");
+return;
+}
+const items = diagItems.filter((it) => it.descripcion.trim());
+setGuardandoDiag(true);
+try {
+const res = await fetch("/api/ordenes/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+folio: diagFolio,
+diagnostico: diagComo.trim(),
+responsable: diagQuien.trim(),
+requisicion: items,
+fechaDiagnostico: new Date().toISOString(),
+estado: "autorizacion_pendiente",
+}),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al guardar el diagnóstico.");
+setDiagFolio(null);
+await cargarOrdenes();
+} catch (err: any) {
+alert(err.message || "Error al guardar el diagnóstico.");
+} finally {
+setGuardandoDiag(false);
+}
+};
+// ---- Autorizaciones pendientes ----
+const pendientes = useMemo(() => ordenes.filter((o) => o.estado === "autorizacion_pendiente"), [ordenes]);
+const [autModalAbierto, setAutModalAbierto] = useState(false);
+const [autDesbloqueado, setAutDesbloqueado] = useState(false);
+const [autPassword, setAutPassword] = useState("");
+const [autError, setAutError] = useState("");
+const [autorizando, setAutorizando] = useState<string | null>(null);
+const abrirAutorizaciones = () => {
+setAutDesbloqueado(false);
+setAutPassword("");
+setAutError("");
+setAutModalAbierto(true);
+};
+const validarPassword = () => {
+if (autPassword === "1234") {
+setAutDesbloqueado(true);
+setAutError("");
+} else {
+setAutError("Contraseña incorrecta.");
+}
+};
+// ---- PDF orden de servicio ----
+const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+const [pdfNombre, setPdfNombre] = useState("");
+const autorizar = async (folio: string) => {
+setAutorizando(folio);
+try {
+const ahoraIso = new Date().toISOString();
+const res = await fetch("/api/ordenes/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio, fechaIngreso: ahoraIso, estado: "cerrar_orden" }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al autorizar la orden.");
+await cargarOrdenes();
+await generarPdfOrden(data.orden);
+} catch (err: any) {
+alert(err.message || "Error al autorizar la orden.");
+} finally {
+setAutorizando(null);
+}
+};
+const generarPdfOrden = async (o: Orden) => {
+try {
+await cargarJsPDF();
+const { jsPDF } = window.jspdf;
+const doc = new jsPDF({ unit: "pt", format: "letter" });
+const marginX = 48;
+const pageW = 612;
+let y = 56;
+const logoImg = await fetch("/logo-transportes.png")
+.then((r) => r.blob())
+.then(
+(b) =>
+new Promise<string>((resolve) => {
+const reader = new FileReader();
+reader.onload = () => resolve(reader.result as string);
+reader.readAsDataURL(b);
+})
+);
+doc.addImage(logoImg, "PNG", marginX, y - 30, 46, 46);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(24);
+doc.setTextColor(15, 15, 15);
+doc.text("ORDEN DE SERVICIO", marginX + 70, y - 2);
+const cajaX = 372;
+const cajaW = 192;
+const cajaY = y - 30;
+const cajaH = 60;
+doc.setDrawColor(40, 40, 40);
+doc.setLineWidth(1);
+doc.rect(cajaX, cajaY, cajaW, cajaH);
+doc.setFontSize(9);
+doc.setTextColor(20, 20, 20);
+const filaCaja = (label: string, valor: string, ly: number) => {
+doc.setFont("helvetica", "bold");
+doc.text(label, cajaX + 10, ly);
+doc.setFont("helvetica", "normal");
+const lineas = doc.splitTextToSize(valor, cajaW - 78);
+doc.text(lineas, cajaX + 68, ly);
+};
+filaCaja("FOLIO:", o.folio, cajaY + 17);
+filaCaja("FECHA:", formatearFecha(o.fechaIngreso || o.fecha), cajaY + 33);
+filaCaja("RESPONSABLE:", o.responsable || "—", cajaY + 49);
+y = cajaY + cajaH + 24;
+const unidad = unidadInfo(o.ecoUnidad);
+const ecoBoxH = 30;
+doc.setDrawColor(40, 40, 40);
+doc.rect(marginX, y, 320, ecoBoxH);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(10.5);
+doc.text("ECO. UNIDAD", marginX + 10, y + 19);
+doc.setFont("helvetica", "normal");
+const textoUnidad = `${o.ecoUnidad}${unidad?.["Unidad"] ? " — " + unidad["Unidad"] : ""}`;
+doc.text(textoUnidad, marginX + 115, y + 19);
+y += ecoBoxH + 30;
+doc.setFont("helvetica", "bold");
+doc.setFontSize(11);
+doc.setTextColor(15, 15, 15);
+doc.text("DIAGNÓSTICO", pageW / 2, y, { align: "center" });
+y += 10;
+const diagBoxH = 80;
+doc.rect(marginX, y, pageW - marginX * 2, diagBoxH);
+doc.setFont("helvetica", "normal");
+doc.setFontSize(10);
+const diagTexto = o.diagnostico || "—";
+const diagLineas = doc.splitTextToSize(diagTexto, pageW - marginX * 2 - 30);
+const diagAltoBloque = diagLineas.length * 13;
+const diagStartY = y + Math.max(18, (diagBoxH - diagAltoBloque) / 2 + 10);
+doc.text(diagLineas, pageW / 2, diagStartY, { align: "center" });
+y += diagBoxH + 26;
+doc.setFont("helvetica", "bold");
+doc.setFontSize(11);
+doc.text("REQUISICIÓN", pageW / 2, y, { align: "center" });
+y += 10;
+const reqBoxH = 190;
+const reqTop = y;
+const headerH = 24;
+doc.setFillColor(232, 233, 237);
+doc.rect(marginX, reqTop, pageW - marginX * 2, headerH, "F");
+doc.rect(marginX, reqTop, pageW - marginX * 2, reqBoxH);
+doc.line(marginX, reqTop + headerH, pageW - marginX, reqTop + headerH);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(9.5);
+doc.setTextColor(20, 20, 20);
+doc.text("CANTIDAD", marginX + 14, reqTop + 16);
+doc.text("DESCRIPCIÓN", marginX + 150, reqTop + 16);
+doc.text("MONTO", pageW - marginX - 70, reqTop + 16);
+doc.setFont("helvetica", "normal");
+doc.setFontSize(9.5);
+let filaY = reqTop + headerH + 18;
+const items = o.requisicion || [];
+if (items.length === 0) {
+doc.setTextColor(150, 150, 150);
+doc.text("Sin artículos capturados.", marginX + 14, filaY);
+} else {
+items.forEach((it) => {
+doc.setTextColor(30, 30, 30);
+doc.text(String(it.cantidad || ""), marginX + 14, filaY);
+const ld = doc.splitTextToSize(it.descripcion, 220);
+doc.text(ld, marginX + 150, filaY);
+doc.text(it.costo ? `$${it.costo}` : "—", pageW - marginX - 70, filaY);
+filaY += Math.max(15, ld.length * 13);
+});
+}
+const firmasY = reqTop + reqBoxH + 70;
+doc.setDrawColor(40, 40, 40);
+doc.line(marginX + 20, firmasY, marginX + 220, firmasY);
+doc.line(pageW - marginX - 220, firmasY, pageW - marginX - 20, firmasY);
+doc.setFont("helvetica", "normal");
+doc.setFontSize(9.5);
+doc.setTextColor(30, 30, 30);
+doc.text("Firma de autorización", marginX + 120, firmasY + 16, { align: "center" });
+doc.text("Firma de garantía de servicio", pageW - marginX - 120, firmasY + 16, { align: "center" });
+const blob = doc.output("blob");
+if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+const url = URL.createObjectURL(blob);
+setPdfUrl(url);
+setPdfNombre(`${o.folio}_${new Date().toISOString().slice(0, 10)}.pdf`);
+} catch (err: any) {
+alert(err.message || "No se pudo generar el PDF.");
+}
+};
+const descargarPdfOrden = () => {
+if (!pdfUrl) return;
+const a = document.createElement("a");
+a.href = pdfUrl;
+a.download = pdfNombre || "orden.pdf";
+document.body.appendChild(a);
+a.click();
+a.remove();
+};
+// ---- Imprimir / descargar orden por folio (cualquier estatus) ----
+const [imprimirModalAbierto, setImprimirModalAbierto] = useState(false);
+const [folioAImprimir, setFolioAImprimir] = useState("");
+const [generandoImpresion, setGenerandoImpresion] = useState(false);
+const abrirImprimir = () => {
+if (ordenes.length === 0) {
+alert("Aún no hay órdenes registradas.");
+return;
+}
+setFolioAImprimir(ordenes[0].folio);
+setImprimirModalAbierto(true);
+};
+const generarDesdeImprimir = async () => {
+const orden = ordenes.find((o) => o.folio === folioAImprimir);
+if (!orden) return;
+setGenerandoImpresion(true);
+try {
+await generarPdfOrden(orden);
+setImprimirModalAbierto(false);
+} finally {
+setGenerandoImpresion(false);
+}
+};
+// ---- Formulario: cierre de orden ----
+const [cierreFolio, setCierreFolio] = useState<string | null>(null);
+const [cierreQuedoBien, setCierreQuedoBien] = useState("");
+const [cierreFoto, setCierreFoto] = useState<string | null>(null);
+const [guardandoCierre, setGuardandoCierre] = useState(false);
+const abrirCierre = (folio: string) => {
+setCierreFolio(folio);
+setCierreQuedoBien("");
+setCierreFoto(null);
+};
+const guardarCierre = async () => {
+if (!cierreFoto) {
+alert("Agrega una foto de la reparación para poder cerrar la orden.");
+return;
+}
+setGuardandoCierre(true);
+try {
+const res = await fetch("/api/ordenes/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({
+folio: cierreFolio,
+quedoBien: cierreQuedoBien.trim(),
+fotoReparacion: cierreFoto,
+fechaCierre: new Date().toISOString(),
+estado: "servicio_realizado",
+}),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al cerrar la orden.");
+setCierreFolio(null);
+await cargarOrdenes();
+} catch (err: any) {
+alert(err.message || "Error al cerrar la orden.");
+} finally {
+setGuardandoCierre(false);
+}
+};
+// ---- Derivados para las tablas ----
+const totalUnidadesEnMantenimiento = ordenes.filter((o) => o.estado !== "servicio_realizado").length;
+const totalGastos = ordenes.reduce(
+(acc, o) => acc + (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0),
+0
+);
+const filasGastos = ordenes.flatMap((o) =>
+(o.requisicion || []).map((it, idx) => ({
+key: `${o.folio}-${idx}`,
+folio: o.folio,
+fecha: o.fechaDiagnostico ? new Date(o.fechaDiagnostico).toLocaleDateString("es-MX") : "—",
+cantidad: it.cantidad,
+descripcion: it.descripcion,
+costo: it.costo,
+}))
+);
+return (
+<div className="min-h-screen bg-[#eef1f6]">
+<div className="max-w-[1440px] mx-auto px-14 pt-10">
+<PageHeader
+titulo="Órdenes de servicio y mantenimiento"
+subtitulo="Gestiona las órdenes de servicio, mantenimiento y sus gastos."
+backHref="/"
+backLabel="Menú principal"
+icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="9" y="2" width="6" height="4" rx="1" /><path d="M9 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3" /><path d="M9 14l2 2 4-4" /></svg>}
+/>
+{errorCarga && <p className="text-[12.5px] text-[var(--red)] mb-3">{errorCarga}</p>}
+<div className="flex gap-3 mb-6">
+<button type="button" onClick={abrirNuevaOrden} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-3 text-[13px] font-bold">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+Nueva orden de mantenimiento
+</button>
+<button type="button" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-3 text-[13px] font-bold">
+<svg width="15" height="15" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+Requisición de Insumos / servicios
+</button>
+<button
+type="button"
+onClick={abrirAutorizaciones}
+className={`flex items-center gap-2 rounded-lg px-5 py-3 text-[13px] font-bold ${
+pendientes.length > 0 ? "bg-[var(--red)] text-white" : "bg-white text-[var(--navy)] border border-[var(--gray-200)]"
+}`}
+>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={pendientes.length > 0 ? "#fff" : "#2f6fed"} strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4l3 3" /></svg>
+Autorizaciones pendientes
+{pendientes.length > 0 && (
+<span className="bg-white text-[var(--red)] rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-bold">
+{pendientes.length}
+</span>
+)}
+</button>
+<button
+type="button"
+onClick={abrirImprimir}
+title="Imprimir / descargar orden de servicio"
+className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-3 text-[13px] font-bold"
+>
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+</button>
+</div>
+<div className="grid grid-cols-2 gap-5 mb-6">
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-6 py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de unidades en mantenimiento</p>
+<p className="text-[28px] font-bold text-[var(--navy)] m-0">{totalUnidadesEnMantenimiento}</p>
+</div>
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-6 py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de gastos en mantenimiento</p>
+<p className="text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
+</div>
+</div>
+<div className="grid grid-cols-2 gap-5">
+<div className="bg-white rounded-[18px] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-4">Unidades en mantenimiento</h3>
+<div className="overflow-x-auto">
+<table className="border-collapse min-w-max w-full">
+<thead>
+<tr>
+{["Estado", "Folio", "ECO. Unidad", "Unidad", "Qué se está haciendo", "Fecha de ingreso", "Hrs dentro del taller", "Costo de reparación"].map((c) => (
+<th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+{c}
+</th>
+))}
+</tr>
+</thead>
+<tbody>
+{ordenes.map((o) => {
+const info = ESTADO_INFO[o.estado];
+const costoReparacion = (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0);
+return (
+<tr key={o.folio} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
+<td className="px-2.5 py-2.5">
+<button
+type="button"
+disabled={!info.clicable}
+onClick={() => {
+if (o.estado === "diagnostico_pendiente") abrirDiagnostico(o.folio);
+if (o.estado === "cerrar_orden") abrirCierre(o.folio);
+}}
+className={`text-[9.5px] font-bold uppercase px-2 py-1 rounded-full whitespace-nowrap ${info.clases} ${
+info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
+}`}
+>
+{info.label}
+</button>
+</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{o.folio}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{o.ecoUnidad}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{unidadInfo(o.ecoUnidad)?.["Unidad"] || "—"}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap max-w-[160px] truncate" title={o.diagnostico || ""}>
+{o.diagnostico || "—"}
+</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{formatearFecha(o.fechaIngreso)}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{horasDentroDelTaller(o, tick)}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{costoReparacion > 0 ? `$${costoReparacion.toFixed(2)}` : "—"}</td>
+</tr>
+);
+})}
+</tbody>
+</table>
+{!cargando && ordenes.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros.</div>}
+{cargando && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Cargando...</div>}
+</div>
+</div>
+<div className="bg-white rounded-[18px] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-4">Gastos en mantenimiento</h3>
+<div className="overflow-x-auto">
+<table className="border-collapse min-w-max w-full">
+<thead>
+<tr>
+{["Folio", "Fecha de compra", "Cantidad", "Categoría", "Descripción", "Referencia", "Costo unitario", "Costo total", "Proveedor"].map((c) => (
+<th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+{c}
+</th>
+))}
+</tr>
+</thead>
+<tbody>
+{filasGastos.map((f) => (
+<tr key={f.key} className="border-b border-[var(--gray-200)]">
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.folio}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.fecha}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.cantidad}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.descripcion}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.costo ? `$${f.costo}` : "—"}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+</tr>
+))}
+</tbody>
+</table>
+{!cargando && filasGastos.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros.</div>}
+</div>
+</div>
+</div>
+<PageFooter />
+</div>
+{/* Nueva orden */}
+{nuevaOrdenAbierta && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[520px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Nueva orden de mantenimiento</h3>
+<div className="grid grid-cols-2 gap-3 mb-4">
+<div>
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio</label>
+<input disabled value="Se asigna al guardar" className="w-full border border-[var(--gray-200)] bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[13.5px] text-[var(--gray-400)]" />
+</div>
+<div>
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Fecha</label>
+<input disabled value={new Date().toLocaleString("es-MX")} className="w-full border border-[var(--gray-200)] bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+</div>
+<div className="mb-4">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">ECO. Unidad</label>
+{unidadesRegistradas.length === 0 ? (
+<p className="text-[12.5px] text-[var(--red)]">No hay unidades registradas. Agrega unidades en la página &quot;Unidades&quot; primero.</p>
+) : (
+<select value={nEco} onChange={(e) => setNEco(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]">
+{unidadesRegistradas.map((u, i) => (
+<option key={i} value={u["ECO"]}>
+{u["ECO"]} {u["Unidad"] ? `— ${u["Unidad"]}` : ""}
+</option>
+))}
+</select>
+)}
+</div>
+<div className="mb-6">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Falla detectada</label>
+<textarea value={nFalla} onChange={(e) => setNFalla(e.target.value)} rows={3} placeholder="Describe la falla" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setNuevaOrdenAbierta(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button type="button" onClick={guardarNuevaOrden} disabled={unidadesRegistradas.length === 0 || creando} className="bg-[var(--navy)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+{creando ? "Guardando..." : "Guardar"}
+</button>
+</div>
+</div>
+</div>
+)}
+{/* Diagnostico */}
+{diagFolio && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[640px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Diagnóstico — Folio {diagFolio}</h3>
+<div className="mb-4">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">¿Cómo se tiene que arreglar la falla?</label>
+<textarea value={diagComo} onChange={(e) => setDiagComo(e.target.value)} rows={2} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+<div className="mb-4">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">¿Quién va a hacer la reparación?</label>
+<input value={diagQuien} onChange={(e) => setDiagQuien(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+<div className="mb-2">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">¿Qué necesitamos comprar o hacer?</label>
+<table className="w-full border-collapse mb-2.5">
+<thead>
+<tr>
+<th className="text-left text-[11px] uppercase text-[var(--gray-400)] px-2 py-1.5 w-[80px]">Cantidad</th>
+<th className="text-left text-[11px] uppercase text-[var(--gray-400)] px-2 py-1.5">Descripción</th>
+<th className="text-left text-[11px] uppercase text-[var(--gray-400)] px-2 py-1.5 w-[90px]">Costo</th>
+<th className="w-6" />
+</tr>
+</thead>
+<tbody>
+{diagItems.map((it, i) => (
+<tr key={i}>
+<td className="px-2 py-1">
+<input value={it.cantidad} onChange={(e) => actualizarDiagItem(i, "cantidad", e.target.value)} placeholder="1" className="w-full border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[13px]" />
+</td>
+<td className="px-2 py-1">
+<input value={it.descripcion} onChange={(e) => actualizarDiagItem(i, "descripcion", e.target.value)} placeholder="Artículo o servicio" className="w-full border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[13px]" />
+</td>
+<td className="px-2 py-1">
+<input value={it.costo} onChange={(e) => actualizarDiagItem(i, "costo", e.target.value)} placeholder="0.00" className="w-full border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[13px]" />
+</td>
+<td className="px-1">
+<span onClick={() => setDiagItems((prev) => prev.filter((_, idx) => idx !== i))} className="text-[var(--red)] cursor-pointer text-base px-1.5">
+×
+</span>
+</td>
+</tr>
+))}
+</tbody>
+</table>
+<div onClick={() => setDiagItems((prev) => [...prev, { cantidad: "", descripcion: "", costo: "" }])} className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--blue)] font-semibold cursor-pointer mb-5">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+Agregar artículo
+</div>
+</div>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setDiagFolio(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button type="button" onClick={guardarDiagnostico} disabled={guardandoDiag} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+{guardandoDiag ? "Guardando..." : "Guardar"}
+</button>
+</div>
+</div>
+</div>
+)}
+{/* Autorizaciones pendientes */}
+{autModalAbierto && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[560px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Autorizaciones pendientes</h3>
+{!autDesbloqueado ? (
+<>
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Contraseña</label>
+<input
+type="password"
+value={autPassword}
+onChange={(e) => setAutPassword(e.target.value)}
+onKeyDown={(e) => e.key === "Enter" && validarPassword()}
+className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px] mb-2"
+/>
+{autError && <p className="text-[var(--red)] text-[12px] mb-3">{autError}</p>}
+<div className="flex gap-2.5 justify-end mt-3">
+<button type="button" onClick={() => setAutModalAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button type="button" onClick={validarPassword} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Ingresar
+</button>
+</div>
+</>
+) : (
+<>
+{pendientes.length === 0 ? (
+<p className="text-[13px] text-[var(--gray-400)] mb-4">No hay folios pendientes por autorizar.</p>
+) : (
+<div className="flex flex-col gap-2.5 mb-4">
+{pendientes.map((o) => (
+<div key={o.folio} className="border border-[var(--gray-200)] rounded-lg px-4 py-3 flex items-center justify-between">
+<div>
+<p className="text-[13.5px] font-bold text-[var(--navy)] m-0">Folio {o.folio}</p>
+<p className="text-[12px] text-[var(--gray-400)] m-0">{o.ecoUnidad}</p>
+</div>
+<button
+type="button"
+onClick={() => autorizar(o.folio)}
+disabled={autorizando === o.folio}
+className="bg-[var(--green)] disabled:opacity-60 text-white rounded-lg px-4 py-2 text-[12.5px] font-bold"
+>
+{autorizando === o.folio ? "Autorizando..." : "Autorizar"}
+</button>
+</div>
+))}
+</div>
+)}
+<div className="flex justify-end">
+<button type="button" onClick={() => setAutModalAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cerrar
+</button>
+</div>
+</>
+)}
+</div>
+</div>
+)}
+{/* Imprimir / descargar orden por folio */}
+{imprimirModalAbierto && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Imprimir orden de servicio</h3>
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio</label>
+<select
+value={folioAImprimir}
+onChange={(e) => setFolioAImprimir(e.target.value)}
+className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px] mb-6"
+>
+{ordenes.map((o) => (
+<option key={o.folio} value={o.folio}>
+{o.folio} — {o.ecoUnidad} — {ESTADO_INFO[o.estado].label}
+</option>
+))}
+</select>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setImprimirModalAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button
+type="button"
+onClick={generarDesdeImprimir}
+disabled={generandoImpresion}
+className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold"
+>
+{generandoImpresion ? "Generando..." : "Generar"}
+</button>
+</div>
+</div>
+</div>
+)}
+{/* Vista previa PDF orden */}
+{pdfUrl && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
+<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Orden de servicio</h3>
+<iframe src={pdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
+<div className="flex gap-2.5 justify-end mt-4">
+<button
+type="button"
+onClick={() => {
+URL.revokeObjectURL(pdfUrl);
+setPdfUrl(null);
+}}
+className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold"
+>
+Cerrar
+</button>
+<button type="button" onClick={descargarPdfOrden} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+Descargar PDF
+</button>
+</div>
+</div>
+</div>
+)}
+{/* Cierre de orden */}
+{cierreFolio && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[480px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Cerrar orden — Folio {cierreFolio}</h3>
+<div className="mb-4">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">¿Quedó bien?</label>
+<textarea value={cierreQuedoBien} onChange={(e) => setCierreQuedoBien(e.target.value)} rows={3} placeholder="Captura libre" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+<div className="mb-6">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-2">Foto de la reparación (obligatoria)</label>
+<div className="w-24">
+<FotoCard label="Evidencia" foto={cierreFoto} onFoto={(url) => setCierreFoto(url)} />
+</div>
+</div>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setCierreFolio(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Salir
+</button>
+<button type="button" onClick={guardarCierre} disabled={guardandoCierre} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+{guardandoCierre ? "Guardando..." : "Guardar"}
+</button>
+</div>
+</div>
+</div>
+)}
+</div>
+);
+}

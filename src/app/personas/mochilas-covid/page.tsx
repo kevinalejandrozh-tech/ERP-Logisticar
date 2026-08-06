@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
 import { OPCIONES_CONTENIDO_MOCHILA } from "@/lib/mochilasData";
+import { exportarExcel } from "@/lib/exportExcel";
 type Articulo = { cantidad: string; descripcion: string };
 type Mochila = { folio: string; operador: string; contenido: Articulo[]; foto: string | null };
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
@@ -248,6 +249,35 @@ a.remove();
 const actualizarArticulo = (i: number, campo: keyof Articulo, valor: string) => {
 setFContenido((prev) => prev.map((a, idx) => (idx === i ? { ...a, [campo]: valor } : a)));
 };
+const eliminar = async (e: React.MouseEvent, folio: string) => {
+e.stopPropagation();
+if (!confirm(`¿Eliminar la mochila ${folio}? Esta acción no se puede deshacer.`)) return;
+try {
+const res = await fetch("/api/mochilas/delete", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al eliminar.");
+await cargar();
+} catch (err: any) {
+alert(err.message || "Error al eliminar la mochila.");
+}
+};
+const exportar = () => {
+exportarExcel(`Mochilas_Covid_${new Date().toISOString().slice(0, 10)}.xlsx`, [
+{
+nombre: "Mochilas",
+filas: mochilas.map((m) => ({
+Folio: m.folio,
+Operador: m.operador,
+"Cantidad de artículos": m.contenido.length,
+Contenido: m.contenido.map((c) => `${c.cantidad} ${c.descripcion}`).join(", "),
+})),
+},
+]);
+};
 return (
 <div className="min-h-screen bg-[#eef1f6]">
 <div className="max-w-[1440px] mx-auto px-14 pt-10">
@@ -268,6 +298,12 @@ Agregar / Editar
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52350a" strokeWidth="2.2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></svg>
 Generar responsiva
 </button>
+{!cargando && mochilas.length > 0 && (
+<button type="button" onClick={exportar} className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+Exportar Excel
+</button>
+)}
 </div>
 {cargando ? (
 <div className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Cargando mochilas...</div>
@@ -295,6 +331,10 @@ Ver contenido
 <span onClick={() => abrirEditar(i)} className="inline-flex items-center gap-1.5 text-[var(--gray-400)] text-[12.5px] font-semibold cursor-pointer">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
 Editar
+</span>
+<span onClick={(e) => eliminar(e, m.folio)} className="inline-flex items-center gap-1.5 text-[var(--red)] text-[12.5px] font-semibold cursor-pointer">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+Eliminar
 </span>
 </div>
 </td>

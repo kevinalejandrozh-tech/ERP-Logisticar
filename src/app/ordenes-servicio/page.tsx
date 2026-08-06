@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
+import { exportarExcel } from "@/lib/exportExcel";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 type RequisicionItem = { cantidad: string; descripcion: string; costo: string };
 type EstadoOrden = "diagnostico_pendiente" | "autorizacion_pendiente" | "cerrar_orden" | "servicio_realizado";
@@ -413,6 +414,41 @@ alert(err.message || "Error al cerrar la orden.");
 setGuardandoCierre(false);
 }
 };
+// ---- Eliminar orden completa ----
+const eliminarOrden = async (folio: string) => {
+if (!confirm(`¿Eliminar la orden ${folio}? Se eliminará también su historial de gastos. Esta acción no se puede deshacer.`)) return;
+try {
+const res = await fetch("/api/ordenes/delete", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al eliminar.");
+await cargarOrdenes();
+} catch (err: any) {
+alert(err.message || "Error al eliminar la orden.");
+}
+};
+// ---- Eliminar un artículo de gastos (dentro de la orden dueña) ----
+const eliminarGasto = async (folio: string, idx: number) => {
+if (!confirm("¿Eliminar este gasto? Esta acción no se puede deshacer.")) return;
+const orden = ordenes.find((o) => o.folio === folio);
+if (!orden) return;
+const nuevaRequisicion = (orden.requisicion || []).filter((_, i) => i !== idx);
+try {
+const res = await fetch("/api/ordenes/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio, requisicion: nuevaRequisicion }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al eliminar.");
+await cargarOrdenes();
+} catch (err: any) {
+alert(err.message || "Error al eliminar el gasto.");
+}
+};
 // ---- Derivados para las tablas ----
 const totalUnidadesEnMantenimiento = ordenes.filter((o) => o.estado !== "servicio_realizado").length;
 const totalGastos = ordenes.reduce(
@@ -423,12 +459,48 @@ const filasGastos = ordenes.flatMap((o) =>
 (o.requisicion || []).map((it, idx) => ({
 key: `${o.folio}-${idx}`,
 folio: o.folio,
+idxEnOrden: idx,
 fecha: o.fechaDiagnostico ? new Date(o.fechaDiagnostico).toLocaleDateString("es-MX") : "—",
 cantidad: it.cantidad,
 descripcion: it.descripcion,
 costo: it.costo,
 }))
 );
+const exportarUnidadesEnMantenimiento = () => {
+exportarExcel(`Unidades_en_mantenimiento_${new Date().toISOString().slice(0, 10)}.xlsx`, [
+{
+nombre: "Unidades en mantenimiento",
+filas: ordenes.map((o) => ({
+Estado: ESTADO_INFO[o.estado].label,
+Folio: o.folio,
+"ECO. Unidad": o.ecoUnidad,
+Unidad: unidadInfo(o.ecoUnidad)?.["Unidad"] || "",
+"Qué se está haciendo": o.diagnostico || "",
+"Fecha de ingreso": o.fechaIngreso ? formatearFecha(o.fechaIngreso) : "",
+"Hrs dentro del taller": horasDentroDelTaller(o, tick),
+"Costo de reparación": (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0),
+})),
+},
+]);
+};
+const exportarGastos = () => {
+exportarExcel(`Gastos_en_mantenimiento_${new Date().toISOString().slice(0, 10)}.xlsx`, [
+{
+nombre: "Gastos en mantenimiento",
+filas: filasGastos.map((f) => ({
+Folio: f.folio,
+"Fecha de compra": f.fecha,
+Cantidad: f.cantidad,
+Categoría: "",
+Descripción: f.descripcion,
+Referencia: "",
+"Costo unitario": "",
+"Costo total": f.costo,
+Proveedor: "",
+})),
+},
+]);
+};
 return (
 <div className="min-h-screen bg-[#eef1f6]">
 <div className="max-w-[1440px] mx-auto px-14 pt-10">
@@ -485,12 +557,20 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 </div>
 <div className="grid grid-cols-2 gap-5">
 <div className="bg-white rounded-[18px] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-4">Unidades en mantenimiento</h3>
+<div className="flex items-center justify-between mb-4">
+<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Unidades en mantenimiento</h3>
+{!cargando && ordenes.length > 0 && (
+<button type="button" onClick={exportarUnidadesEnMantenimiento} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+Exportar Excel
+</button>
+)}
+</div>
 <div className="overflow-x-auto">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
-{["Estado", "Folio", "ECO. Unidad", "Unidad", "Qué se está haciendo", "Fecha de ingreso", "Hrs dentro del taller", "Costo de reparación"].map((c) => (
+{["Estado", "Folio", "ECO. Unidad", "Unidad", "Qué se está haciendo", "Fecha de ingreso", "Hrs dentro del taller", "Costo de reparación", "Acciones"].map((c) => (
 <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
 {c}
 </th>
@@ -527,6 +607,11 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{formatearFecha(o.fechaIngreso)}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{horasDentroDelTaller(o, tick)}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{costoReparacion > 0 ? `$${costoReparacion.toFixed(2)}` : "—"}</td>
+<td className="px-2.5 py-2.5 whitespace-nowrap">
+<span onClick={() => eliminarOrden(o.folio)} className="text-[var(--red)] cursor-pointer" title="Eliminar orden">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+</span>
+</td>
 </tr>
 );
 })}
@@ -537,12 +622,20 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 </div>
 </div>
 <div className="bg-white rounded-[18px] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-4">Gastos en mantenimiento</h3>
+<div className="flex items-center justify-between mb-4">
+<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Gastos en mantenimiento</h3>
+{!cargando && filasGastos.length > 0 && (
+<button type="button" onClick={exportarGastos} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+Exportar Excel
+</button>
+)}
+</div>
 <div className="overflow-x-auto">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
-{["Folio", "Fecha de compra", "Cantidad", "Categoría", "Descripción", "Referencia", "Costo unitario", "Costo total", "Proveedor"].map((c) => (
+{["Folio", "Fecha de compra", "Cantidad", "Categoría", "Descripción", "Referencia", "Costo unitario", "Costo total", "Proveedor", "Acciones"].map((c) => (
 <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
 {c}
 </th>
@@ -561,6 +654,11 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.costo ? `$${f.costo}` : "—"}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 whitespace-nowrap">
+<span onClick={() => eliminarGasto(f.folio, f.idxEnOrden)} className="text-[var(--red)] cursor-pointer" title="Eliminar gasto">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+</span>
+</td>
 </tr>
 ))}
 </tbody>

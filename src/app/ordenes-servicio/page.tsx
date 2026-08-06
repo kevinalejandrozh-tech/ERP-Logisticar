@@ -5,7 +5,16 @@ import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
 import { exportarExcel } from "@/lib/exportExcel";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
-type RequisicionItem = { cantidad: string; descripcion: string; costo: string };
+type RequisicionItem = {
+cantidad: string;
+descripcion: string;
+costo: string;
+categoria?: string;
+referencia?: string;
+costoUnitario?: string;
+proveedor?: string;
+fechaCompra?: string;
+};
 type EstadoOrden = "diagnostico_pendiente" | "autorizacion_pendiente" | "cerrar_orden" | "servicio_realizado";
 type Orden = {
 folio: string;
@@ -449,6 +458,84 @@ await cargarOrdenes();
 alert(err.message || "Error al eliminar el gasto.");
 }
 };
+// ---- Requisición de Insumos / servicios (agrega gastos directo a Gastos en mantenimiento) ----
+type ReqRow = {
+folio: string;
+fecha: string;
+cantidad: string;
+categoria: string;
+descripcion: string;
+referencia: string;
+costoUnitario: string;
+costoTotal: string;
+proveedor: string;
+};
+const filaReqVacia = (folioDefault: string): ReqRow => ({
+folio: folioDefault,
+fecha: new Date().toISOString().slice(0, 10),
+cantidad: "",
+categoria: "",
+descripcion: "",
+referencia: "",
+costoUnitario: "",
+costoTotal: "",
+proveedor: "",
+});
+const [reqModalAbierto, setReqModalAbierto] = useState(false);
+const [reqRows, setReqRows] = useState<ReqRow[]>([]);
+const [guardandoReq, setGuardandoReq] = useState(false);
+const abrirRequisicion = () => {
+if (ordenes.length === 0) {
+alert("Primero crea al menos una orden de mantenimiento.");
+return;
+}
+setReqRows([filaReqVacia(ordenes[0].folio)]);
+setReqModalAbierto(true);
+};
+const actualizarReqRow = (i: number, campo: keyof ReqRow, valor: string) => {
+setReqRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [campo]: valor } : r)));
+};
+const guardarRequisicion = async () => {
+const filas = reqRows.filter((r) => r.descripcion.trim());
+if (filas.length === 0) {
+alert("Captura al menos una descripción.");
+return;
+}
+setGuardandoReq(true);
+try {
+const folios = Array.from(new Set(filas.map((r) => r.folio)));
+for (const folio of folios) {
+const orden = ordenes.find((o) => o.folio === folio);
+if (!orden) continue;
+const nuevosItems: RequisicionItem[] = filas
+.filter((r) => r.folio === folio)
+.map((r) => ({
+cantidad: r.cantidad,
+descripcion: r.descripcion.trim(),
+costo: r.costoTotal,
+categoria: r.categoria,
+referencia: r.referencia,
+costoUnitario: r.costoUnitario,
+proveedor: r.proveedor,
+fechaCompra: r.fecha,
+}));
+const requisicionActualizada = [...(orden.requisicion || []), ...nuevosItems];
+const res = await fetch("/api/ordenes/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio, requisicion: requisicionActualizada }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || `Error al guardar en el folio ${folio}.`);
+}
+setReqModalAbierto(false);
+await cargarOrdenes();
+} catch (err: any) {
+alert(err.message || "Error al guardar la requisición.");
+} finally {
+setGuardandoReq(false);
+}
+};
 // ---- Derivados para las tablas ----
 const totalUnidadesEnMantenimiento = ordenes.filter((o) => o.estado !== "servicio_realizado").length;
 const totalGastos = ordenes.reduce(
@@ -460,10 +547,14 @@ const filasGastos = ordenes.flatMap((o) =>
 key: `${o.folio}-${idx}`,
 folio: o.folio,
 idxEnOrden: idx,
-fecha: o.fechaDiagnostico ? new Date(o.fechaDiagnostico).toLocaleDateString("es-MX") : "—",
+fecha: it.fechaCompra ? it.fechaCompra : o.fechaDiagnostico ? new Date(o.fechaDiagnostico).toLocaleDateString("es-MX") : "—",
 cantidad: it.cantidad,
+categoria: it.categoria || "—",
 descripcion: it.descripcion,
+referencia: it.referencia || "—",
+costoUnitario: it.costoUnitario || "—",
 costo: it.costo,
+proveedor: it.proveedor || "—",
 }))
 );
 const exportarUnidadesEnMantenimiento = () => {
@@ -491,12 +582,12 @@ filas: filasGastos.map((f) => ({
 Folio: f.folio,
 "Fecha de compra": f.fecha,
 Cantidad: f.cantidad,
-Categoría: "",
+Categoría: f.categoria === "—" ? "" : f.categoria,
 Descripción: f.descripcion,
-Referencia: "",
-"Costo unitario": "",
+Referencia: f.referencia === "—" ? "" : f.referencia,
+"Costo unitario": f.costoUnitario === "—" ? "" : f.costoUnitario,
 "Costo total": f.costo,
-Proveedor: "",
+Proveedor: f.proveedor === "—" ? "" : f.proveedor,
 })),
 },
 ]);
@@ -517,7 +608,7 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="9" y="2"
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
 Nueva orden de mantenimiento
 </button>
-<button type="button" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-3 text-[13px] font-bold">
+<button type="button" onClick={abrirRequisicion} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-3 text-[13px] font-bold">
 <svg width="15" height="15" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
 Requisición de Insumos / servicios
 </button>
@@ -648,12 +739,12 @@ Exportar Excel
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.folio}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.fecha}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.cantidad}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.categoria}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.descripcion}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.referencia}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.costoUnitario === "—" ? "—" : `$${f.costoUnitario}`}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.costo ? `$${f.costo}` : "—"}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">—</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.proveedor}</td>
 <td className="px-2.5 py-2.5 whitespace-nowrap">
 <span onClick={() => eliminarGasto(f.folio, f.idxEnOrden)} className="text-[var(--red)] cursor-pointer" title="Eliminar gasto">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
@@ -774,6 +865,87 @@ Cancelar
 </div>
 </div>
 )}
+{/* Requisición de Insumos / servicios */}
+{reqModalAbierto && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[1000px] max-w-[96%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Requisición de insumos / servicios</h3>
+<div className="overflow-x-auto mb-2.5">
+<table className="w-full border-collapse min-w-max">
+<thead>
+<tr>
+{["Folio", "Fecha de compra", "Cantidad", "Categoría", "Descripción", "Referencia", "Costo unitario", "Costo total", "Proveedor", ""].map((c) => (
+<th key={c} className="text-left text-[10.5px] uppercase text-[var(--gray-400)] px-2 py-1.5 whitespace-nowrap">
+{c}
+</th>
+))}
+</tr>
+</thead>
+<tbody>
+{reqRows.map((r, i) => (
+<tr key={i}>
+<td className="px-1 py-1">
+<select value={r.folio} onChange={(e) => actualizarReqRow(i, "folio", e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[100px]">
+{ordenes.map((o) => (
+<option key={o.folio} value={o.folio}>
+{o.folio}
+</option>
+))}
+</select>
+</td>
+<td className="px-1 py-1">
+<input type="date" value={r.fecha} onChange={(e) => actualizarReqRow(i, "fecha", e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[130px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.cantidad} onChange={(e) => actualizarReqRow(i, "cantidad", e.target.value)} placeholder="1" className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[60px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.categoria} onChange={(e) => actualizarReqRow(i, "categoria", e.target.value)} placeholder="Refacción" className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[100px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.descripcion} onChange={(e) => actualizarReqRow(i, "descripcion", e.target.value)} placeholder="Descripción" className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[160px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.referencia} onChange={(e) => actualizarReqRow(i, "referencia", e.target.value)} placeholder="Ref." className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[90px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.costoUnitario} onChange={(e) => actualizarReqRow(i, "costoUnitario", e.target.value)} placeholder="0.00" className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[80px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.costoTotal} onChange={(e) => actualizarReqRow(i, "costoTotal", e.target.value)} placeholder="0.00" className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[80px]" />
+</td>
+<td className="px-1 py-1">
+<input value={r.proveedor} onChange={(e) => actualizarReqRow(i, "proveedor", e.target.value)} placeholder="Proveedor" className="border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] w-[110px]" />
+</td>
+<td className="px-1 py-1">
+<span onClick={() => setReqRows((prev) => prev.filter((_, idx) => idx !== i))} className="text-[var(--red)] cursor-pointer text-base px-1.5">
+×
+</span>
+</td>
+</tr>
+))}
+</tbody>
+</table>
+</div>
+<div
+onClick={() => setReqRows((prev) => [...prev, filaReqVacia(ordenes[0]?.folio || "")])}
+className="inline-flex items-center gap-1.5 text-[12.5px] text-[var(--blue)] font-semibold cursor-pointer mb-6"
+>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.5"><path d="M12 5v14M5 12h14" /></svg>
+Agregar fila
+</div>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setReqModalAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button type="button" onClick={guardarRequisicion} disabled={guardandoReq} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+{guardandoReq ? "Guardando..." : "Guardar"}
+</button>
+</div>
+</div>
+</div>
+)}
+
 {/* Autorizaciones pendientes */}
 {autModalAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">

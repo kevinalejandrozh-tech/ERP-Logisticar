@@ -6,11 +6,12 @@ import FotoCard from "@/components/FotoCard";
 import { OPCIONES_CONTENIDO_MOCHILA } from "@/lib/mochilasData";
 import { exportarExcel } from "@/lib/exportExcel";
 type Articulo = { cantidad: string; descripcion: string };
-type Mochila = { folio: string; operador: string; contenido: Articulo[]; foto: string | null };
+type Mochila = { folio: string; operador: string; contenido: Articulo[]; foto: string | null; unidad?: string; responsable?: string };
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 declare global {
 interface Window {
 jspdf: any;
+QRious: any;
 }
 }
 function cargarJsPDF(): Promise<void> {
@@ -23,6 +24,19 @@ const script = document.createElement("script");
 script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
 script.onload = () => resolve();
 script.onerror = () => reject(new Error("No se pudo cargar el generador de PDF."));
+document.body.appendChild(script);
+});
+}
+function cargarQRious(): Promise<void> {
+return new Promise((resolve, reject) => {
+if (window.QRious) {
+resolve();
+return;
+}
+const script = document.createElement("script");
+script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+script.onload = () => resolve();
+script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
 document.body.appendChild(script);
 });
 }
@@ -278,6 +292,203 @@ Contenido: m.contenido.map((c) => `${c.cantidad} ${c.descripcion}`).join(", "),
 },
 ]);
 };
+
+// ---- Generar Etiqueta (gafete PDF 8x10cm con QR) ----
+const [etiquetaModalAbierto, setEtiquetaModalAbierto] = useState(false);
+const [etFolio, setEtFolio] = useState("");
+const [etUnidad, setEtUnidad] = useState("");
+const [etResponsable, setEtResponsable] = useState("");
+const [generandoEtiqueta, setGenerandoEtiqueta] = useState(false);
+const [etiquetaPdfUrl, setEtiquetaPdfUrl] = useState<string | null>(null);
+const [etiquetaPdfNombre, setEtiquetaPdfNombre] = useState("");
+
+const abrirEtiqueta = () => {
+if (mochilas.length === 0) {
+alert("Primero agrega al menos una mochila.");
+return;
+}
+setEtFolio(mochilas[0].folio);
+setEtUnidad(mochilas[0].unidad || "");
+setEtResponsable(mochilas[0].responsable || "");
+setEtiquetaModalAbierto(true);
+};
+
+const cambiarEtFolio = (folio: string) => {
+setEtFolio(folio);
+const m = mochilas.find((x) => x.folio === folio);
+setEtUnidad(m?.unidad || "");
+setEtResponsable(m?.responsable || "");
+};
+
+const generarEtiquetaPdf = async (m: Mochila, unidad: string, responsable: string) => {
+await cargarJsPDF();
+await cargarQRious();
+const { jsPDF } = window.jspdf;
+const anchoCm = 8;
+const altoCm = 10;
+const doc = new jsPDF({ unit: "cm", format: [anchoCm, altoCm] });
+const fechaTexto = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
+
+// ---------- FRENTE ----------
+doc.setFillColor(22, 33, 92);
+doc.rect(0, 0, anchoCm, 1.0, "F");
+doc.setTextColor(255, 255, 255);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(11);
+doc.text(`MOCHILA COVID - ${m.folio}`, anchoCm / 2, 0.62, { align: "center" });
+
+doc.setFillColor(245, 246, 248);
+doc.rect(0, 1.0, anchoCm, 0.9, "F");
+doc.setTextColor(22, 33, 92);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(7.5);
+doc.text(`UNIDAD: ${unidad || "—"}`, anchoCm / 2, 1.38, { align: "center" });
+doc.text(`RESPONSABLE: ${responsable || "—"}`, anchoCm / 2, 1.75, { align: "center" });
+
+doc.setTextColor(226, 65, 44);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(9.5);
+doc.text("CONTENIDO", anchoCm / 2, 2.25, { align: "center" });
+doc.setDrawColor(22, 33, 92);
+doc.setLineWidth(0.02);
+doc.line(0, 2.45, anchoCm, 2.45);
+
+const photoX = 0.3;
+const photoY = 2.6;
+const photoW = anchoCm - 0.6;
+const photoH = 9.15 - photoY;
+if (m.foto) {
+try {
+doc.addImage(m.foto, "JPEG", photoX, photoY, photoW, photoH);
+} catch {
+// si la imagen falla, se deja el recuadro vacio
+}
+} else {
+doc.setDrawColor(210, 210, 210);
+doc.rect(photoX, photoY, photoW, photoH);
+doc.setTextColor(150, 150, 150);
+doc.setFontSize(8);
+doc.text("Sin foto de evidencia", anchoCm / 2, photoY + photoH / 2, { align: "center" });
+}
+
+doc.setFillColor(22, 33, 92);
+doc.rect(0, 9.2, anchoCm, 0.8, "F");
+doc.setTextColor(255, 255, 255);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(8);
+doc.text(`ACTUALIZACIÓN ${fechaTexto}`, anchoCm / 2, 9.68, { align: "center" });
+
+// ---------- REVERSO ----------
+doc.addPage([anchoCm, altoCm], "p");
+doc.setFillColor(22, 33, 92);
+doc.rect(0, 0, anchoCm, 1.0, "F");
+doc.setTextColor(255, 255, 255);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(11);
+doc.text(`MOCHILA COVID - ${m.folio}`, anchoCm / 2, 0.62, { align: "center" });
+
+doc.setTextColor(226, 65, 44);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(9.5);
+doc.text("CONTENIDO", anchoCm / 2, 1.35, { align: "center" });
+
+const tableTop = 1.5;
+const tableBottom = 6.6;
+const headerRowH = 0.4;
+doc.setFillColor(232, 240, 254);
+doc.rect(0.3, tableTop, anchoCm - 0.6, headerRowH, "F");
+doc.setTextColor(22, 33, 92);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(7);
+doc.text("CANT.", 0.45, tableTop + 0.27);
+doc.text("DESCRIPCIÓN", 1.5, tableTop + 0.27);
+
+const items = m.contenido || [];
+if (items.length === 0) {
+doc.setTextColor(150, 150, 150);
+doc.setFont("helvetica", "normal");
+doc.setFontSize(7.5);
+doc.text("Sin artículos registrados.", anchoCm / 2, tableTop + headerRowH + 0.4, { align: "center" });
+} else {
+const availableH = tableBottom - (tableTop + headerRowH);
+const rowH = Math.min(0.45, Math.max(0.2, availableH / items.length));
+const fontSize = Math.max(5, Math.min(7.5, rowH * 14));
+doc.setFont("helvetica", "normal");
+doc.setFontSize(fontSize);
+doc.setTextColor(30, 30, 30);
+let rowY = tableTop + headerRowH + rowH * 0.65;
+items.forEach((it) => {
+if (rowY > tableBottom + rowH) return;
+doc.text(String(it.cantidad || ""), 0.45, rowY);
+doc.text(it.descripcion, 1.5, rowY);
+rowY += rowH;
+});
+}
+
+const qrValue = `${window.location.origin}/auditoria-mochila-covid?folio=${encodeURIComponent(m.folio)}`;
+const canvas = document.createElement("canvas");
+new window.QRious({ element: canvas, value: qrValue, size: 300, level: "M" });
+const qrDataUrl = canvas.toDataURL("image/png");
+const qrSize = 1.7;
+const qrX = (anchoCm - qrSize) / 2;
+const qrY = 6.85;
+doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
+doc.setTextColor(90, 90, 90);
+doc.setFont("helvetica", "normal");
+doc.setFontSize(6);
+doc.text("Escanea para auditoría", anchoCm / 2, qrY + qrSize + 0.28, { align: "center" });
+
+doc.setFillColor(22, 33, 92);
+doc.rect(0, 9.2, anchoCm, 0.8, "F");
+doc.setTextColor(255, 255, 255);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(8);
+doc.text(`ACTUALIZACIÓN ${fechaTexto}`, anchoCm / 2, 9.68, { align: "center" });
+
+return doc.output("blob");
+};
+
+const generarEtiqueta = async () => {
+if (!etFolio) {
+alert("Selecciona una mochila.");
+return;
+}
+setGenerandoEtiqueta(true);
+try {
+const res = await fetch("/api/mochilas/etiqueta", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio: etFolio, unidad: etUnidad.trim(), responsable: etResponsable.trim() }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al guardar la etiqueta.");
+await cargar();
+const resListado = await fetch("/api/mochilas/list");
+const dataListado = await resListado.json();
+const m = (dataListado.registros || []).find((x: Mochila) => x.folio === etFolio);
+if (!m) throw new Error("No se encontró la mochila actualizada.");
+const blob = await generarEtiquetaPdf(m, etUnidad.trim(), etResponsable.trim());
+if (etiquetaPdfUrl) URL.revokeObjectURL(etiquetaPdfUrl);
+const url = URL.createObjectURL(blob);
+setEtiquetaPdfUrl(url);
+setEtiquetaPdfNombre(`Gafete_${etFolio}.pdf`);
+setEtiquetaModalAbierto(false);
+} catch (err: any) {
+alert(err.message || "No se pudo generar la etiqueta.");
+} finally {
+setGenerandoEtiqueta(false);
+}
+};
+
+const descargarEtiquetaPdf = () => {
+if (!etiquetaPdfUrl) return;
+const a = document.createElement("a");
+a.href = etiquetaPdfUrl;
+a.download = etiquetaPdfNombre || "gafete.pdf";
+document.body.appendChild(a);
+a.click();
+a.remove();
+};
 return (
 <div className="min-h-screen bg-[#eef1f6]">
 <div className="max-w-[1440px] mx-auto px-14 pt-10">
@@ -297,6 +508,10 @@ Agregar / Editar
 <button type="button" onClick={abrirSelectorFolio} disabled={generando} className="flex items-center gap-2 bg-[var(--amber)] text-[#52350a] disabled:opacity-60 rounded-lg px-5 py-2.5 text-[13px] font-bold">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#52350a" strokeWidth="2.2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></svg>
 Generar responsiva
+</button>
+<button type="button" onClick={abrirEtiqueta} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M9 3v2a1 1 0 001 1h4a1 1 0 001-1V3" /><rect x="8" y="10" width="8" height="6" /></svg>
+Generar Etiqueta
 </button>
 {!cargando && mochilas.length > 0 && (
 <button type="button" onClick={exportar} className="ml-auto inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
@@ -438,8 +653,22 @@ Cancelar
 )}
 {contenidoVer && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Contenido — {contenidoVer.folio}</h3>
+{(contenidoVer.unidad || contenidoVer.responsable) && (
+<div className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[12.5px] flex flex-col gap-1 mb-4">
+{contenidoVer.unidad && (
+<span>
+<b className="text-[var(--navy)]">Unidad:</b> {contenidoVer.unidad}
+</span>
+)}
+{contenidoVer.responsable && (
+<span>
+<b className="text-[var(--navy)]">Responsable:</b> {contenidoVer.responsable}
+</span>
+)}
+</div>
+)}
 <table className="w-full border-collapse mb-2">
 <thead>
 <tr>
@@ -523,6 +752,67 @@ className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] round
 Cerrar
 </button>
 <button type="button" onClick={descargarPdf} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+Descargar PDF
+</button>
+</div>
+</div>
+</div>
+)}
+{etiquetaModalAbierto && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Generar Etiqueta</h3>
+<div className="mb-4">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Selecciona Mochila</label>
+<select
+value={etFolio}
+onChange={(e) => cambiarEtFolio(e.target.value)}
+className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
+>
+{mochilas.map((m) => (
+<option key={m.folio} value={m.folio}>
+{m.folio} — {m.operador}
+</option>
+))}
+</select>
+</div>
+<div className="mb-4">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Unidad</label>
+<input value={etUnidad} onChange={(e) => setEtUnidad(e.target.value)} placeholder="Ej. ECO-15" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+<div className="mb-6">
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Responsable</label>
+<input value={etResponsable} onChange={(e) => setEtResponsable(e.target.value)} placeholder="Nombre del responsable" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+</div>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setEtiquetaModalAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button type="button" onClick={generarEtiqueta} disabled={generandoEtiqueta} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+{generandoEtiqueta ? "Generando..." : "Guardar"}
+</button>
+</div>
+</div>
+</div>
+)}
+{etiquetaPdfUrl && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
+<div className="bg-white rounded-2xl w-[520px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Gafete generado — Frente y reverso</h3>
+<iframe src={etiquetaPdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
+<div className="flex gap-2.5 justify-end mt-4">
+<button
+type="button"
+onClick={() => {
+URL.revokeObjectURL(etiquetaPdfUrl);
+setEtiquetaPdfUrl(null);
+}}
+className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold"
+>
+Cerrar
+</button>
+<button type="button" onClick={descargarEtiquetaPdf} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
 Descargar PDF
 </button>

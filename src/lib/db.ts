@@ -54,6 +54,8 @@ foto TEXT,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE mochilas ADD COLUMN IF NOT EXISTS unidad TEXT;`);
+await p.query(`ALTER TABLE mochilas ADD COLUMN IF NOT EXISTS responsable TEXT;`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,

@@ -309,7 +309,7 @@ return;
 }
 setEtFolio(mochilas[0].folio);
 setEtUnidad(mochilas[0].unidad || "");
-setEtResponsable(mochilas[0].responsable || "");
+setEtResponsable(mochilas[0].operador || mochilas[0].responsable || "");
 setEtiquetaModalAbierto(true);
 };
 
@@ -317,7 +317,7 @@ const cambiarEtFolio = (folio: string) => {
 setEtFolio(folio);
 const m = mochilas.find((x) => x.folio === folio);
 setEtUnidad(m?.unidad || "");
-setEtResponsable(m?.responsable || "");
+setEtResponsable(m?.operador || m?.responsable || "");
 };
 
 const generarEtiquetaPdf = async (m: Mochila, unidad: string, responsable: string) => {
@@ -431,38 +431,30 @@ doc.text(`MOCHILA COVID - ${m.folio}`, x + cardW / 2, y + 0.62, { align: "center
 
 doc.setTextColor(226, 65, 44);
 doc.setFont("helvetica", "bold");
-doc.setFontSize(9.5);
-doc.text("CONTENIDO", x + cardW / 2, y + 1.35, { align: "center" });
+doc.setFontSize(11);
+doc.text("CONTENIDO", x + cardW / 2, y + 1.55, { align: "center" });
 
-const tableTop = y + 1.5;
-const tableBottom = y + 6.6;
-const headerRowH = 0.4;
-doc.setFillColor(232, 240, 254);
-doc.rect(x + 0.3, tableTop, cardW - 0.6, headerRowH, "F");
-doc.setTextColor(22, 33, 92);
-doc.setFont("helvetica", "bold");
-doc.setFontSize(7);
-doc.text("CANT.", x + 0.45, tableTop + 0.27);
-doc.text("DESCRIPCIÓN", x + 1.5, tableTop + 0.27);
-
+const tableTop = y + 1.9;
+const tableBottom = y + 7.7;
 const items = m.contenido || [];
 if (items.length === 0) {
 doc.setTextColor(150, 150, 150);
 doc.setFont("helvetica", "normal");
-doc.setFontSize(7.5);
-doc.text("Sin artículos registrados.", x + cardW / 2, tableTop + headerRowH + 0.4, { align: "center" });
+doc.setFontSize(9);
+doc.text("Sin artículos registrados.", x + cardW / 2, (tableTop + tableBottom) / 2, { align: "center" });
 } else {
-const availableH = tableBottom - (tableTop + headerRowH);
-const rowH = Math.min(0.45, Math.max(0.2, availableH / items.length));
-const fontSize = Math.max(5, Math.min(7.5, rowH * 14));
+const availableH = tableBottom - tableTop;
+const rowH = Math.min(0.9, Math.max(0.35, availableH / items.length));
+const fontSize = Math.max(8, Math.min(13, rowH * 14));
 doc.setFont("helvetica", "normal");
-doc.setFontSize(fontSize);
 doc.setTextColor(30, 30, 30);
-let rowY = tableTop + headerRowH + rowH * 0.65;
+const usedH = rowH * items.length;
+let rowY = tableTop + Math.max(0, (availableH - usedH) / 2) + rowH * 0.68;
 items.forEach((it) => {
 if (rowY > tableBottom + rowH) return;
-doc.text(String(it.cantidad || ""), x + 0.45, rowY);
-doc.text(it.descripcion, x + 1.5, rowY);
+doc.setFontSize(fontSize);
+const texto = `${it.cantidad ? it.cantidad + " " : ""}${it.descripcion}`;
+doc.text(texto, x + cardW / 2, rowY, { align: "center" });
 rowY += rowH;
 });
 }
@@ -471,21 +463,14 @@ const qrValue = `${window.location.origin}/auditoria-mochila-covid?folio=${encod
 const canvas = document.createElement("canvas");
 new window.QRious({ element: canvas, value: qrValue, size: 300, level: "M" });
 const qrDataUrl = canvas.toDataURL("image/png");
-const qrSize = 1.7;
+const qrSize = 1.1;
 const qrX = x + (cardW - qrSize) / 2;
-const qrY = y + 6.85;
+const qrY = y + 8.0;
 doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
 doc.setTextColor(90, 90, 90);
 doc.setFont("helvetica", "normal");
-doc.setFontSize(6);
-doc.text("Escanea para auditoría", x + cardW / 2, qrY + qrSize + 0.28, { align: "center" });
-
-doc.setFillColor(22, 33, 92);
-doc.rect(x, y + 9.2, cardW, 0.8, "F");
-doc.setTextColor(255, 255, 255);
-doc.setFont("helvetica", "bold");
-doc.setFontSize(8);
-doc.text(`ACTUALIZACIÓN ${fechaTexto}`, x + cardW / 2, y + 9.68, { align: "center" });
+doc.setFontSize(5.5);
+doc.text("Escanea para auditoría", x + cardW / 2, qrY + qrSize + 0.24, { align: "center" });
 }
 
 return doc.output("blob");

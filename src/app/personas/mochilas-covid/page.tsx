@@ -324,39 +324,76 @@ const generarEtiquetaPdf = async (m: Mochila, unidad: string, responsable: strin
 await cargarJsPDF();
 await cargarQRious();
 const { jsPDF } = window.jspdf;
-const anchoCm = 8;
-const altoCm = 10;
-const doc = new jsPDF({ unit: "cm", format: [anchoCm, altoCm] });
+const cardW = 8;
+const cardH = 10;
+const doc = new jsPDF({ unit: "cm", format: "a4" });
+const pageW = 21;
 const fechaTexto = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 
+const gap = 1.5;
+const totalW = cardW * 2 + gap;
+const offY = 4.2;
+const offXFrente = (pageW - totalW) / 2;
+const offXReverso = offXFrente + cardW + gap;
+
+// Título de la hoja
+doc.setTextColor(22, 33, 92);
+doc.setFont("helvetica", "bold");
+doc.setFontSize(13);
+doc.text(`Gafete — Mochila ${m.folio}`, pageW / 2, 2.2, { align: "center" });
+doc.setFont("helvetica", "normal");
+doc.setFontSize(9);
+doc.setTextColor(120, 120, 120);
+doc.text("Recorta por la línea punteada y pega ambas caras espalda con espalda para laminar.", pageW / 2, 2.9, { align: "center" });
+
+const guiaCorte = (x: number, y: number) => {
+doc.setDrawColor(150, 150, 150);
+doc.setLineWidth(0.015);
+doc.setLineDashPattern([0.15, 0.1], 0);
+doc.rect(x - 0.08, y - 0.08, cardW + 0.16, cardH + 0.16);
+doc.setLineDashPattern([], 0);
+};
+
+const etiquetaCara = (x: number, texto: string) => {
+doc.setFont("helvetica", "bold");
+doc.setFontSize(9);
+doc.setTextColor(22, 33, 92);
+doc.text(texto, x + cardW / 2, offY - 0.35, { align: "center" });
+};
+
 // ---------- FRENTE ----------
+guiaCorte(offXFrente, offY);
+etiquetaCara(offXFrente, "FRENTE");
+{
+const x = offXFrente;
+const y = offY;
 doc.setFillColor(22, 33, 92);
-doc.rect(0, 0, anchoCm, 1.0, "F");
+doc.rect(x, y, cardW, 1.0, "F");
 doc.setTextColor(255, 255, 255);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(11);
-doc.text(`MOCHILA COVID - ${m.folio}`, anchoCm / 2, 0.62, { align: "center" });
+doc.text(`MOCHILA COVID - ${m.folio}`, x + cardW / 2, y + 0.62, { align: "center" });
 
 doc.setFillColor(245, 246, 248);
-doc.rect(0, 1.0, anchoCm, 0.9, "F");
+doc.rect(x, y + 1.0, cardW, 0.9, "F");
 doc.setTextColor(22, 33, 92);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(7.5);
-doc.text(`UNIDAD: ${unidad || "—"}`, anchoCm / 2, 1.38, { align: "center" });
-doc.text(`RESPONSABLE: ${responsable || "—"}`, anchoCm / 2, 1.75, { align: "center" });
+doc.text(`UNIDAD: ${unidad || "—"}`, x + cardW / 2, y + 1.38, { align: "center" });
+doc.text(`RESPONSABLE: ${responsable || "—"}`, x + cardW / 2, y + 1.75, { align: "center" });
 
 doc.setTextColor(226, 65, 44);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(9.5);
-doc.text("CONTENIDO", anchoCm / 2, 2.25, { align: "center" });
+doc.text("CONTENIDO", x + cardW / 2, y + 2.25, { align: "center" });
 doc.setDrawColor(22, 33, 92);
 doc.setLineWidth(0.02);
-doc.line(0, 2.45, anchoCm, 2.45);
+doc.line(x, y + 2.45, x + cardW, y + 2.45);
 
-const photoX = 0.3;
-const photoY = 2.6;
-const photoW = anchoCm - 0.6;
-const photoH = 9.15 - photoY;
+const photoX = x + 0.3;
+const photoY = y + 2.6;
+const photoW = cardW - 0.6;
+const photoH = y + 9.15 - photoY;
 if (m.foto) {
 try {
 doc.addImage(m.foto, "JPEG", photoX, photoY, photoW, photoH);
@@ -368,47 +405,52 @@ doc.setDrawColor(210, 210, 210);
 doc.rect(photoX, photoY, photoW, photoH);
 doc.setTextColor(150, 150, 150);
 doc.setFontSize(8);
-doc.text("Sin foto de evidencia", anchoCm / 2, photoY + photoH / 2, { align: "center" });
+doc.text("Sin foto de evidencia", x + cardW / 2, photoY + photoH / 2, { align: "center" });
 }
 
 doc.setFillColor(22, 33, 92);
-doc.rect(0, 9.2, anchoCm, 0.8, "F");
+doc.rect(x, y + 9.2, cardW, 0.8, "F");
 doc.setTextColor(255, 255, 255);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(8);
-doc.text(`ACTUALIZACIÓN ${fechaTexto}`, anchoCm / 2, 9.68, { align: "center" });
+doc.text(`ACTUALIZACIÓN ${fechaTexto}`, x + cardW / 2, y + 9.68, { align: "center" });
+}
 
 // ---------- REVERSO ----------
-doc.addPage([anchoCm, altoCm], "p");
+guiaCorte(offXReverso, offY);
+etiquetaCara(offXReverso, "REVERSO");
+{
+const x = offXReverso;
+const y = offY;
 doc.setFillColor(22, 33, 92);
-doc.rect(0, 0, anchoCm, 1.0, "F");
+doc.rect(x, y, cardW, 1.0, "F");
 doc.setTextColor(255, 255, 255);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(11);
-doc.text(`MOCHILA COVID - ${m.folio}`, anchoCm / 2, 0.62, { align: "center" });
+doc.text(`MOCHILA COVID - ${m.folio}`, x + cardW / 2, y + 0.62, { align: "center" });
 
 doc.setTextColor(226, 65, 44);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(9.5);
-doc.text("CONTENIDO", anchoCm / 2, 1.35, { align: "center" });
+doc.text("CONTENIDO", x + cardW / 2, y + 1.35, { align: "center" });
 
-const tableTop = 1.5;
-const tableBottom = 6.6;
+const tableTop = y + 1.5;
+const tableBottom = y + 6.6;
 const headerRowH = 0.4;
 doc.setFillColor(232, 240, 254);
-doc.rect(0.3, tableTop, anchoCm - 0.6, headerRowH, "F");
+doc.rect(x + 0.3, tableTop, cardW - 0.6, headerRowH, "F");
 doc.setTextColor(22, 33, 92);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(7);
-doc.text("CANT.", 0.45, tableTop + 0.27);
-doc.text("DESCRIPCIÓN", 1.5, tableTop + 0.27);
+doc.text("CANT.", x + 0.45, tableTop + 0.27);
+doc.text("DESCRIPCIÓN", x + 1.5, tableTop + 0.27);
 
 const items = m.contenido || [];
 if (items.length === 0) {
 doc.setTextColor(150, 150, 150);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(7.5);
-doc.text("Sin artículos registrados.", anchoCm / 2, tableTop + headerRowH + 0.4, { align: "center" });
+doc.text("Sin artículos registrados.", x + cardW / 2, tableTop + headerRowH + 0.4, { align: "center" });
 } else {
 const availableH = tableBottom - (tableTop + headerRowH);
 const rowH = Math.min(0.45, Math.max(0.2, availableH / items.length));
@@ -419,8 +461,8 @@ doc.setTextColor(30, 30, 30);
 let rowY = tableTop + headerRowH + rowH * 0.65;
 items.forEach((it) => {
 if (rowY > tableBottom + rowH) return;
-doc.text(String(it.cantidad || ""), 0.45, rowY);
-doc.text(it.descripcion, 1.5, rowY);
+doc.text(String(it.cantidad || ""), x + 0.45, rowY);
+doc.text(it.descripcion, x + 1.5, rowY);
 rowY += rowH;
 });
 }
@@ -430,20 +472,21 @@ const canvas = document.createElement("canvas");
 new window.QRious({ element: canvas, value: qrValue, size: 300, level: "M" });
 const qrDataUrl = canvas.toDataURL("image/png");
 const qrSize = 1.7;
-const qrX = (anchoCm - qrSize) / 2;
-const qrY = 6.85;
+const qrX = x + (cardW - qrSize) / 2;
+const qrY = y + 6.85;
 doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
 doc.setTextColor(90, 90, 90);
 doc.setFont("helvetica", "normal");
 doc.setFontSize(6);
-doc.text("Escanea para auditoría", anchoCm / 2, qrY + qrSize + 0.28, { align: "center" });
+doc.text("Escanea para auditoría", x + cardW / 2, qrY + qrSize + 0.28, { align: "center" });
 
 doc.setFillColor(22, 33, 92);
-doc.rect(0, 9.2, anchoCm, 0.8, "F");
+doc.rect(x, y + 9.2, cardW, 0.8, "F");
 doc.setTextColor(255, 255, 255);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(8);
-doc.text(`ACTUALIZACIÓN ${fechaTexto}`, anchoCm / 2, 9.68, { align: "center" });
+doc.text(`ACTUALIZACIÓN ${fechaTexto}`, x + cardW / 2, y + 9.68, { align: "center" });
+}
 
 return doc.output("blob");
 };

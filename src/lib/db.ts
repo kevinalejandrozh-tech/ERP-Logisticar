@@ -75,4 +75,13 @@ foto_reparacion TEXT,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS operadores (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+fecha_ingreso TEXT,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

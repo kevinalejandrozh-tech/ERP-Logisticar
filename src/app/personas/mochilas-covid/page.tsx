@@ -2,11 +2,12 @@
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
-import FotoCard from "@/components/FotoCard";
 import { OPCIONES_CONTENIDO_MOCHILA } from "@/lib/mochilasData";
 import { exportarExcel } from "@/lib/exportExcel";
+import { compressImage, rotarImagen } from "@/lib/imageUtils";
 type Articulo = { cantidad: string; descripcion: string };
 type Mochila = { folio: string; operador: string; contenido: Articulo[]; foto: string | null; unidad?: string; responsable?: string };
+const OPCIONES_UNIDAD = ["3.5 TON", "TOR", "RAB", "1.5 TON"];
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 declare global {
 interface Window {
@@ -182,28 +183,57 @@ doc.text("Contenido de la mochila", marginX, headerY);
 if (m.foto) doc.text("Evidencia", 340, headerY);
 y += 16;
 let leftY = y;
+const items = m.contenido || [];
+const usarDosColumnas = items.length > 9;
+const col1X = marginX;
+const col2X = marginX + 147;
+const anchoDescripcion = usarDosColumnas ? 105 : 245;
+const fontSizeLista = items.length > 22 ? 8.5 : 9.5;
 doc.setFont("helvetica", "bold");
 doc.setFontSize(9);
 doc.setTextColor(90, 90, 90);
-doc.text("CANT.", marginX, leftY);
-doc.text("DESCRIPCIÓN", marginX + 55, leftY);
+doc.text("CANT.", col1X, leftY);
+doc.text("DESCRIPCIÓN", col1X + 30, leftY);
+if (usarDosColumnas) {
+doc.text("CANT.", col2X, leftY);
+doc.text("DESCRIPCIÓN", col2X + 30, leftY);
+}
 leftY += 12;
 doc.setDrawColor(240, 240, 240);
-doc.line(marginX, leftY - 8, 300, leftY - 8);
+doc.line(marginX, leftY - 8, usarDosColumnas ? col2X + 30 + anchoDescripcion : 300, leftY - 8);
 doc.setFont("helvetica", "normal");
-doc.setFontSize(10);
+doc.setFontSize(fontSizeLista);
 doc.setTextColor(30, 30, 30);
-if (m.contenido.length === 0) {
+if (items.length === 0) {
 doc.setTextColor(150, 150, 150);
 doc.text("Sin artículos registrados.", marginX, leftY);
 leftY += 16;
-} else {
-m.contenido.forEach((c) => {
-doc.text(String(c.cantidad || ""), marginX, leftY);
-const ld = doc.splitTextToSize(c.descripcion, 300 - marginX - 55);
-doc.text(ld, marginX + 55, leftY);
-leftY += Math.max(14, ld.length * 13);
+} else if (!usarDosColumnas) {
+items.forEach((c) => {
+doc.text(String(c.cantidad || ""), col1X, leftY);
+const ld = doc.splitTextToSize(c.descripcion, anchoDescripcion);
+doc.text(ld, col1X + 30, leftY);
+leftY += Math.max(13, ld.length * 12);
 });
+} else {
+const mitad = Math.ceil(items.length / 2);
+const columna1 = items.slice(0, mitad);
+const columna2 = items.slice(mitad);
+let y1 = leftY;
+let y2 = leftY;
+columna1.forEach((c) => {
+doc.text(String(c.cantidad || ""), col1X, y1);
+const ld = doc.splitTextToSize(c.descripcion, anchoDescripcion);
+doc.text(ld, col1X + 30, y1);
+y1 += Math.max(13, ld.length * 12);
+});
+columna2.forEach((c) => {
+doc.text(String(c.cantidad || ""), col2X, y2);
+const ld = doc.splitTextToSize(c.descripcion, anchoDescripcion);
+doc.text(ld, col2X + 30, y2);
+y2 += Math.max(13, ld.length * 12);
+});
+leftY = Math.max(y1, y2);
 }
 let rightY = y;
 if (m.foto) {
@@ -221,8 +251,13 @@ doc.setTextColor(30, 30, 30);
 const cierre =
 "Declaro haber recibido los artículos descritos en el inventario adjunto, verificando que se encuentran completos y en condiciones adecuadas para su uso, aceptando la responsabilidad de su resguardo y cuidado mientras permanezcan bajo mi custodia.";
 const lc = doc.splitTextToSize(cierre, 612 - marginX * 2);
+let firmasY = y + lc.length * 13 + 40;
+if (firmasY > 760) {
+doc.addPage();
+y = 60;
+firmasY = y + lc.length * 13 + 40;
+}
 doc.text(lc, marginX, y);
-const firmasY = 700;
 doc.setDrawColor(60, 60, 60);
 doc.line(marginX, firmasY, marginX + 190, firmasY);
 doc.line(340, firmasY, 340 + 190, firmasY);
@@ -262,6 +297,26 @@ a.remove();
 };
 const actualizarArticulo = (i: number, campo: keyof Articulo, valor: string) => {
 setFContenido((prev) => prev.map((a, idx) => (idx === i ? { ...a, [campo]: valor } : a)));
+};
+const manejarFotoEvidencia = async (e: React.ChangeEvent<HTMLInputElement>) => {
+const file = e.target.files?.[0];
+if (!file) return;
+try {
+const dataUrl = await compressImage(file);
+setFFoto(dataUrl);
+} catch {
+// si falla la compresion, no se guarda foto para evitar payloads gigantes
+}
+e.target.value = "";
+};
+const girarFotoEvidencia = async (grados: 90 | -90) => {
+if (!fFoto) return;
+try {
+const rotada = await rotarImagen(fFoto, grados);
+setFFoto(rotada);
+} catch {
+alert("No se pudo rotar la imagen.");
+}
 };
 const eliminar = async (e: React.MouseEvent, folio: string) => {
 e.stopPropagation();
@@ -308,7 +363,7 @@ alert("Primero agrega al menos una mochila.");
 return;
 }
 setEtFolio(mochilas[0].folio);
-setEtUnidad(mochilas[0].unidad || "");
+setEtUnidad(OPCIONES_UNIDAD.includes(mochilas[0].unidad || "") ? (mochilas[0].unidad as string) : OPCIONES_UNIDAD[0]);
 setEtResponsable(mochilas[0].operador || mochilas[0].responsable || "");
 setEtiquetaModalAbierto(true);
 };
@@ -316,7 +371,7 @@ setEtiquetaModalAbierto(true);
 const cambiarEtFolio = (folio: string) => {
 setEtFolio(folio);
 const m = mochilas.find((x) => x.folio === folio);
-setEtUnidad(m?.unidad || "");
+setEtUnidad(OPCIONES_UNIDAD.includes(m?.unidad || "") ? (m?.unidad as string) : OPCIONES_UNIDAD[0]);
 setEtResponsable(m?.operador || m?.responsable || "");
 };
 
@@ -664,8 +719,26 @@ Agregar artículo
 </div>
 <div className="mb-5">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-2">Foto de evidencia</label>
-<div className="w-24">
-<FotoCard label="Evidencia" foto={fFoto} onFoto={(url) => setFFoto(url)} />
+<div className="flex flex-col items-center gap-2">
+<label className="w-36 h-36 rounded-lg border border-[var(--gray-200)] bg-[var(--gray-100)] flex items-center justify-center text-[var(--navy)] cursor-pointer overflow-hidden">
+{fFoto ? (
+// eslint-disable-next-line @next/next/no-img-element
+<img src={fFoto} alt="Evidencia" className="w-full h-full object-cover" />
+) : (
+<svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+)}
+<input type="file" accept="image/*" capture="environment" onChange={manejarFotoEvidencia} className="hidden" />
+</label>
+{fFoto && (
+<div className="flex gap-2">
+<button type="button" onClick={() => girarFotoEvidencia(-90)} title="Girar a la izquierda" className="w-8 h-8 rounded-full border border-[var(--gray-200)] flex items-center justify-center text-[var(--navy)]">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 15L4 10l5-5" /><path d="M4 10h10a6 6 0 016 6v0a6 6 0 01-6 6h-2" /></svg>
+</button>
+<button type="button" onClick={() => girarFotoEvidencia(90)} title="Girar a la derecha" className="w-8 h-8 rounded-full border border-[var(--gray-200)] flex items-center justify-center text-[var(--navy)]">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M15 15l5-5-5-5" /><path d="M20 10H10a6 6 0 00-6 6v0a6 6 0 006 6h2" /></svg>
+</button>
+</div>
+)}
 </div>
 </div>
 <div className="flex gap-2.5 justify-end">
@@ -807,7 +880,13 @@ className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[1
 </div>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Unidad</label>
-<input value={etUnidad} onChange={(e) => setEtUnidad(e.target.value)} placeholder="Ej. ECO-15" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+<select value={etUnidad} onChange={(e) => setEtUnidad(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]">
+{OPCIONES_UNIDAD.map((op) => (
+<option key={op} value={op}>
+{op}
+</option>
+))}
+</select>
 </div>
 <div className="mb-6">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Responsable</label>

@@ -60,7 +60,7 @@ const [generando, setGenerando] = useState(false);
 const [operadoresDisponibles, setOperadoresDisponibles] = useState<string[]>([]);
 const cargar = async () => {
 try {
-const res = await fetch("/api/mochilas/list");
+const res = await fetch("/api/mochilas/list", { cache: "no-store" });
 const data = await res.json();
 setMochilas(data.registros || []);
 } catch {
@@ -71,7 +71,7 @@ setCargando(false);
 };
 const cargarOperadores = async () => {
 try {
-const res = await fetch("/api/operadores/list");
+const res = await fetch("/api/operadores/list", { cache: "no-store" });
 const data = await res.json();
 setOperadoresDisponibles((data.registros || []).map((o: { nombre: string }) => o.nombre));
 } catch {
@@ -85,15 +85,18 @@ cargarOperadores();
 const abrirAgregar = () => {
 setEditando(null);
 setFFolio("");
+setFFolioOriginal(null);
 setFOperador("");
 setFContenido([{ cantidad: "", descripcion: "" }]);
 setFFoto(null);
 setFormAbierto(true);
 };
+const [fFolioOriginal, setFFolioOriginal] = useState<string | null>(null);
 const abrirEditar = (i: number) => {
 const m = mochilas[i];
 setEditando(i);
 setFFolio(m.folio);
+setFFolioOriginal(m.folio);
 setFOperador(m.operador);
 setFContenido(m.contenido.length ? m.contenido : [{ cantidad: "", descripcion: "" }]);
 setFFoto(m.foto);
@@ -114,6 +117,13 @@ body: JSON.stringify({ folio: fFolio.trim(), operador: fOperador.trim(), conteni
 });
 const data = await res.json();
 if (!res.ok) throw new Error(data.error || "Error al guardar.");
+if (fFolioOriginal && fFolioOriginal !== fFolio.trim()) {
+await fetch("/api/mochilas/delete", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio: fFolioOriginal }),
+});
+}
 setFormAbierto(false);
 await cargar();
 } catch (err: any) {
@@ -557,7 +567,7 @@ body: JSON.stringify({ folio: etFolio, unidad: etUnidad.trim(), responsable: etR
 const data = await res.json();
 if (!res.ok) throw new Error(data.error || "Error al guardar la etiqueta.");
 await cargar();
-const resListado = await fetch("/api/mochilas/list");
+const resListado = await fetch("/api/mochilas/list", { cache: "no-store" });
 const dataListado = await resListado.json();
 const m = (dataListado.registros || []).find((x: Mochila) => x.folio === etFolio);
 if (!m) throw new Error("No se encontró la mochila actualizada.");
@@ -669,7 +679,7 @@ Aún no hay mochilas registradas. Usa &quot;Agregar / Editar&quot; para crear la
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">{editando !== null ? "Editar mochila" : "Agregar mochila"}</h3>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio de mochila</label>
-<input disabled={editando !== null} value={fFolio} onChange={(e) => setFFolio(e.target.value)} placeholder="MCH-001" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px] disabled:bg-[var(--gray-100)]" />
+<input value={fFolio} onChange={(e) => setFFolio(e.target.value)} placeholder="MCH-001" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
 </div>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Operador asignado</label>

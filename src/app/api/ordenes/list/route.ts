@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getPool } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 function filaAOrden(r: any) {
 return {
 folio: r.folio,

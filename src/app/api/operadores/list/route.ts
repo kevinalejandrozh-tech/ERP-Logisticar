@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, getPool } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const NOMBRES_INICIALES = [
   "Diego Benitez Martinez",
   "Florencio Ochoa Camacho",

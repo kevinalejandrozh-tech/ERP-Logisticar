@@ -520,14 +520,13 @@ doc.setFontSize(9);
 doc.text("Sin artículos registrados.", x + cardW / 2, (tableTop + tableBottom) / 2, { align: "center" });
 } else {
 const availableH = tableBottom - tableTop;
-const rowH = Math.min(1.0, Math.max(0.4, availableH / items.length));
-const fontSize = Math.max(9, Math.min(15, rowH * 15));
+const rowH = Math.min(1.0, availableH / items.length);
+const fontSize = Math.max(6, Math.min(15, rowH * 15));
 doc.setFont("helvetica", "normal");
 doc.setTextColor(30, 30, 30);
 const usedH = rowH * items.length;
 let rowY = tableTop + Math.max(0, (availableH - usedH) / 2) + rowH * 0.68;
 items.forEach((it) => {
-if (rowY > tableBottom + rowH) return;
 doc.setFontSize(fontSize);
 const texto = `${it.cantidad ? it.cantidad + " " : ""}${it.descripcion}`;
 doc.text(texto, x + 1.0, rowY);

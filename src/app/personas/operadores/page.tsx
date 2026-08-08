@@ -97,7 +97,7 @@ export default function OperadoresPage() {
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
-      <div className="max-w-[1440px] mx-auto px-14 pt-10">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
         <PageHeader
           titulo="Agregar / Administrar personas"
           subtitulo="Da de alta o edita la información del personal."
@@ -106,8 +106,8 @@ export default function OperadoresPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5" /><path d="M19 8v6M22 11h-6" /></svg>}
         />
 
-        <div className="bg-white rounded-[18px] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-          <div className="flex items-center gap-3 mb-5">
+        <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+          <div className="flex flex-wrap items-center gap-2.5 md:gap-3 mb-5">
             <button type="button" onClick={abrirAgregar} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
               Agregar
@@ -125,7 +125,8 @@ export default function OperadoresPage() {
           ) : operadores.length === 0 ? (
             <div className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Aún no hay operadores registrados.</div>
           ) : (
-            <table className="w-full border-collapse">
+            <div className="overflow-x-auto">
+            <table className="w-full border-collapse min-w-[480px]">
               <thead>
                 <tr>
                   <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3 rounded-l-lg">Nombre del operador</th>
@@ -139,7 +140,7 @@ export default function OperadoresPage() {
                     <td className="px-3.5 py-3 text-[13.5px]">{o.nombre}</td>
                     <td className="px-3.5 py-3 text-[13.5px]">{o.fechaIngreso || "—"}</td>
                     <td className="px-3.5 py-3">
-                      <div className="flex items-center gap-4">
+                      <div className="flex flex-wrap items-center gap-3">
                         <span onClick={() => abrirEditar(o)} className="inline-flex items-center gap-1.5 text-[var(--gray-400)] text-[12.5px] font-semibold cursor-pointer">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
                           Editar
@@ -154,6 +155,7 @@ export default function OperadoresPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
 
@@ -162,7 +164,7 @@ export default function OperadoresPage() {
 
       {formAbierto && (
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-          <div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+          <div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
             <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">{editandoId !== null ? "Editar operador" : "Agregar operador"}</h3>
             <div className="mb-4">
               <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Nombre del operador</label>

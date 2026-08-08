@@ -15,7 +15,7 @@ export default function AuditoriaMochilaCovidPage() {
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
-      <div className="max-w-[1440px] mx-auto px-14 pt-10">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
         <PageHeader
           titulo="Auditoría mochila Covid"
           subtitulo={folio ? `Mochila: ${folio}` : "Página en construcción."}

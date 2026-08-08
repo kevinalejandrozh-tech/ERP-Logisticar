@@ -83,7 +83,7 @@ exportarExcel(`Unidades_${new Date().toISOString().slice(0, 10)}.xlsx`, [
 };
 return (
 <div className="min-h-screen bg-[#eef1f6]">
-<div className="max-w-[1440px] mx-auto px-14 pt-10">
+<div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
 <PageHeader
 titulo="Unidades"
 subtitulo="Administra y consulta la información de las unidades."
@@ -91,8 +91,8 @@ backHref="/"
 backLabel="Menú principal"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
 />
-<div className="bg-white rounded-[18px] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-<div className="flex items-center gap-3 mb-5">
+<div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="flex flex-wrap items-center gap-2.5 md:gap-3 mb-5">
 <button type="button" onClick={abrirFormulario} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
 Agregar / Editar
@@ -148,9 +148,9 @@ Aún no hay unidades registradas. Usa &quot;Agregar / Editar&quot; para crear la
 </div>
 {formAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[86vh] overflow-y-auto">
+<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[86vh] overflow-y-auto">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">{editando !== null ? "Editar unidad" : "Agregar unidad"}</h3>
-<div className="grid grid-cols-2 gap-x-4 gap-y-3.5 mb-6">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5 mb-6">
 {CAMPOS_UNIDAD.map((campo) => (
 <div key={campo}>
 <label className="block text-[12px] font-bold text-[var(--navy)] mb-1.5">{campo}</label>

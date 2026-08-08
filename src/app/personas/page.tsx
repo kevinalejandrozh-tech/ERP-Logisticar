@@ -5,7 +5,7 @@ const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 export default function PersonasPage() {
 return (
 <div className="min-h-screen bg-[#eef1f6]">
-<div className="max-w-[1440px] mx-auto px-14 pt-10">
+<div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
 <PageHeader
 titulo="Personas"
 subtitulo="Gestiona la información y trámites del personal."
@@ -20,8 +20,8 @@ icono={
 </svg>
 }
 />
-<div className="bg-white rounded-[18px] p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-<div className="grid grid-cols-3 gap-5">
+<div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-5">
 <MenuCard
 icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M9 15l2 2 4-4" /></svg>}
 titulo="Registrar asistencia"

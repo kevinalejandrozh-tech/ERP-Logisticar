@@ -574,7 +574,7 @@ a.remove();
 };
 return (
 <div className="min-h-screen bg-[#eef1f6]">
-<div className="max-w-[1440px] mx-auto px-14 pt-10">
+<div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
 <PageHeader
 titulo="Mochilas Covid"
 subtitulo="Administra la asignación y contenido de las mochilas Covid."
@@ -582,8 +582,8 @@ backHref="/personas"
 backLabel="Personas"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" /></svg>}
 />
-<div className="bg-white rounded-[18px] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-<div className="flex gap-3 mb-4">
+<div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="flex flex-wrap gap-2.5 md:gap-3 mb-4">
 <button type="button" onClick={abrirAgregar} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
 Agregar / Editar
@@ -607,7 +607,8 @@ Exportar Excel
 <div className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Cargando mochilas...</div>
 ) : (
 <>
-<table className="w-full border-collapse">
+<div className="overflow-x-auto">
+<table className="w-full border-collapse min-w-[520px]">
 <thead>
 <tr>
 <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3 rounded-l-lg">Folio de mochila</th>
@@ -621,7 +622,7 @@ Exportar Excel
 <td className="px-3.5 py-3 text-[13.5px]">{m.folio}</td>
 <td className="px-3.5 py-3 text-[13.5px]">{m.operador}</td>
 <td className="px-3.5 py-3">
-<div className="flex items-center gap-4">
+<div className="flex flex-wrap items-center gap-3">
 <span onClick={() => setContenidoVer(m)} className="inline-flex items-center gap-1.5 text-[var(--blue)] text-[12.5px] font-semibold cursor-pointer">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
 Ver contenido
@@ -640,6 +641,7 @@ Eliminar
 ))}
 </tbody>
 </table>
+</div>
 {mochilas.length === 0 && (
 <div className="text-center text-[var(--gray-400)] text-[13.5px] py-10">
 Aún no hay mochilas registradas. Usa &quot;Agregar / Editar&quot; para crear la primera.
@@ -652,7 +654,7 @@ Aún no hay mochilas registradas. Usa &quot;Agregar / Editar&quot; para crear la
 </div>
 {formAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[640px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[640px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">{editando !== null ? "Editar mochila" : "Agregar mochila"}</h3>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio de mochila</label>
@@ -754,7 +756,7 @@ Cancelar
 )}
 {contenidoVer && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Contenido — {contenidoVer.folio}</h3>
 {(contenidoVer.unidad || contenidoVer.responsable) && (
 <div className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[12.5px] flex flex-col gap-1 mb-4">
@@ -806,7 +808,7 @@ Cerrar
 )}
 {folioModalAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Generar responsiva</h3>
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio de la mochila</label>
 <select
@@ -838,7 +840,7 @@ className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.
 )}
 {pdfUrl && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Previsualización — Responsiva</h3>
 <iframe src={pdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
 <div className="flex gap-2.5 justify-end mt-4">
@@ -862,7 +864,7 @@ Descargar PDF
 )}
 {etiquetaModalAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Generar Etiqueta</h3>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Selecciona Mochila</label>
@@ -905,7 +907,7 @@ Cancelar
 )}
 {etiquetaPdfUrl && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[520px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[520px] max-w-[94%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Gafete generado — Frente y reverso</h3>
 <iframe src={etiquetaPdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
 <div className="flex gap-2.5 justify-end mt-4">

@@ -594,7 +594,7 @@ Proveedor: f.proveedor === "—" ? "" : f.proveedor,
 };
 return (
 <div className="min-h-screen bg-[#eef1f6]">
-<div className="max-w-[1440px] mx-auto px-14 pt-10">
+<div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
 <PageHeader
 titulo="Órdenes de servicio y mantenimiento"
 subtitulo="Gestiona las órdenes de servicio, mantenimiento y sus gastos."
@@ -603,7 +603,7 @@ backLabel="Menú principal"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="9" y="2" width="6" height="4" rx="1" /><path d="M9 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3" /><path d="M9 14l2 2 4-4" /></svg>}
 />
 {errorCarga && <p className="text-[12.5px] text-[var(--red)] mb-3">{errorCarga}</p>}
-<div className="flex gap-3 mb-6">
+<div className="flex flex-wrap gap-2.5 md:gap-3 mb-6">
 <button type="button" onClick={abrirNuevaOrden} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-3 text-[13px] font-bold">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
 Nueva orden de mantenimiento
@@ -636,18 +636,18 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
 </button>
 </div>
-<div className="grid grid-cols-2 gap-5 mb-6">
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-6 py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 md:gap-5 mb-6">
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de unidades en mantenimiento</p>
-<p className="text-[28px] font-bold text-[var(--navy)] m-0">{totalUnidadesEnMantenimiento}</p>
+<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">{totalUnidadesEnMantenimiento}</p>
 </div>
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-6 py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de gastos en mantenimiento</p>
-<p className="text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
+<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
 </div>
 </div>
-<div className="grid grid-cols-2 gap-5">
-<div className="bg-white rounded-[18px] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="flex items-center justify-between mb-4">
 <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Unidades en mantenimiento</h3>
 {!cargando && ordenes.length > 0 && (
@@ -712,7 +712,7 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 {cargando && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Cargando...</div>}
 </div>
 </div>
-<div className="bg-white rounded-[18px] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="flex items-center justify-between mb-4">
 <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Gastos en mantenimiento</h3>
 {!cargando && filasGastos.length > 0 && (
@@ -763,9 +763,9 @@ Exportar Excel
 {/* Nueva orden */}
 {nuevaOrdenAbierta && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[520px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[520px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Nueva orden de mantenimiento</h3>
-<div className="grid grid-cols-2 gap-3 mb-4">
+<div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
 <div>
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio</label>
 <input disabled value="Se asigna al guardar" className="w-full border border-[var(--gray-200)] bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[13.5px] text-[var(--gray-400)]" />
@@ -807,7 +807,7 @@ Cancelar
 {/* Diagnostico */}
 {diagFolio && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[640px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[640px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Diagnóstico — Folio {diagFolio}</h3>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">¿Cómo se tiene que arreglar la falla?</label>
@@ -868,7 +868,7 @@ Cancelar
 {/* Requisición de Insumos / servicios */}
 {reqModalAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[1000px] max-w-[96%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[1000px] max-w-[96%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Requisición de insumos / servicios</h3>
 <div className="overflow-x-auto mb-2.5">
 <table className="w-full border-collapse min-w-max">
@@ -949,7 +949,7 @@ Cancelar
 {/* Autorizaciones pendientes */}
 {autModalAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[560px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[560px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Autorizaciones pendientes</h3>
 {!autDesbloqueado ? (
 <>
@@ -1008,7 +1008,7 @@ Cerrar
 {/* Imprimir / descargar orden por folio */}
 {imprimirModalAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Imprimir orden de servicio</h3>
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Folio</label>
 <select
@@ -1041,7 +1041,7 @@ className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.
 {/* Vista previa PDF orden */}
 {pdfUrl && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
-<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Orden de servicio</h3>
 <iframe src={pdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
 <div className="flex gap-2.5 justify-end mt-4">
@@ -1066,7 +1066,7 @@ Descargar PDF
 {/* Cierre de orden */}
 {cierreFolio && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-<div className="bg-white rounded-2xl w-[480px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="bg-white rounded-2xl w-[480px] max-w-[92%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Cerrar orden — Folio {cierreFolio}</h3>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">¿Quedó bien?</label>

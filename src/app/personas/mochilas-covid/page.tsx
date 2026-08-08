@@ -57,6 +57,7 @@ const [folioElegido, setFolioElegido] = useState("");
 const [pdfUrl, setPdfUrl] = useState<string | null>(null);
 const [pdfFolio, setPdfFolio] = useState("");
 const [generando, setGenerando] = useState(false);
+const [operadoresDisponibles, setOperadoresDisponibles] = useState<string[]>([]);
 const cargar = async () => {
 try {
 const res = await fetch("/api/mochilas/list");
@@ -68,8 +69,18 @@ setMochilas(data.registros || []);
 setCargando(false);
 }
 };
+const cargarOperadores = async () => {
+try {
+const res = await fetch("/api/operadores/list");
+const data = await res.json();
+setOperadoresDisponibles((data.registros || []).map((o: { nombre: string }) => o.nombre));
+} catch {
+// si falla, el campo sigue funcionando como texto libre
+}
+};
 useEffect(() => {
 cargar();
+cargarOperadores();
 }, []);
 const abrirAgregar = () => {
 setEditando(null);
@@ -662,7 +673,18 @@ Aún no hay mochilas registradas. Usa &quot;Agregar / Editar&quot; para crear la
 </div>
 <div className="mb-4">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Operador asignado</label>
-<input value={fOperador} onChange={(e) => setFOperador(e.target.value)} placeholder="Nombre del operador" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+<datalist id="opcionesOperador">
+{operadoresDisponibles.map((nombre) => (
+<option key={nombre} value={nombre} />
+))}
+</datalist>
+<input
+value={fOperador}
+onChange={(e) => setFOperador(e.target.value)}
+placeholder="Selecciona o escribe el nombre"
+list="opcionesOperador"
+className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
+/>
 </div>
 <div className="mb-2">
 <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Contenido</label>

@@ -52,6 +52,22 @@ const [fContenido, setFContenido] = useState<Articulo[]>([{ cantidad: "", descri
 const [fFoto, setFFoto] = useState<string | null>(null);
 const [guardando, setGuardando] = useState(false);
 const [contenidoVer, setContenidoVer] = useState<Mochila | null>(null);
+const [cargandoContenidoVer, setCargandoContenidoVer] = useState(false);
+const verContenido = async (folio: string) => {
+setCargandoContenidoVer(true);
+try {
+const res = await fetch("/api/mochilas/list", { cache: "no-store" });
+const data = await res.json();
+const m = (data.registros || []).find((x: Mochila) => x.folio === folio);
+if (m) setContenidoVer(m);
+else alert("No se encontró la mochila.");
+} catch {
+const local = mochilas.find((x) => x.folio === folio);
+if (local) setContenidoVer(local);
+} finally {
+setCargandoContenidoVer(false);
+}
+};
 const [folioModalAbierto, setFolioModalAbierto] = useState(false);
 const [folioElegido, setFolioElegido] = useState("");
 const [pdfUrl, setPdfUrl] = useState<string | null>(null);
@@ -82,6 +98,12 @@ useEffect(() => {
 cargar();
 cargarOperadores();
 }, []);
+useEffect(() => {
+const id = setInterval(() => {
+cargar();
+}, 15000);
+return () => clearInterval(id);
+}, []);
 const abrirAgregar = () => {
 setEditando(null);
 setFFolio("");
@@ -92,7 +114,22 @@ setFFoto(null);
 setFormAbierto(true);
 };
 const [fFolioOriginal, setFFolioOriginal] = useState<string | null>(null);
-const abrirEditar = (i: number) => {
+const [cargandoEditar, setCargandoEditar] = useState(false);
+const abrirEditar = async (i: number) => {
+const folio = mochilas[i].folio;
+setCargandoEditar(true);
+try {
+const res = await fetch("/api/mochilas/list", { cache: "no-store" });
+const data = await res.json();
+const m = (data.registros || []).find((x: Mochila) => x.folio === folio) || mochilas[i];
+setEditando(i);
+setFFolio(m.folio);
+setFFolioOriginal(m.folio);
+setFOperador(m.operador);
+setFContenido(m.contenido.length ? m.contenido : [{ cantidad: "", descripcion: "" }]);
+setFFoto(m.foto);
+setFormAbierto(true);
+} catch {
 const m = mochilas[i];
 setEditando(i);
 setFFolio(m.folio);
@@ -101,6 +138,9 @@ setFOperador(m.operador);
 setFContenido(m.contenido.length ? m.contenido : [{ cantidad: "", descripcion: "" }]);
 setFFoto(m.foto);
 setFormAbierto(true);
+} finally {
+setCargandoEditar(false);
+}
 };
 const guardar = async () => {
 if (!fFolio.trim() || !fOperador.trim()) {
@@ -133,9 +173,20 @@ setGuardando(false);
 }
 };
 const generarPdfParaFolio = async (folio: string) => {
-const m = mochilas.find((x) => x.folio === folio);
-if (!m) return;
 setGenerando(true);
+let m: Mochila | undefined;
+try {
+const resFresco = await fetch("/api/mochilas/list", { cache: "no-store" });
+const dataFresca = await resFresco.json();
+m = (dataFresca.registros || []).find((x: Mochila) => x.folio === folio);
+} catch {
+m = mochilas.find((x) => x.folio === folio);
+}
+if (!m) {
+setGenerando(false);
+alert("No se encontró la mochila.");
+return;
+}
 try {
 await cargarJsPDF();
 const { jsPDF } = window.jspdf;
@@ -643,9 +694,9 @@ Exportar Excel
 <td className="px-3.5 py-3 text-[13.5px]">{m.operador}</td>
 <td className="px-3.5 py-3">
 <div className="flex flex-wrap items-center gap-3">
-<span onClick={() => setContenidoVer(m)} className="inline-flex items-center gap-1.5 text-[var(--blue)] text-[12.5px] font-semibold cursor-pointer">
+<span onClick={() => verContenido(m.folio)} className="inline-flex items-center gap-1.5 text-[var(--blue)] text-[12.5px] font-semibold cursor-pointer">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
-Ver contenido
+{cargandoContenidoVer ? "Cargando..." : "Ver contenido"}
 </span>
 <span onClick={() => abrirEditar(i)} className="inline-flex items-center gap-1.5 text-[var(--gray-400)] text-[12.5px] font-semibold cursor-pointer">
 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>

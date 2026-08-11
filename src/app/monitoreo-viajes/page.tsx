@@ -1,11 +1,13 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
+import MapaMexico from "@/components/MapaMexico";
 import { exportarExcel } from "@/lib/exportExcel";
 import { UNIDADES } from "@/lib/unidadesData";
-import { construirGrupos, CAMPOS_TABLA_PRINCIPAL } from "@/lib/monitoreoData";
+import { construirCampos, DIAS_SEMANA, CampoViaje } from "@/lib/monitoreoData";
+import { mapearFilasExcel } from "@/lib/importarViajesExcel";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 type Viaje = { id: number } & Record<string, string>;
@@ -38,25 +40,38 @@ function calcularIndicador(real?: string, planeado?: string): { texto: string; c
   return { texto: `TARDE ${formatearDuracion(dReal - dPlan)}`, clase: "bg-[var(--red)] text-white" };
 }
 
-function calcularTiempoRuta(inicio?: string, fin?: string): string {
-  if (!inicio || !fin) return "—";
+function calcularTiempoRuta(inicio?: string, fin?: string, ahora?: number): string {
+  if (!inicio) return "—";
   const dI = new Date(inicio).getTime();
-  const dF = new Date(fin).getTime();
-  if (isNaN(dI) || isNaN(dF) || dF < dI) return "—";
-  return formatearDuracion(dF - dI);
+  if (isNaN(dI)) return "—";
+  if (fin) {
+    const dF = new Date(fin).getTime();
+    if (isNaN(dF) || dF < dI) return "—";
+    return formatearDuracion(dF - dI);
+  }
+  if (ahora) return `${formatearDuracion(Math.max(0, ahora - dI))} (en curso)`;
+  return "—";
+}
+
+function semanaISO(fecha: Date): number {
+  const d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
+  const diaSemana = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - diaSemana);
+  const inicioAnio = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - inicioAnio.getTime()) / 86400000 + 1) / 7);
 }
 
 export default function MonitoreoViajesPage() {
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const [cargando, setCargando] = useState(true);
   const [operadores, setOperadores] = useState<string[]>([]);
-  const ecosUnidad = useMemo(() => UNIDADES.map((u) => u.eco), []);
-  const grupos = useMemo(() => construirGrupos(operadores, ecosUnidad), [operadores, ecosUnidad]);
+  const [tick, setTick] = useState(Date.now());
+  const [importando, setImportando] = useState(false);
+  const [arrastrando, setArrastrando] = useState(false);
+  const inputExcelRef = useRef<HTMLInputElement>(null);
 
-  const [formAbierto, setFormAbierto] = useState(false);
-  const [editandoId, setEditandoId] = useState<number | null>(null);
-  const [valores, setValores] = useState<Record<string, string>>({});
-  const [guardando, setGuardando] = useState(false);
+  const ecosUnidad = useMemo(() => UNIDADES.map((u) => u.eco), []);
+  const campos: CampoViaje[] = useMemo(() => construirCampos(operadores, ecosUnidad), [operadores, ecosUnidad]);
 
   const cargar = async () => {
     try {
@@ -82,51 +97,42 @@ export default function MonitoreoViajesPage() {
   useEffect(() => {
     cargar();
     cargarOperadores();
-    const id = setInterval(cargar, 20000);
-    return () => clearInterval(id);
+    const idPoll = setInterval(cargar, 20000);
+    const idTick = setInterval(() => setTick(Date.now()), 60000);
+    return () => {
+      clearInterval(idPoll);
+      clearInterval(idTick);
+    };
   }, []);
 
-  const campo = (v: Record<string, string>, key: string) => (c: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setValores((prev) => ({ ...prev, [key]: c.target.value }));
-
-  const abrirNuevo = () => {
-    setEditandoId(null);
-    setValores({});
-    setFormAbierto(true);
+  // ---- Edicion en linea ----
+  const actualizarLocal = (id: number, key: string, valor: string) => {
+    setViajes((prev) => prev.map((v) => (v.id === id ? { ...v, [key]: valor } : v)));
   };
-  const abrirEditar = (v: Viaje) => {
-    setEditandoId(v.id);
-    const { id, ...resto } = v;
-    setValores(resto as Record<string, string>);
-    setFormAbierto(true);
+  const guardarCampo = (id: number, key: string, valor: string) => {
+    fetch("/api/viajes/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, campos: { [key]: valor } }),
+    }).catch(() => cargar());
+  };
+  const cambiarCampo = (v: Viaje, c: CampoViaje, valor: string) => {
+    actualizarLocal(v.id, c.key, valor);
+    guardarCampo(v.id, c.key, valor);
   };
 
-  const guardar = async () => {
-    setGuardando(true);
+  const agregarViaje = async () => {
     try {
-      if (editandoId !== null) {
-        const res = await fetch("/api/viajes/update", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: editandoId, campos: valores }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Error al guardar.");
-      } else {
-        const res = await fetch("/api/viajes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(valores),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Error al guardar.");
-      }
-      setFormAbierto(false);
-      await cargar();
+      const res = await fetch("/api/viajes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al crear el viaje.");
+      setViajes((prev) => [{ id: data.id }, ...prev]);
     } catch (err: any) {
-      alert(err.message || "Error al guardar el viaje.");
-    } finally {
-      setGuardando(false);
+      alert(err.message || "No se pudo agregar el viaje.");
     }
   };
 
@@ -144,17 +150,43 @@ export default function MonitoreoViajesPage() {
     }
   };
 
-  const actualizarCampoRapido = async (id: number, key: string, valor: string) => {
-    setViajes((prev) => prev.map((v) => (v.id === id ? { ...v, [key]: valor } : v)));
+  // ---- Importar Excel ----
+  const procesarArchivoExcel = async (file: File) => {
+    setImportando(true);
     try {
-      await fetch("/api/viajes/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, campos: { [key]: valor } }),
-      });
-    } catch {
+      const XLSX = await import("xlsx");
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array", cellDates: true });
+      const hoja = wb.Sheets[wb.SheetNames[0]];
+      const filas = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: null }) as unknown[][];
+      const { viajes: nuevos, celdasNoInterpretadas } = mapearFilasExcel(filas);
+      if (nuevos.length === 0) {
+        alert("No se encontraron filas de datos para importar.");
+        return;
+      }
+      let creados = 0;
+      for (const viaje of nuevos) {
+        const res = await fetch("/api/viajes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(viaje),
+        });
+        if (res.ok) creados++;
+      }
       await cargar();
+      alert(`Se importaron ${creados} de ${nuevos.length} viajes.${celdasNoInterpretadas > 0 ? ` ${celdasNoInterpretadas} celda(s) de fecha no se pudieron interpretar y quedaron en blanco.` : ""}`);
+    } catch (err: any) {
+      alert(err.message || "No se pudo leer el archivo Excel.");
+    } finally {
+      setImportando(false);
     }
+  };
+
+  const onDropExcel = (e: React.DragEvent) => {
+    e.preventDefault();
+    setArrastrando(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) procesarArchivoExcel(file);
   };
 
   const exportar = () => {
@@ -163,11 +195,128 @@ export default function MonitoreoViajesPage() {
         nombre: "Viajes",
         filas: viajes.map((v) => {
           const fila: Record<string, string> = { ID: String(v.id) };
-          grupos.forEach((g) => g.campos.forEach((c) => (fila[c.label] = v[c.key] || "")));
+          campos.forEach((c) => (fila[c.label] = v[c.key] || ""));
           return fila;
         }),
       },
     ]);
+  };
+
+  // ---- Datos del dashboard ----
+  const semanaActual = useMemo(() => semanaISO(new Date()), []);
+  const unidadesEnRuta = useMemo(() => viajes.filter((v) => !v.terminoServicio).length, [viajes]);
+  const porCuenta = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    viajes.forEach((v) => {
+      const c = v.nombreCuenta?.trim();
+      if (c) mapa[c] = (mapa[c] || 0) + 1;
+    });
+    return mapa;
+  }, [viajes]);
+  const porDia = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    viajes.forEach((v) => {
+      if (v.dia) mapa[v.dia] = (mapa[v.dia] || 0) + 1;
+    });
+    return mapa;
+  }, [viajes]);
+  const porDestino = useMemo(() => {
+    const mapa: Record<string, number> = {};
+    viajes.forEach((v) => {
+      const d = v.rutaDestino?.trim().toUpperCase();
+      if (d) mapa[d] = (mapa[d] || 0) + 1;
+    });
+    return mapa;
+  }, [viajes]);
+  const conteoAsistencia = useMemo(() => {
+    let onTime = 0;
+    let tarde = 0;
+    viajes.forEach((v) => {
+      const r = calcularIndicador(v.horaArriboPatio, v.citaCargaPatio);
+      if (r.texto === "ON TIME") onTime++;
+      else if (r.texto.startsWith("TARDE")) tarde++;
+    });
+    return { onTime, tarde };
+  }, [viajes]);
+  const conteoCarga = useMemo(() => {
+    let onTime = 0;
+    let tarde = 0;
+    viajes.forEach((v) => {
+      const r = calcularIndicador(v.arriboAlmacenCarga, v.cargaPlaneadaCliente);
+      if (r.texto === "ON TIME") onTime++;
+      else if (r.texto.startsWith("TARDE")) tarde++;
+    });
+    return { onTime, tarde };
+  }, [viajes]);
+
+  const maxDia = Math.max(1, ...DIAS_SEMANA.map((d) => porDia[d] || 0));
+
+  const renderCelda = (v: Viaje, c: CampoViaje) => {
+    const valor = v[c.key] || "";
+    if (c.tipo === "dia") {
+      return (
+        <select value={valor} onChange={(e) => cambiarCampo(v, c, e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[11.5px] w-[95px]">
+          <option value=""></option>
+          {DIAS_SEMANA.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (c.tipo === "datetime") {
+      return <input type="datetime-local" value={valor} onChange={(e) => cambiarCampo(v, c, e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[10.5px] w-[152px]" />;
+    }
+    if (c.tipo === "number") {
+      return (
+        <input
+          type="number"
+          value={valor}
+          onChange={(e) => actualizarLocal(v.id, c.key, e.target.value)}
+          onBlur={(e) => guardarCampo(v.id, c.key, e.target.value)}
+          className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[11.5px] w-[65px]"
+        />
+      );
+    }
+    if (c.tipo === "select") {
+      return (
+        <select value={valor} onChange={(e) => cambiarCampo(v, c, e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[11.5px] w-[140px]">
+          <option value=""></option>
+          {c.opciones?.map((op) => (
+            <option key={op} value={op}>
+              {op}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (c.tipo === "datalist") {
+      return (
+        <>
+          <datalist id={`dl-${c.key}-${v.id}`}>
+            {c.opciones?.map((op) => (
+              <option key={op} value={op} />
+            ))}
+          </datalist>
+          <input
+            value={valor}
+            onChange={(e) => actualizarLocal(v.id, c.key, e.target.value)}
+            onBlur={(e) => guardarCampo(v.id, c.key, e.target.value)}
+            list={`dl-${c.key}-${v.id}`}
+            className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[11.5px] w-[140px]"
+          />
+        </>
+      );
+    }
+    return (
+      <input
+        value={valor}
+        onChange={(e) => actualizarLocal(v.id, c.key, e.target.value)}
+        onBlur={(e) => guardarCampo(v.id, c.key, e.target.value)}
+        className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[11.5px] w-[120px]"
+      />
+    );
   };
 
   return (
@@ -181,21 +330,72 @@ export default function MonitoreoViajesPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>}
         />
 
-        <div className="flex flex-wrap gap-2.5 md:gap-3 mb-6">
-          <button type="button" onClick={abrirNuevo} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
-            Nuevo viaje
-          </button>
+        {/* Dashboard */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 mb-5">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="bg-[var(--navy)] text-white text-[13px] font-bold px-4 py-2 rounded-full">Sem {semanaActual}</span>
+              <span className="bg-white border border-[var(--gray-200)] text-[var(--navy)] text-[12.5px] font-bold px-4 py-2 rounded-full">
+                Unidades en ruta: <span className="text-[var(--blue)]">{unidadesEnRuta}</span>
+              </span>
+              <span className="bg-white border border-[var(--gray-200)] text-[var(--navy)] text-[12.5px] font-bold px-4 py-2 rounded-full">
+                Total de viajes: <span className="text-[var(--blue)]">{viajes.length}</span>
+              </span>
+              <span className="bg-white border border-[var(--gray-200)] text-[12.5px] font-bold px-4 py-2 rounded-full">
+                Asistencia: <span className="text-[var(--green)]">{conteoAsistencia.onTime} ON TIME</span> · <span className="text-[var(--red)]">{conteoAsistencia.tarde} TARDE</span>
+              </span>
+              <span className="bg-white border border-[var(--gray-200)] text-[12.5px] font-bold px-4 py-2 rounded-full">
+                Carga c/cliente: <span className="text-[var(--green)]">{conteoCarga.onTime} ON TIME</span> · <span className="text-[var(--red)]">{conteoCarga.tarde} TARDE</span>
+              </span>
+            </div>
+            <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por cuenta</p>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(porCuenta).length === 0 && <span className="text-[12px] text-[var(--gray-400)]">Sin datos.</span>}
+                {Object.entries(porCuenta).map(([cuenta, n]) => (
+                  <span key={cuenta} className="bg-[var(--blue-light)] text-[var(--navy)] text-[11px] font-bold px-2.5 py-1 rounded-full">
+                    {cuenta} ({n})
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por día</p>
+              <svg viewBox="0 0 500 150" className="w-full h-auto">
+                <line x1={30} y1={110} x2={470} y2={110} stroke="#e5e8ee" strokeWidth={1} />
+                {DIAS_SEMANA.map((dia, i) => {
+                  const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
+                  const n = porDia[dia] || 0;
+                  const y = 110 - (n / maxDia) * 80;
+                  return (
+                    <g key={dia}>
+                      <circle cx={x} cy={y} r={5} fill="#2f6fed" />
+                      <text x={x} y={y - 10} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
+                        {n}
+                      </text>
+                      <text x={x} y={128} fontSize={9} textAnchor="middle" fill="#9aa1b0">
+                        {dia.slice(0, 3)}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-3">
+            <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Viajes por destino</p>
+            <MapaMexico conteos={porDestino} />
+          </div>
         </div>
 
-        {/* Resumen con indicadores */}
+        {/* Resumen de monitoreo */}
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
           <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-4">Resumen de monitoreo</h3>
           <div className="overflow-x-auto">
             <table className="border-collapse min-w-max w-full">
               <thead>
                 <tr>
-                  {["Operador", "ECO. Unidad", "Estado/Destino", "Carga planeada c/cliente", "Cita carga patio", "Tiros", "Arribo a patio", "Arribo almacén carga", "Inicio de ruta", "Indicador asistencia", "Indicador carga c/cliente", "Termino de servicio", "Tiempo en ruta", "Detalles"].map((c) => (
+                  {["Día", "Cuenta", "ECO. Unidad", "Operador", "Estado/Destino", "Tiros", "Indicador asistencia", "Indicador carga c/cliente", "Termino de servicio", "Tiempo en ruta", "Detalles"].map((c) => (
                     <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
                       {c}
                     </th>
@@ -206,18 +406,15 @@ export default function MonitoreoViajesPage() {
                 {viajes.map((v) => {
                   const indAsistencia = calcularIndicador(v.horaArriboPatio, v.citaCargaPatio);
                   const indCarga = calcularIndicador(v.arriboAlmacenCarga, v.cargaPlaneadaCliente);
-                  const tiempoRuta = calcularTiempoRuta(v.inicioRuta, v.terminoServicio);
+                  const tiempoRuta = calcularTiempoRuta(v.inicioRuta, v.terminoServicio, tick);
                   return (
                     <tr key={v.id} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.operador || "—"}</td>
+                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.dia || "—"}</td>
+                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.nombreCuenta || "—"}</td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.ecoUnidad || "—"}</td>
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.estadoDestino || "—"}</td>
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{mostrarFechaHora(v.cargaPlaneadaCliente)}</td>
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{mostrarFechaHora(v.citaCargaPatio)}</td>
+                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.operador || "—"}</td>
+                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.rutaDestino || "—"}</td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.tiros || "—"}</td>
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{mostrarFechaHora(v.horaArriboPatio)}</td>
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{mostrarFechaHora(v.arriboAlmacenCarga)}</td>
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{mostrarFechaHora(v.inicioRuta)}</td>
                       <td className="px-2.5 py-2.5 whitespace-nowrap">
                         <span className={`text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${indAsistencia.clase}`}>{indAsistencia.texto}</span>
                       </td>
@@ -228,7 +425,7 @@ export default function MonitoreoViajesPage() {
                         <input
                           type="datetime-local"
                           value={v.terminoServicio || ""}
-                          onChange={(e) => actualizarCampoRapido(v.id, "terminoServicio", e.target.value)}
+                          onChange={(e) => cambiarCampo(v, { key: "terminoServicio", label: "", tipo: "datetime" }, e.target.value)}
                           className="border border-[var(--gray-200)] rounded-md px-1.5 py-1 text-[11px]"
                         />
                       </td>
@@ -248,40 +445,69 @@ export default function MonitoreoViajesPage() {
           </div>
         </div>
 
-        {/* Tabla completa de viajes */}
+        {/* Viajes registrados: tabla editable en linea */}
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Viajes registrados</h3>
-            {!cargando && viajes.length > 0 && (
-              <button type="button" onClick={exportar} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
-                Exportar Excel
+          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Viajes registrados</h3>
+              <button type="button" onClick={agregarViaje} className="flex items-center gap-1.5 bg-[var(--navy)] text-white rounded-lg px-3.5 py-1.5 text-[12px] font-bold">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+                + Viaje
               </button>
-            )}
+            </div>
+            <div className="flex items-center gap-3">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setArrastrando(true);
+                }}
+                onDragLeave={() => setArrastrando(false)}
+                onDrop={onDropExcel}
+                onClick={() => inputExcelRef.current?.click()}
+                className={`text-[11px] text-[var(--gray-400)] border border-dashed rounded-lg px-3 py-1.5 cursor-pointer ${arrastrando ? "border-[var(--blue)] bg-[var(--blue-light)]" : "border-[var(--gray-200)]"}`}
+              >
+                {importando ? "Importando..." : "Arrastra o haz clic para importar Excel"}
+              </div>
+              <input
+                ref={inputExcelRef}
+                type="file"
+                accept=".xlsx,.xls"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) procesarArchivoExcel(file);
+                  e.target.value = "";
+                }}
+              />
+              {!cargando && viajes.length > 0 && (
+                <button type="button" onClick={exportar} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+                  Exportar Excel
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="border-collapse min-w-max w-full">
               <thead>
                 <tr>
-                  {CAMPOS_TABLA_PRINCIPAL.map((c) => (
-                    <th key={c.key} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+                  {campos.map((c) => (
+                    <th key={c.key} className="text-left text-[9.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-2 whitespace-nowrap">
                       {c.label}
                     </th>
                   ))}
-                  <th className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">Acciones</th>
+                  <th className="text-left text-[9.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-2 whitespace-nowrap">Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {viajes.map((v) => (
                   <tr key={v.id} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
-                    {CAMPOS_TABLA_PRINCIPAL.map((c) => (
-                      <td key={c.key} onClick={() => abrirEditar(v)} className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap cursor-pointer">
-                        {c.key.toLowerCase().includes("cita") || c.key.toLowerCase().includes("carga") || c.key.toLowerCase().includes("arribo") || c.key.toLowerCase().includes("termino")
-                          ? mostrarFechaHora(v[c.key])
-                          : v[c.key] || "—"}
+                    {campos.map((c) => (
+                      <td key={c.key} className="px-1.5 py-1.5 whitespace-nowrap">
+                        {renderCelda(v, c)}
                       </td>
                     ))}
-                    <td className="px-2.5 py-2.5 whitespace-nowrap">
+                    <td className="px-1.5 py-1.5 whitespace-nowrap">
                       <span onClick={() => eliminarViaje(v.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar viaje">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
                       </span>
@@ -290,71 +516,14 @@ export default function MonitoreoViajesPage() {
                 ))}
               </tbody>
             </table>
-            {!cargando && viajes.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin viajes registrados. Usa &quot;Nuevo viaje&quot; para crear el primero.</div>}
+            {!cargando && viajes.length === 0 && (
+              <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin viajes registrados. Usa &quot;+ Viaje&quot; o importa tu Excel para comenzar.</div>
+            )}
           </div>
         </div>
 
         <PageFooter />
       </div>
-
-      {formAbierto && (
-        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
-          <div className="bg-white rounded-2xl w-[900px] max-w-[96%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[88vh] overflow-y-auto">
-            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-5">{editandoId !== null ? "Editar viaje" : "Nuevo viaje"}</h3>
-
-            {grupos.map((g) => (
-              <div key={g.titulo} className="mb-5">
-                <h4 className="text-[12px] font-bold text-[var(--blue)] uppercase tracking-wide mb-2.5">{g.titulo}</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                  {g.campos.map((c) => (
-                    <div key={c.key}>
-                      <label className="block text-[12px] font-bold text-[var(--navy)] mb-1.5">{c.label}</label>
-                      {c.tipo === "datetime" && (
-                        <input type="datetime-local" value={valores[c.key] || ""} onChange={campo(valores, c.key)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
-                      )}
-                      {c.tipo === "text" && (
-                        <input value={valores[c.key] || ""} onChange={campo(valores, c.key)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
-                      )}
-                      {c.tipo === "number" && (
-                        <input type="number" value={valores[c.key] || ""} onChange={campo(valores, c.key)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
-                      )}
-                      {c.tipo === "select" && (
-                        <select value={valores[c.key] || ""} onChange={campo(valores, c.key)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]">
-                          <option value="">Selecciona...</option>
-                          {c.opciones?.map((op) => (
-                            <option key={op} value={op}>
-                              {op}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {c.tipo === "datalist" && (
-                        <>
-                          <datalist id={`dl-${c.key}`}>
-                            {c.opciones?.map((op) => (
-                              <option key={op} value={op} />
-                            ))}
-                          </datalist>
-                          <input value={valores[c.key] || ""} onChange={campo(valores, c.key)} list={`dl-${c.key}`} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            <div className="flex gap-2.5 justify-end mt-2">
-              <button type="button" onClick={() => setFormAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
-                Cancelar
-              </button>
-              <button type="button" onClick={guardar} disabled={guardando} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
-                {guardando ? "Guardando..." : "Guardar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

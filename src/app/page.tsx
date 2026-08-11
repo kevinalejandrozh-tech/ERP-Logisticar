@@ -72,6 +72,12 @@ titulo="Órdenes de servicio y mantenimiento"
 descripcion="Gestiona órdenes de servicio y mantenimiento."
 />
 <MenuCard
+href="/scanner"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" /><circle cx="12" cy="12.5" r="3" /><path d="M3 10h18" /></svg>}
+titulo="Logis SCANNER"
+descripcion="Escanea documentos y expórtalos a PDF con calidad profesional."
+/>
+<MenuCard
 href="/checklist"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="9" y="2" width="6" height="4" rx="1" /><path d="M9 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3" /><path d="M9 12h6M9 16h6" /></svg>}
 titulo="Check list de unidades"

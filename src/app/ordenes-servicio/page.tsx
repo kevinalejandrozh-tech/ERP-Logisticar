@@ -557,6 +557,16 @@ costo: it.costo,
 proveedor: it.proveedor || "—",
 }))
 );
+const [filtroGastoFolio, setFiltroGastoFolio] = useState("");
+const [filtroGastoFecha, setFiltroGastoFecha] = useState("");
+const [filtroGastoDescripcion, setFiltroGastoDescripcion] = useState("");
+const foliosGastos = Array.from(new Set(filasGastos.map((f) => f.folio)));
+const filasGastosFiltradas = filasGastos.filter((f) => {
+if (filtroGastoFolio && f.folio !== filtroGastoFolio) return false;
+if (filtroGastoFecha && !f.fecha.includes(filtroGastoFecha)) return false;
+if (filtroGastoDescripcion && !f.descripcion.toLowerCase().includes(filtroGastoDescripcion.toLowerCase())) return false;
+return true;
+});
 const exportarUnidadesEnMantenimiento = () => {
 exportarExcel(`Unidades_en_mantenimiento_${new Date().toISOString().slice(0, 10)}.xlsx`, [
 {
@@ -578,7 +588,7 @@ const exportarGastos = () => {
 exportarExcel(`Gastos_en_mantenimiento_${new Date().toISOString().slice(0, 10)}.xlsx`, [
 {
 nombre: "Gastos en mantenimiento",
-filas: filasGastos.map((f) => ({
+filas: filasGastosFiltradas.map((f) => ({
 Folio: f.folio,
 "Fecha de compra": f.fecha,
 Cantidad: f.cantidad,
@@ -722,6 +732,40 @@ Exportar Excel
 </button>
 )}
 </div>
+<div className="flex flex-wrap items-end gap-2.5 mb-3.5">
+<div>
+<label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">Folio</label>
+<select value={filtroGastoFolio} onChange={(e) => setFiltroGastoFolio(e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]">
+<option value="">Todos</option>
+{foliosGastos.map((f) => (
+<option key={f} value={f}>
+{f}
+</option>
+))}
+</select>
+</div>
+<div>
+<label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">Fecha de compra</label>
+<input type="date" value={filtroGastoFecha} onChange={(e) => setFiltroGastoFecha(e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]" />
+</div>
+<div>
+<label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">Descripción</label>
+<input value={filtroGastoDescripcion} onChange={(e) => setFiltroGastoDescripcion(e.target.value)} placeholder="Buscar..." className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]" />
+</div>
+{(filtroGastoFolio || filtroGastoFecha || filtroGastoDescripcion) && (
+<button
+type="button"
+onClick={() => {
+setFiltroGastoFolio("");
+setFiltroGastoFecha("");
+setFiltroGastoDescripcion("");
+}}
+className="text-[11.5px] text-[var(--red)] font-semibold px-2 py-1.5"
+>
+Limpiar filtros
+</button>
+)}
+</div>
 <div className="overflow-x-auto">
 <table className="border-collapse min-w-max w-full">
 <thead>
@@ -734,7 +778,7 @@ Exportar Excel
 </tr>
 </thead>
 <tbody>
-{filasGastos.map((f) => (
+{filasGastosFiltradas.map((f) => (
 <tr key={f.key} className="border-b border-[var(--gray-200)]">
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.folio}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{f.fecha}</td>
@@ -754,7 +798,7 @@ Exportar Excel
 ))}
 </tbody>
 </table>
-{!cargando && filasGastos.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros.</div>}
+{!cargando && filasGastosFiltradas.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">{filasGastos.length === 0 ? "Sin registros." : "Ningún gasto coincide con el filtro."}</div>}
 </div>
 </div>
 </div>

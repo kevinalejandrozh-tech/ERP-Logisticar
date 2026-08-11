@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
-import MapaMexico from "@/components/MapaMexico";
 import { exportarExcel } from "@/lib/exportExcel";
 import { UNIDADES } from "@/lib/unidadesData";
 import { construirCampos, DIAS_SEMANA, CampoViaje } from "@/lib/monitoreoData";
@@ -220,14 +219,6 @@ export default function MonitoreoViajesPage() {
     });
     return mapa;
   }, [viajes]);
-  const porDestino = useMemo(() => {
-    const mapa: Record<string, number> = {};
-    viajes.forEach((v) => {
-      const d = v.rutaDestino?.trim().toUpperCase();
-      if (d) mapa[d] = (mapa[d] || 0) + 1;
-    });
-    return mapa;
-  }, [viajes]);
   const conteoAsistencia = useMemo(() => {
     let onTime = 0;
     let tarde = 0;
@@ -248,6 +239,29 @@ export default function MonitoreoViajesPage() {
     });
     return { onTime, tarde };
   }, [viajes]);
+  const porOperador = useMemo(() => {
+    const mapa: Record<string, { total: number; asistenciaOnTime: number; asistenciaTarde: number; cargaOnTime: number; cargaTarde: number }> = {};
+    viajes.forEach((v) => {
+      const op = v.operador?.trim();
+      if (!op) return;
+      if (!mapa[op]) mapa[op] = { total: 0, asistenciaOnTime: 0, asistenciaTarde: 0, cargaOnTime: 0, cargaTarde: 0 };
+      mapa[op].total++;
+      const ra = calcularIndicador(v.horaArriboPatio, v.citaCargaPatio);
+      if (ra.texto === "ON TIME") mapa[op].asistenciaOnTime++;
+      else if (ra.texto.startsWith("TARDE")) mapa[op].asistenciaTarde++;
+      const rc = calcularIndicador(v.arriboAlmacenCarga, v.cargaPlaneadaCliente);
+      if (rc.texto === "ON TIME") mapa[op].cargaOnTime++;
+      else if (rc.texto.startsWith("TARDE")) mapa[op].cargaTarde++;
+    });
+    return mapa;
+  }, [viajes]);
+
+  const [filtroEstadoResumen, setFiltroEstadoResumen] = useState<"todos" | "curso" | "terminado">("todos");
+  const viajesResumenFiltrados = useMemo(() => {
+    if (filtroEstadoResumen === "curso") return viajes.filter((v) => !v.terminoServicio);
+    if (filtroEstadoResumen === "terminado") return viajes.filter((v) => !!v.terminoServicio);
+    return viajes;
+  }, [viajes, filtroEstadoResumen]);
 
   const maxDia = Math.max(1, ...DIAS_SEMANA.map((d) => porDia[d] || 0));
 
@@ -331,8 +345,7 @@ export default function MonitoreoViajesPage() {
         />
 
         {/* Dashboard */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 mb-5">
-          <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 mb-5">
             <div className="flex flex-wrap items-center gap-2.5">
               <span className="bg-[var(--navy)] text-white text-[13px] font-bold px-4 py-2 rounded-full">Sem {semanaActual}</span>
               <span className="bg-white border border-[var(--gray-200)] text-[var(--navy)] text-[12.5px] font-bold px-4 py-2 rounded-full">
@@ -361,36 +374,91 @@ export default function MonitoreoViajesPage() {
             </div>
             <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
               <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por día</p>
-              <svg viewBox="0 0 500 150" className="w-full h-auto">
-                <line x1={30} y1={110} x2={470} y2={110} stroke="#e5e8ee" strokeWidth={1} />
-                {DIAS_SEMANA.map((dia, i) => {
-                  const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
-                  const n = porDia[dia] || 0;
-                  const y = 110 - (n / maxDia) * 80;
-                  return (
-                    <g key={dia}>
-                      <circle cx={x} cy={y} r={5} fill="#2f6fed" />
-                      <text x={x} y={y - 10} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
-                        {n}
-                      </text>
-                      <text x={x} y={128} fontSize={9} textAnchor="middle" fill="#9aa1b0">
-                        {dia.slice(0, 3)}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
+              <div className="max-w-[50%] min-w-[220px]">
+                <svg viewBox="0 0 500 150" className="w-full h-auto">
+                  <line x1={30} y1={110} x2={470} y2={110} stroke="#e5e8ee" strokeWidth={1} />
+                  <polyline
+                    points={DIAS_SEMANA.map((dia, i) => {
+                      const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
+                      const n = porDia[dia] || 0;
+                      const y = 110 - (n / maxDia) * 80;
+                      return `${x},${y}`;
+                    }).join(" ")}
+                    fill="none"
+                    stroke="#2f6fed"
+                    strokeWidth={2}
+                  />
+                  {DIAS_SEMANA.map((dia, i) => {
+                    const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
+                    const n = porDia[dia] || 0;
+                    const y = 110 - (n / maxDia) * 80;
+                    return (
+                      <g key={dia}>
+                        <circle cx={x} cy={y} r={5} fill="#2f6fed" />
+                        <text x={x} y={y - 10} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
+                          {n}
+                        </text>
+                        <text x={x} y={128} fontSize={9} textAnchor="middle" fill="#9aa1b0">
+                          {dia.slice(0, 3)}
+                        </text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
             </div>
-          </div>
-          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-3">
-            <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Viajes por destino</p>
-            <MapaMexico conteos={porDestino} />
-          </div>
+            <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Desempeño por operador</p>
+              <div className="overflow-x-auto">
+                <table className="border-collapse min-w-max w-full">
+                  <thead>
+                    <tr>
+                      {["Operador", "Total viajes", "Asist. ON TIME", "Asist. TARDE", "Carga ON TIME", "Carga TARDE"].map((c) => (
+                        <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(porOperador).map(([op, d]) => (
+                      <tr key={op} className="border-b border-[var(--gray-200)]">
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{op}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{d.total}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--green)] font-semibold">{d.asistenciaOnTime}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--red)] font-semibold">{d.asistenciaTarde}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--green)] font-semibold">{d.cargaOnTime}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--red)] font-semibold">{d.cargaTarde}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {Object.keys(porOperador).length === 0 && <p className="text-center text-[var(--gray-400)] text-[12.5px] py-6">Sin datos.</p>}
+              </div>
+            </div>
         </div>
 
         {/* Resumen de monitoreo */}
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
-          <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-4">Resumen de monitoreo</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
+            <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Resumen de monitoreo</h3>
+            <div className="flex gap-1.5">
+              {([
+                ["todos", "Todos"],
+                ["curso", "En curso"],
+                ["terminado", "Terminados"],
+              ] as const).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFiltroEstadoResumen(key)}
+                  className={`text-[11.5px] font-bold px-3 py-1.5 rounded-full ${filtroEstadoResumen === key ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <table className="border-collapse min-w-max w-full">
               <thead>
@@ -403,7 +471,7 @@ export default function MonitoreoViajesPage() {
                 </tr>
               </thead>
               <tbody>
-                {viajes.map((v) => {
+                {viajesResumenFiltrados.map((v) => {
                   const indAsistencia = calcularIndicador(v.horaArriboPatio, v.citaCargaPatio);
                   const indCarga = calcularIndicador(v.arriboAlmacenCarga, v.cargaPlaneadaCliente);
                   const tiempoRuta = calcularTiempoRuta(v.inicioRuta, v.terminoServicio, tick);

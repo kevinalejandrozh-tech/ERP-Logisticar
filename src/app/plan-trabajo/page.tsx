@@ -5,7 +5,8 @@ import PageFooter from "@/components/PageFooter";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
-type Tarea = { id: number; tarea: string; responsable: string; fechaEntrega: string; estado: string };
+type Avance = { texto: string; fecha: string };
+type Tarea = { id: number; tarea: string; responsable: string; fechaEntrega: string; estado: string; avances: Avance[] };
 const COLUMNAS: { key: string; titulo: string }[] = [
   { key: "lista", titulo: "Lista de tareas" },
   { key: "proceso", titulo: "En proceso" },
@@ -107,6 +108,37 @@ export default function PlanTrabajoPage() {
     }
   };
 
+  const [avancesAbiertos, setAvancesAbiertos] = useState<Tarea | null>(null);
+  const [nuevoAvance, setNuevoAvance] = useState("");
+  const [guardandoAvance, setGuardandoAvance] = useState(false);
+
+  const abrirAvances = (t: Tarea) => {
+    setNuevoAvance("");
+    setAvancesAbiertos(t);
+  };
+
+  const guardarAvance = async () => {
+    if (!avancesAbiertos || !nuevoAvance.trim()) return;
+    setGuardandoAvance(true);
+    try {
+      const res = await fetch("/api/tareas/avance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: avancesAbiertos.id, texto: nuevoAvance.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al guardar el avance.");
+      const actualizado = { ...avancesAbiertos, avances: data.avances };
+      setAvancesAbiertos(actualizado);
+      setTareas((prev) => prev.map((t) => (t.id === actualizado.id ? actualizado : t)));
+      setNuevoAvance("");
+    } catch (err: any) {
+      alert(err.message || "No se pudo guardar el avance.");
+    } finally {
+      setGuardandoAvance(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#eef1f6]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
@@ -161,6 +193,14 @@ export default function PlanTrabajoPage() {
                           <span className="text-white text-[11px] font-semibold truncate">{t.responsable || "—"}</span>
                           <span className="bg-[var(--gray-400)] text-white text-[9.5px] rounded-full px-2 py-0.5 whitespace-nowrap">{formatearFecha(t.fechaEntrega)}</span>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => abrirAvances(t)}
+                          className="w-full mt-2 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-[var(--blue)] border border-[var(--blue-light)] bg-[var(--blue-light)] rounded-full py-1.5"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+                          Avances{t.avances?.length > 0 ? ` (${t.avances.length})` : ""}
+                        </button>
                       </div>
                     ))}
                     {tareasCol.length === 0 && <p className="text-center text-white/70 text-[12px] py-6">Sin tareas.</p>}
@@ -196,6 +236,39 @@ export default function PlanTrabajoPage() {
               </button>
               <button type="button" onClick={guardar} disabled={guardando} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
                 {guardando ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {avancesAbiertos && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[480px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-1">Avances</h3>
+            <p className="text-[13px] text-[var(--gray-400)] mb-4">{avancesAbiertos.tarea}</p>
+
+            <div className="flex flex-col gap-2.5 mb-5 max-h-[280px] overflow-y-auto">
+              {(avancesAbiertos.avances || []).length === 0 && <p className="text-[12.5px] text-[var(--gray-400)]">Aún no hay avances registrados.</p>}
+              {[...(avancesAbiertos.avances || [])].reverse().map((a, i) => (
+                <div key={i} className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5">
+                  <p className="text-[12.5px] text-[var(--text)] m-0 mb-1 whitespace-pre-wrap">{a.texto}</p>
+                  <p className="text-[10.5px] text-[var(--gray-400)] m-0">{new Date(a.fecha).toLocaleString("es-MX")}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mb-5">
+              <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Agregar avance</label>
+              <textarea value={nuevoAvance} onChange={(e) => setNuevoAvance(e.target.value)} rows={2} placeholder="Describe el avance" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+            </div>
+
+            <div className="flex gap-2.5 justify-end">
+              <button type="button" onClick={() => setAvancesAbiertos(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+              <button type="button" onClick={guardarAvance} disabled={guardandoAvance || !nuevoAvance.trim()} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                {guardandoAvance ? "Guardando..." : "Agregar"}
               </button>
             </div>
           </div>

@@ -104,6 +104,7 @@ estado TEXT NOT NULL DEFAULT 'lista',
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS avances JSONB NOT NULL DEFAULT '[]'::jsonb;`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS viajes (

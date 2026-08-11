@@ -319,6 +319,62 @@ export default function ScannerPage() {
     setPaginas((prev) => prev.filter((p) => p.id !== id));
   };
 
+  const [pdfsGuardados, setPdfsGuardados] = useState<{ id: number; nombre: string; creadoEn: string }[]>([]);
+  const [cargandoPdfs, setCargandoPdfs] = useState(true);
+  const [eliminandoPdfs, setEliminandoPdfs] = useState(false);
+  const [descargandoId, setDescargandoId] = useState<number | null>(null);
+
+  const cargarPdfsGuardados = async () => {
+    try {
+      const res = await fetch("/api/scanner/pdfs/list", { cache: "no-store" });
+      const data = await res.json();
+      setPdfsGuardados(data.registros || []);
+    } catch {
+      // si falla, la lista se puede reintentar cerrando y abriendo la pagina
+    } finally {
+      setCargandoPdfs(false);
+    }
+  };
+
+  useEffect(() => {
+    cargarPdfsGuardados();
+  }, []);
+
+  const descargarPdfGuardado = async (id: number, nombre: string) => {
+    setDescargandoId(id);
+    try {
+      const res = await fetch(`/api/scanner/pdfs/get?id=${id}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al descargar.");
+      const a = document.createElement("a");
+      a.href = `data:application/pdf;base64,${data.contenido}`;
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (err: any) {
+      alert(err.message || "No se pudo descargar el PDF.");
+    } finally {
+      setDescargandoId(null);
+    }
+  };
+
+  const eliminarArchivosGuardados = async () => {
+    if (pdfsGuardados.length === 0) return;
+    if (!confirm("¿Eliminar todos los PDFs guardados en la nube? Esta acción no se puede deshacer.")) return;
+    setEliminandoPdfs(true);
+    try {
+      const res = await fetch("/api/scanner/pdfs/delete", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al eliminar.");
+      await cargarPdfsGuardados();
+    } catch (err: any) {
+      alert(err.message || "No se pudieron eliminar los PDFs.");
+    } finally {
+      setEliminandoPdfs(false);
+    }
+  };
+
   const exportarPdf = async () => {
     if (paginas.length === 0) {
       alert("Agrega al menos una foto o imagen primero.");
@@ -357,6 +413,20 @@ export default function ScannerPage() {
 
       const nombreFinal = nombre.toLowerCase().endsWith(".pdf") ? nombre : `${nombre}.pdf`;
       doc.save(nombreFinal);
+
+      try {
+        const uriDatos: string = doc.output("datauristring");
+        const base64 = uriDatos.split(",")[1] || "";
+        const resGuardar = await fetch("/api/scanner/pdfs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre: nombreFinal, contenido: base64 }),
+        });
+        if (resGuardar.ok) await cargarPdfsGuardados();
+      } catch {
+        // si falla el guardado en la nube, la descarga local ya se realizo sin problema
+      }
+
       setPaginas([]);
     } catch (err: any) {
       alert(err.message || "No se pudo generar el PDF.");
@@ -395,27 +465,66 @@ export default function ScannerPage() {
           </button>
         </div>
 
-        <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-          {paginas.length === 0 ? (
-            <div className="text-center text-[var(--gray-400)] text-[13.5px] py-14">
-              Aún no hay páginas. Usa &quot;Agregar foto / imagen&quot; para tomar una foto o subir una imagen — podrás ajustar las esquinas del documento y se le aplicará un filtro de escaneo profesional.
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 items-start">
+          <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            {paginas.length === 0 ? (
+              <div className="text-center text-[var(--gray-400)] text-[13.5px] py-14">
+                Aún no hay páginas. Usa &quot;Agregar foto / imagen&quot; para tomar una foto o subir una imagen — podrás ajustar las esquinas del documento y se le aplicará un filtro de escaneo profesional.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3.5">
+                {paginas.map((p, i) => (
+                  <div key={p.id} className="border border-[var(--gray-200)] rounded-lg overflow-hidden relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.dataUrl} alt={`Página ${i + 1}`} className="w-full aspect-[3/4] object-cover bg-[var(--gray-100)]" />
+                    <div className="flex items-center justify-between px-2 py-1.5 bg-[var(--gray-100)]">
+                      <span className="text-[11px] font-bold text-[var(--navy)]">Página {i + 1}</span>
+                      <span onClick={() => eliminarPagina(p.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar página">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white rounded-[18px] p-4 sm:p-5 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <div className="flex items-center justify-between mb-3.5">
+              <h3 className="text-[13.5px] font-bold text-[var(--navy)] m-0">PDFs generados</h3>
             </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3.5">
-              {paginas.map((p, i) => (
-                <div key={p.id} className="border border-[var(--gray-200)] rounded-lg overflow-hidden relative">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.dataUrl} alt={`Página ${i + 1}`} className="w-full aspect-[3/4] object-cover bg-[var(--gray-100)]" />
-                  <div className="flex items-center justify-between px-2 py-1.5 bg-[var(--gray-100)]">
-                    <span className="text-[11px] font-bold text-[var(--navy)]">Página {i + 1}</span>
-                    <span onClick={() => eliminarPagina(p.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar página">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+            <button
+              type="button"
+              onClick={eliminarArchivosGuardados}
+              disabled={eliminandoPdfs || pdfsGuardados.length === 0}
+              className="w-full flex items-center justify-center gap-2 bg-[var(--red)] disabled:opacity-50 text-white rounded-lg px-4 py-2.5 text-[12.5px] font-bold mb-4"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+              {eliminandoPdfs ? "Eliminando..." : "Eliminar archivos"}
+            </button>
+
+            {cargandoPdfs ? (
+              <p className="text-[12.5px] text-[var(--gray-400)] text-center py-6">Cargando...</p>
+            ) : pdfsGuardados.length === 0 ? (
+              <p className="text-[12.5px] text-[var(--gray-400)] text-center py-6">Aún no hay PDFs guardados en la nube.</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-[520px] overflow-y-auto">
+                {pdfsGuardados.map((p) => (
+                  <div key={p.id} className="border border-[var(--gray-200)] rounded-lg px-3 py-2.5">
+                    <p className="text-[12.5px] font-semibold text-[var(--navy)] m-0 mb-0.5 break-words">{p.nombre}</p>
+                    <p className="text-[10.5px] text-[var(--gray-400)] m-0 mb-1.5">{new Date(p.creadoEn).toLocaleString("es-MX")}</p>
+                    <span
+                      onClick={() => descargarPdfGuardado(p.id, p.nombre)}
+                      className="inline-flex items-center gap-1 text-[11.5px] text-[var(--blue)] font-semibold cursor-pointer"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+                      {descargandoId === p.id ? "Descargando..." : "Descargar"}
                     </span>
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <PageFooter />

@@ -84,4 +84,13 @@ fecha_ingreso TEXT,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS scanner_pdfs (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+contenido TEXT NOT NULL,
+creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

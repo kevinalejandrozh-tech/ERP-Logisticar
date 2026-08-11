@@ -46,6 +46,7 @@ Check list de accesorios GPS
 <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 md:gap-[18px]">
 <MenuCard
+href="/plan-trabajo"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>}
 titulo="Plan de trabajo y seguimiento"
 descripcion="Crea, asigna y da seguimiento a los planes de trabajo."
@@ -56,6 +57,7 @@ titulo="Reportes"
 descripcion="Consulta y genera reportes clave del sistema."
 />
 <MenuCard
+href="/monitoreo-viajes"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>}
 titulo="Monitoreo de viajes y rutas"
 descripcion="Consulta el monitoreo en tiempo real de viajes y rutas."

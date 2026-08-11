@@ -93,4 +93,24 @@ contenido TEXT NOT NULL,
 creado_en TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS tareas_kanban (
+id SERIAL PRIMARY KEY,
+tarea TEXT NOT NULL,
+responsable TEXT,
+fecha_entrega TEXT,
+estado TEXT NOT NULL DEFAULT 'lista',
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS viajes (
+id SERIAL PRIMARY KEY,
+datos JSONB NOT NULL DEFAULT '{}'::jsonb,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

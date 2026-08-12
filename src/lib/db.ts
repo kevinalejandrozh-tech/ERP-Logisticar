@@ -121,6 +121,7 @@ km_actual NUMERIC,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE cambios_aceite ADD COLUMN IF NOT EXISTS servicio_realizado BOOLEAN NOT NULL DEFAULT false;`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS viajes (

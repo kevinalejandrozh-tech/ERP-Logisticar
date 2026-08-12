@@ -8,7 +8,7 @@ export async function GET() {
   try {
     await ensureSchema();
     const pool = getPool();
-    const result = await pool.query(`SELECT id, tarea, responsable, fecha_entrega, estado, avances, color, categoria, urgente, orden FROM tareas_kanban ORDER BY orden ASC`);
+    const result = await pool.query(`SELECT id, tarea, responsable, fecha_entrega, estado, avances, color, categoria, urgente, orden, ancho FROM tareas_kanban ORDER BY orden ASC`);
     const registros = result.rows.map((r) => ({
       id: r.id,
       tarea: r.tarea,
@@ -20,6 +20,7 @@ export async function GET() {
       categoria: r.categoria || "",
       urgente: !!r.urgente,
       orden: Number(r.orden) || 0,
+      ancho: r.ancho || "full",
     }));
     return NextResponse.json({ ok: true, registros });
   } catch (err: any) {

@@ -109,6 +109,7 @@ await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS color TEXT;`);
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS categoria TEXT;`);
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS urgente BOOLEAN NOT NULL DEFAULT false;`);
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS orden DOUBLE PRECISION NOT NULL DEFAULT 0;`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS ancho TEXT NOT NULL DEFAULT 'full';`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS cambios_aceite (

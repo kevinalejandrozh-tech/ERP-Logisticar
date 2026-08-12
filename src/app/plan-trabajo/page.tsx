@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 
@@ -17,10 +17,12 @@ type Tarea = {
   categoria: string;
   urgente: boolean;
   orden: number;
+  ancho: "full" | "mitad";
 };
 const COLUMNAS: { key: string; titulo: string }[] = [
   { key: "lista", titulo: "Lista de tareas" },
   { key: "proceso", titulo: "En proceso" },
+  { key: "espera", titulo: "En espera" },
   { key: "completadas", titulo: "Completadas" },
 ];
 const COLORES_DISPONIBLES = ["#e2412c", "#f2b134", "#21a866", "#2f6fed", "#8b5cf6", "#ec4899", "#16215c", "#767b87"];
@@ -36,12 +38,13 @@ export default function PlanTrabajoPage() {
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [cargando, setCargando] = useState(true);
   const [formAbierto, setFormAbierto] = useState(false);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
   const [fTarea, setFTarea] = useState("");
   const [fResponsable, setFResponsable] = useState("");
   const [fFecha, setFFecha] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [arrastrandoId, setArrastrandoId] = useState<number | null>(null);
-  const [sobreInfo, setSobreInfo] = useState<{ colKey: string; targetId: number; posicion: "antes" | "despues" } | null>(null);
+  const [sobreInfo, setSobreInfo] = useState<{ colKey: string; targetId: number; posicion: "antes" | "despues"; ancho: "full" | "mitad" } | null>(null);
 
   const cargar = async () => {
     try {
@@ -62,9 +65,18 @@ export default function PlanTrabajoPage() {
   }, []);
 
   const abrirForm = () => {
+    setEditandoId(null);
     setFTarea("");
     setFResponsable("");
     setFFecha("");
+    setFormAbierto(true);
+  };
+
+  const abrirEditarTarea = (t: Tarea) => {
+    setEditandoId(t.id);
+    setFTarea(t.tarea);
+    setFResponsable(t.responsable);
+    setFFecha(t.fechaEntrega);
     setFormAbierto(true);
   };
 
@@ -75,13 +87,23 @@ export default function PlanTrabajoPage() {
     }
     setGuardando(true);
     try {
-      const res = await fetch("/api/tareas", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tarea: fTarea.trim(), responsable: fResponsable.trim(), fechaEntrega: fFecha }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al guardar.");
+      if (editandoId !== null) {
+        const res = await fetch("/api/tareas/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: editandoId, tarea: fTarea.trim(), responsable: fResponsable.trim(), fechaEntrega: fFecha || " " }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error al guardar.");
+      } else {
+        const res = await fetch("/api/tareas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tarea: fTarea.trim(), responsable: fResponsable.trim(), fechaEntrega: fFecha }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error al guardar.");
+      }
       setFormAbierto(false);
       await cargar();
     } catch (err: any) {
@@ -200,17 +222,23 @@ export default function PlanTrabajoPage() {
     }
   };
 
-  // ---- Arrastrar y soltar (entre columnas y para reordenar dentro de la columna) ----
+  // ---- Arrastrar y soltar ----
+  // 4 zonas sobre cada tarjeta: izquierda/derecha = acomodar en 2 columnas (ancho mitad); arriba/abajo = ancho completo, apilada.
   const soltarEnColumna = async (colKey: string) => {
     if (arrastrandoId === null) return;
     const id = arrastrandoId;
     const listaCol = tareas.filter((t) => t.estado === colKey && t.id !== id).sort((a, b) => a.orden - b.orden);
 
     let nuevoOrden: number;
+    let nuevoAncho: "full" | "mitad" = "full";
+    let idObjetivoPareja: number | null = null;
+
     if (!sobreInfo || sobreInfo.colKey !== colKey) {
       nuevoOrden = listaCol.length ? listaCol[listaCol.length - 1].orden + 1 : Date.now();
     } else {
       const idx = listaCol.findIndex((t) => t.id === sobreInfo.targetId);
+      nuevoAncho = sobreInfo.ancho;
+      if (sobreInfo.ancho === "mitad") idObjetivoPareja = sobreInfo.targetId;
       if (idx === -1) {
         nuevoOrden = listaCol.length ? listaCol[listaCol.length - 1].orden + 1 : Date.now();
       } else {
@@ -225,15 +253,28 @@ export default function PlanTrabajoPage() {
       }
     }
 
-    setTareas((prev) => prev.map((t) => (t.id === id ? { ...t, estado: colKey, orden: nuevoOrden } : t)));
+    setTareas((prev) =>
+      prev.map((t) => {
+        if (t.id === id) return { ...t, estado: colKey, orden: nuevoOrden, ancho: nuevoAncho };
+        if (idObjetivoPareja && t.id === idObjetivoPareja) return { ...t, ancho: "mitad" };
+        return t;
+      })
+    );
     setArrastrandoId(null);
     setSobreInfo(null);
     try {
       await fetch("/api/tareas/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, estado: colKey, orden: nuevoOrden }),
+        body: JSON.stringify({ id, estado: colKey, orden: nuevoOrden, ancho: nuevoAncho }),
       });
+      if (idObjetivoPareja) {
+        await fetch("/api/tareas/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: idObjetivoPareja, ancho: "mitad" }),
+        });
+      }
     } catch {
       await cargar();
     }
@@ -342,7 +383,7 @@ export default function PlanTrabajoPage() {
         {cargando ? (
           <p className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Cargando tablero...</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
             {COLUMNAS.map((col) => {
               const tareasCol = tareasFiltradas.filter((t) => t.estado === col.key).sort((a, b) => a.orden - b.orden);
               return (
@@ -356,9 +397,18 @@ export default function PlanTrabajoPage() {
                     <span className="text-[13px] font-bold text-[var(--navy)]">{col.titulo}</span>
                     <span className="text-[11px] text-[var(--gray-400)] ml-1.5">({tareasCol.length})</span>
                   </div>
-                  <div className="flex flex-col gap-3">
+                  <div className="grid grid-cols-2 gap-3 items-start">
                     {tareasCol.map((t) => {
-                      const estiloFondo = t.urgente ? { backgroundColor: "rgba(226,65,44,0.5)" } : t.color ? { backgroundColor: `${t.color}2e` } : undefined;
+                      const estiloFondo = t.urgente ? { backgroundColor: "rgba(226,65,44,0.95)" } : t.color ? { backgroundColor: `${t.color}f2` } : undefined;
+                      const zona = sobreInfo && sobreInfo.targetId === t.id ? sobreInfo : null;
+                      const estiloZona: CSSProperties = {};
+                      if (zona) {
+                        const grosor = "3px solid var(--blue)";
+                        if (zona.posicion === "antes" && zona.ancho === "mitad") estiloZona.borderLeft = grosor;
+                        else if (zona.posicion === "despues" && zona.ancho === "mitad") estiloZona.borderRight = grosor;
+                        else if (zona.posicion === "antes" && zona.ancho === "full") estiloZona.borderTop = grosor;
+                        else estiloZona.borderBottom = grosor;
+                      }
                       return (
                         <div
                           key={t.id}
@@ -372,17 +422,36 @@ export default function PlanTrabajoPage() {
                             e.preventDefault();
                             e.stopPropagation();
                             const rect = e.currentTarget.getBoundingClientRect();
-                            const mitad = rect.top + rect.height / 2;
-                            setSobreInfo({ colKey: col.key, targetId: t.id, posicion: e.clientY < mitad ? "antes" : "despues" });
+                            const relX = (e.clientX - rect.left) / rect.width;
+                            const relY = e.clientY - rect.top;
+                            let posicion: "antes" | "despues";
+                            let ancho: "full" | "mitad";
+                            if (relX < 0.3) {
+                              posicion = "antes";
+                              ancho = "mitad";
+                            } else if (relX > 0.7) {
+                              posicion = "despues";
+                              ancho = "mitad";
+                            } else if (relY < rect.height / 2) {
+                              posicion = "antes";
+                              ancho = "full";
+                            } else {
+                              posicion = "despues";
+                              ancho = "full";
+                            }
+                            setSobreInfo({ colKey: col.key, targetId: t.id, posicion, ancho });
                           }}
                           onDrop={(e) => {
                             e.stopPropagation();
                             soltarEnColumna(col.key);
                           }}
-                          style={estiloFondo}
+                          style={{ ...estiloFondo, ...estiloZona, gridColumn: t.ancho === "mitad" ? "span 1" : "span 2" }}
                           className={`bg-white border-2 ${t.urgente ? "border-[var(--red)]" : "border-[var(--navy)]"} rounded-2xl p-3 cursor-grab active:cursor-grabbing`}
                         >
                           <div className="flex items-start justify-between gap-1.5 mb-1.5">
+                            <span onClick={() => abrirEditarTarea(t)} className="text-[var(--gray-400)] cursor-pointer shrink-0" title="Editar tarea">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                            </span>
                             <div className="flex-1">
                               {t.urgente && <span className="inline-block bg-[var(--red)] text-white text-[9px] font-bold uppercase px-2 py-0.5 rounded-full mb-1">Urgente</span>}
                               {!t.urgente && t.categoria && (
@@ -420,7 +489,7 @@ export default function PlanTrabajoPage() {
                         </div>
                       );
                     })}
-                    {tareasCol.length === 0 && <p className="text-center text-white/70 text-[12px] py-6">Sin tareas.</p>}
+                    {tareasCol.length === 0 && <p className="text-center text-white/70 text-[12px] py-6 col-span-2">Sin tareas.</p>}
                   </div>
                 </div>
               );
@@ -434,7 +503,7 @@ export default function PlanTrabajoPage() {
       {formAbierto && (
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
           <div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Nueva tarea</h3>
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">{editandoId !== null ? "Editar tarea" : "Nueva tarea"}</h3>
             <div className="mb-4">
               <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Tarea</label>
               <textarea value={fTarea} onChange={(e) => setFTarea(e.target.value)} rows={2} placeholder="Describe la tarea" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />

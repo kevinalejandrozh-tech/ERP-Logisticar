@@ -878,31 +878,17 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 ) : (
 (() => {
 const maxCosto = Math.max(...costosPorEco.map(([, c]) => c));
-const anchoBarra = 46;
-const espacio = 18;
-const alturaMax = 160;
-const anchoSvg = costosPorEco.length * (anchoBarra + espacio) + espacio;
 return (
-<div className="overflow-x-auto">
-<svg viewBox={`0 0 ${anchoSvg} 230`} width={Math.max(anchoSvg, 500)} height="230">
-<line x1={0} y1={190} x2={anchoSvg} y2={190} stroke="#e5e8ee" strokeWidth={1} />
-{costosPorEco.map(([eco, costo], i) => {
-const alto = (costo / maxCosto) * alturaMax;
-const x = espacio + i * (anchoBarra + espacio);
-const y = 190 - alto;
-return (
-<g key={eco}>
-<rect x={x} y={y} width={anchoBarra} height={alto} rx={5} fill="#2f6fed" />
-<text x={x + anchoBarra / 2} y={y - 8} fontSize={10.5} textAnchor="middle" fill="#16215c" fontWeight="bold">
-${costo.toFixed(0)}
-</text>
-<text x={x + anchoBarra / 2} y={207} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
-{eco}
-</text>
-</g>
-);
-})}
-</svg>
+<div className="flex flex-col gap-2.5">
+{costosPorEco.map(([eco, costo]) => (
+<div key={eco} className="flex items-center gap-3">
+<span className="text-[12px] font-semibold text-[var(--navy)] w-[70px] shrink-0">{eco}</span>
+<div className="flex-1 bg-[var(--gray-100)] rounded h-[10px] overflow-hidden">
+<div className="bg-[var(--blue)] h-full rounded" style={{ width: `${(costo / maxCosto) * 100}%` }} />
+</div>
+<span className="text-[12px] text-[var(--navy)] w-[85px] shrink-0 text-right">${costo.toFixed(2)}</span>
+</div>
+))}
 </div>
 );
 })()

@@ -44,6 +44,9 @@ servicioRealizado: boolean;
 };
 const KM_INTERVALO_CAMBIO = 18000;
 const OPCIONES_INDICADOR_ACEITE = ["Urgente", "Se programa para la siguiente semana", "Servicio realizado"];
+function etiquetaCorta(etiqueta: string) {
+return etiqueta === "Se programa para la siguiente semana" ? "Próximo" : etiqueta;
+}
 declare global {
 interface Window {
 jspdf: any;
@@ -211,6 +214,12 @@ return { kmSiguiente, porcentaje, etiqueta };
 const toggleServicioRealizado = async (c: CambioAceite) => {
 const marcando = !c.servicioRealizado;
 if (marcando) {
+const clave = prompt("Ingresa la contraseña para marcar el servicio como realizado:");
+if (clave === null) return;
+if (clave !== "4321") {
+alert("Contraseña incorrecta.");
+return;
+}
 const hoy = new Date().toISOString().slice(0, 10);
 const nuevoKmUltimo = c.kmActual || c.kmUltimoCambio;
 setCambiosAceite((prev) =>
@@ -283,6 +292,27 @@ const cambiosAceiteFiltrados = useMemo(() => {
 if (filtrosIndicadorAceite.size === 0) return cambiosAceite;
 return cambiosAceite.filter((c) => filtrosIndicadorAceite.has(calcularAceite(c).etiqueta));
 }, [cambiosAceite, filtrosIndicadorAceite]);
+const exportarCambiosAceite = () => {
+exportarExcel(`Cambios_de_aceite_${new Date().toISOString().slice(0, 10)}.xlsx`, [
+{
+nombre: "Cambios de aceite",
+filas: cambiosAceite.map((c) => {
+const { kmSiguiente, porcentaje, etiqueta } = calcularAceite(c);
+return {
+ECO: c.eco,
+Unidad: c.unidad,
+"Fecha último cambio": c.fechaUltimoCambio,
+"KM último cambio": c.kmUltimoCambio,
+"KM actual": c.kmActual,
+"KM próximo": kmSiguiente ?? "",
+"%": porcentaje === null ? "" : porcentaje.toFixed(1),
+Indicador: etiquetaCorta(etiqueta),
+Realizado: c.servicioRealizado ? "Sí" : "No",
+};
+}),
+},
+]);
+};
 // ---- Formulario: nueva orden ----
 const [nuevaOrdenAbierta, setNuevaOrdenAbierta] = useState(false);
 const [nEco, setNEco] = useState("");
@@ -729,6 +759,13 @@ body: JSON.stringify({ folio, [campo]: valor }),
 };
 const [filtroEstadoUnidades, setFiltroEstadoUnidades] = useState<EstadoOrden | "">("");
 const [filtroMiniAceite, setFiltroMiniAceite] = useState<"urgentes" | "siguiente" | null>(null);
+const [busquedaHistorialUnidad, setBusquedaHistorialUnidad] = useState("");
+const [unidadHistorialSeleccionada, setUnidadHistorialSeleccionada] = useState<string | null>(null);
+const sugerenciasHistorialUnidad = useMemo(() => {
+const q = busquedaHistorialUnidad.trim().toLowerCase();
+if (!q) return [];
+return unidadesRegistradas.map((u) => u["ECO"]).filter((eco) => eco.toLowerCase().includes(q)).slice(0, 8);
+}, [busquedaHistorialUnidad, unidadesRegistradas]);
 const miniAceiteFiltrado = useMemo(() => {
 if (filtroMiniAceite === "urgentes") return cambiosAceite.filter((c) => calcularAceite(c).etiqueta === "Urgente");
 if (filtroMiniAceite === "siguiente") return cambiosAceite.filter((c) => calcularAceite(c).etiqueta === "Se programa para la siguiente semana");
@@ -860,31 +897,33 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
 </button>
 </div>
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 md:gap-5 mb-6 items-start">
-<div className="flex flex-col gap-3.5 md:gap-5">
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
+<div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 md:gap-5 mb-6">
+{/* 1. Total de unidades en mantenimiento */}
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[380px] flex flex-col">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de unidades en mantenimiento</p>
 <p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0 mb-2.5">{totalUnidadesEnMantenimiento}</p>
-<div className="flex flex-col gap-1.5">
-<div className="flex items-center justify-between text-[12px]">
+<div className="flex-1 flex flex-col justify-center gap-3">
+<div className="flex items-center justify-between text-[13px] border-b border-[var(--gray-100)] pb-2.5">
 <span className="text-[var(--green)] font-semibold">Servicios realizados</span>
-<span className="font-bold text-[var(--navy)]">{conteoPorEstado.servicio_realizado}</span>
+<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.servicio_realizado}</span>
 </div>
-<div className="flex items-center justify-between text-[12px]">
+<div className="flex items-center justify-between text-[13px] border-b border-[var(--gray-100)] pb-2.5">
 <span className="text-[var(--blue)] font-semibold">Servicios activos</span>
-<span className="font-bold text-[var(--navy)]">{conteoPorEstado.cerrar_orden}</span>
+<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.cerrar_orden}</span>
 </div>
-<div className="flex items-center justify-between text-[12px]">
+<div className="flex items-center justify-between text-[13px] border-b border-[var(--gray-100)] pb-2.5">
 <span className="text-[var(--red)] font-semibold">Pendientes de autorización</span>
-<span className="font-bold text-[var(--navy)]">{conteoPorEstado.autorizacion_pendiente}</span>
+<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.autorizacion_pendiente}</span>
 </div>
-<div className="flex items-center justify-between text-[12px]">
+<div className="flex items-center justify-between text-[13px]">
 <span className="text-[#8a5a05] font-semibold">Pendientes de diagnosticar</span>
-<span className="font-bold text-[var(--navy)]">{conteoPorEstado.diagnostico_pendiente}</span>
+<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.diagnostico_pendiente}</span>
 </div>
 </div>
 </div>
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
+
+{/* 2. Total de gastos + mini tabla de Cambios de aceite */}
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[380px] flex flex-col">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de gastos en mantenimiento</p>
 <p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
 <div className="flex items-center justify-between gap-2 mt-4 mb-2.5">
@@ -902,11 +941,11 @@ type="button"
 onClick={() => setFiltroMiniAceite((p) => (p === "siguiente" ? null : "siguiente"))}
 className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full ${filtroMiniAceite === "siguiente" ? "bg-[var(--amber)] text-[#52350a]" : "bg-[var(--gray-100)] text-[var(--navy)]"}`}
 >
-Siguiente semana
+Próximo
 </button>
 </div>
 </div>
-<div className="overflow-x-auto max-h-[220px] overflow-y-auto">
+<div className="flex-1 overflow-y-auto">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
@@ -937,44 +976,86 @@ return (
 {miniAceiteFiltrado.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12px] py-4">Sin registros.</p>}
 </div>
 </div>
-</div>
 
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-full">
-<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-3">Gráfica de costos de reparación</p>
+{/* 3. Grafica de costos de reparacion (barras horizontales estilo dashboard) */}
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[380px] flex flex-col">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-4">Gráfica de costos de reparación</p>
 {costosPorEco.length === 0 ? (
 <p className="text-center text-[var(--gray-400)] text-[12.5px] py-8">Sin gastos registrados aún.</p>
 ) : (
 (() => {
 const maxCosto = Math.max(...costosPorEco.map(([, c]) => c));
-const anchoBarra = 46;
-const espacio = 18;
-const alturaMax = 160;
-const anchoSvg = costosPorEco.length * (anchoBarra + espacio) + espacio;
+const AZUL_CLARO = [142, 205, 245];
+const AZUL_NAVY = [22, 33, 92];
+const n = costosPorEco.length;
 return (
-<div className="overflow-x-auto">
-<svg viewBox={`0 0 ${anchoSvg} 230`} width={Math.max(anchoSvg, 500)} height="230">
-<line x1={0} y1={190} x2={anchoSvg} y2={190} stroke="#e5e8ee" strokeWidth={1} />
+<div className="flex-1 overflow-y-auto flex flex-col justify-center gap-3.5 pr-1">
 {costosPorEco.map(([eco, costo], i) => {
-const alto = (costo / maxCosto) * alturaMax;
-const x = espacio + i * (anchoBarra + espacio);
-const y = 190 - alto;
+const t = n > 1 ? i / (n - 1) : 0;
+const rgb = AZUL_NAVY.map((v, k) => Math.round(v + (AZUL_CLARO[k] - v) * t));
+const color = `rgb(${rgb.join(",")})`;
+const pct = Math.max(12, (costo / maxCosto) * 100);
 return (
-<g key={eco}>
-<rect x={x} y={y} width={anchoBarra} height={alto} rx={5} fill="#2f6fed" />
-<text x={x + anchoBarra / 2} y={y - 8} fontSize={10.5} textAnchor="middle" fill="#16215c" fontWeight="bold">
-${costo.toFixed(0)}
-</text>
-<text x={x + anchoBarra / 2} y={207} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
+<div key={eco} className="flex items-center gap-2.5">
+<span className="text-white text-[11px] font-bold rounded-md px-2.5 py-1.5 w-[62px] text-center shrink-0" style={{ backgroundColor: color }}>
 {eco}
-</text>
-</g>
+</span>
+<div className="flex-1 bg-[var(--gray-100)] rounded-md h-[24px] relative">
+<div
+className="h-full"
+style={{
+width: `${pct}%`,
+backgroundColor: color,
+clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%)",
+}}
+/>
+</div>
+<span className="text-[11.5px] font-bold text-[var(--navy)] w-[70px] shrink-0 text-right">${costo.toFixed(0)}</span>
+</div>
 );
 })}
-</svg>
 </div>
 );
 })()
 )}
+</div>
+
+{/* 4. Historial de mantenimientos por unidad */}
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[380px] flex flex-col">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-3">Historial de mantenimientos por unidad</p>
+<div className="relative mb-3">
+<div className="flex items-center gap-2 bg-white border border-[var(--gray-200)] rounded-lg px-3 py-2">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+<input
+value={busquedaHistorialUnidad}
+onChange={(e) => {
+setBusquedaHistorialUnidad(e.target.value);
+setUnidadHistorialSeleccionada(null);
+}}
+placeholder="Busca una unidad..."
+className="flex-1 outline-none text-[12.5px]"
+/>
+</div>
+{sugerenciasHistorialUnidad.length > 0 && !unidadHistorialSeleccionada && (
+<div className="absolute z-10 top-full left-0 right-0 bg-white border border-[var(--gray-200)] rounded-lg shadow-md mt-1 max-h-[180px] overflow-y-auto">
+{sugerenciasHistorialUnidad.map((eco) => (
+<div
+key={eco}
+onClick={() => {
+setUnidadHistorialSeleccionada(eco);
+setBusquedaHistorialUnidad(eco);
+}}
+className="px-3 py-2 text-[12.5px] text-[var(--navy)] cursor-pointer hover:bg-[var(--gray-100)]"
+>
+{eco}
+</div>
+))}
+</div>
+)}
+</div>
+<div className="flex-1 flex items-center justify-center">
+<p className="text-center text-[var(--blue)] text-[12.5px] m-0">{unidadHistorialSeleccionada ? `Detalle de ${unidadHistorialSeleccionada} (próximamente).` : "Selecciona una unidad para ver su detalle."}</p>
+</div>
 </div>
 </div>
 <div className="flex flex-wrap gap-2.5 mb-5">
@@ -1218,6 +1299,12 @@ Limpiar filtros
 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
 Quitar selección
 </button>
+{!cargandoAceite && cambiosAceite.length > 0 && (
+<button type="button" onClick={exportarCambiosAceite} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
+Exportar Excel
+</button>
+)}
 </div>
 </div>
 <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -1229,7 +1316,7 @@ type="button"
 onClick={() => toggleFiltroIndicadorAceite(op)}
 className={`text-[11px] font-bold px-3 py-1.5 rounded-full ${filtrosIndicadorAceite.has(op) ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}
 >
-{op}
+{etiquetaCorta(op)}
 </button>
 ))}
 {filtrosIndicadorAceite.size > 0 && (
@@ -1329,7 +1416,7 @@ className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[85
 <td className="px-2.5 py-2 whitespace-nowrap">
 {etiqueta && (
 <span className={`text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${c.servicioRealizado ? "bg-[var(--green)] text-white" : urgente ? "bg-[var(--red)] text-white" : "bg-[var(--amber)] text-[#52350a]"}`}>
-{etiqueta}
+{etiquetaCorta(etiqueta)}
 </span>
 )}
 </td>

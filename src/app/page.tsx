@@ -5,6 +5,13 @@ import MenuCard from "@/components/MenuCard";
 import PageFooter from "@/components/PageFooter";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
+function semanaISO(fecha: Date): number {
+  const d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
+  const diaSemana = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - diaSemana);
+  const inicioAnio = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - inicioAnio.getTime()) / 86400000 + 1) / 7);
+}
 export default function Home() {
 return (
 <div className="min-h-screen bg-[#eef1f6]">
@@ -34,10 +41,10 @@ Buscar...
 </div>
 </div>
 <div className="flex flex-wrap gap-2.5 md:gap-3.5 mb-6">
-<button type="button" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide">
+<Link href="/monitoreo-viajes" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" /></svg>
-Revisión de mochila COVID
-</button>
+PLAN DE CARGAS SEM. {semanaISO(new Date())}
+</Link>
 <button type="button" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide">
 <svg width="16" height="16" viewBox="0 0 24 24" {...sw}><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>
 Check list de accesorios GPS

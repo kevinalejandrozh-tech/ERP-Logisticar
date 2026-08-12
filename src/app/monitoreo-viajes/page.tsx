@@ -72,6 +72,46 @@ export default function MonitoreoViajesPage() {
   const ecosUnidad = useMemo(() => UNIDADES.map((u) => u.eco), []);
   const campos: CampoViaje[] = useMemo(() => construirCampos(operadores, ecosUnidad), [operadores, ecosUnidad]);
 
+  // ---- Seleccion y orden de columnas de "Viajes registrados" ----
+  const [ordenColumnas, setOrdenColumnas] = useState<string[]>([]);
+  const [columnasOcultas, setColumnasOcultas] = useState<Set<string>>(new Set());
+  const [panelColumnasAbierto, setPanelColumnasAbierto] = useState(false);
+  const [colArrastrada, setColArrastrada] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOrdenColumnas((prev) => {
+      const claves = campos.map((c) => c.key);
+      const conservadas = prev.filter((k) => claves.includes(k));
+      const nuevas = claves.filter((k) => !prev.includes(k));
+      return [...conservadas, ...nuevas];
+    });
+  }, [campos]);
+
+  const columnasMostrar = useMemo(
+    () => ordenColumnas.filter((k) => !columnasOcultas.has(k)).map((k) => campos.find((c) => c.key === k)).filter((c): c is CampoViaje => !!c),
+    [ordenColumnas, columnasOcultas, campos]
+  );
+  const toggleColumnaVisible = (key: string) => {
+    setColumnasOcultas((prev) => {
+      const n = new Set(prev);
+      if (n.has(key)) n.delete(key);
+      else n.add(key);
+      return n;
+    });
+  };
+  const moverColumna = (origen: string, destino: string) => {
+    if (origen === destino) return;
+    setOrdenColumnas((prev) => {
+      const arr = [...prev];
+      const iOrigen = arr.indexOf(origen);
+      const iDestino = arr.indexOf(destino);
+      if (iOrigen === -1 || iDestino === -1) return prev;
+      arr.splice(iOrigen, 1);
+      arr.splice(iDestino, 0, origen);
+      return arr;
+    });
+  };
+
   const cargar = async () => {
     try {
       const res = await fetch("/api/viajes/list", { cache: "no-store" });
@@ -263,17 +303,30 @@ export default function MonitoreoViajesPage() {
   }, [viajes]);
 
   const [filtroOperadorTiene, setFiltroOperadorTiene] = useState<"todos" | "con" | "sin">("todos");
+  const [ordenOperador, setOrdenOperador] = useState<{ campo: "total" | "foraneos" | "locales"; dir: "asc" | "desc" } | null>(null);
   const filasOperador = useMemo(() => {
     const vacio = { total: 0, foraneos: 0, locales: 0, asistenciaOnTime: 0, asistenciaTarde: 0, cargaOnTime: 0, cargaTarde: 0 };
+    let base: { op: string; total: number; foraneos: number; locales: number; asistenciaOnTime: number; asistenciaTarde: number; cargaOnTime: number; cargaTarde: number }[];
     if (filtroOperadorTiene === "con") {
-      return Object.entries(porOperador).map(([op, d]) => ({ op, ...d }));
+      base = Object.entries(porOperador).map(([op, d]) => ({ op, ...d }));
+    } else if (filtroOperadorTiene === "sin") {
+      base = operadores.filter((o) => !porOperador[o]).map((op) => ({ op, ...vacio }));
+    } else {
+      const nombres = Array.from(new Set([...Object.keys(porOperador), ...operadores]));
+      base = nombres.map((op) => ({ op, ...(porOperador[op] || vacio) }));
     }
-    if (filtroOperadorTiene === "sin") {
-      return operadores.filter((o) => !porOperador[o]).map((op) => ({ op, ...vacio }));
+    if (ordenOperador) {
+      const { campo, dir } = ordenOperador;
+      base = [...base].sort((a, b) => (dir === "desc" ? b[campo] - a[campo] : a[campo] - b[campo]));
     }
-    const nombres = Array.from(new Set([...Object.keys(porOperador), ...operadores]));
-    return nombres.map((op) => ({ op, ...(porOperador[op] || vacio) }));
-  }, [porOperador, operadores, filtroOperadorTiene]);
+    return base;
+  }, [porOperador, operadores, filtroOperadorTiene, ordenOperador]);
+  const alternarOrdenOperador = (campo: "total" | "foraneos" | "locales") => {
+    setOrdenOperador((prev) => {
+      if (!prev || prev.campo !== campo) return { campo, dir: "desc" };
+      return { campo, dir: prev.dir === "desc" ? "asc" : "desc" };
+    });
+  };
 
   const [seccionActiva, setSeccionActiva] = useState<"resumen" | "registrados" | null>(null);
 
@@ -285,6 +338,17 @@ export default function MonitoreoViajesPage() {
   }, [viajes, filtroEstadoResumen]);
 
   const maxDia = Math.max(1, ...DIAS_SEMANA.map((d) => porDia[d] || 0));
+
+  // ---- Seguimiento a Rutas / Detalle por ruta ----
+  const destinosUnicos = useMemo(() => Array.from(new Set(viajes.map((v) => v.rutaDestino).filter(Boolean))).sort(), [viajes]);
+  const [busquedaRuta, setBusquedaRuta] = useState("");
+  const [rutaSeleccionada, setRutaSeleccionada] = useState<string | null>(null);
+  const sugerenciasRuta = useMemo(() => {
+    const q = busquedaRuta.trim().toLowerCase();
+    if (!q) return [];
+    return destinosUnicos.filter((d) => d.toLowerCase().includes(q)).slice(0, 8);
+  }, [busquedaRuta, destinosUnicos]);
+  const viajesDeRutaSeleccionada = useMemo(() => (rutaSeleccionada ? viajes.filter((v) => v.rutaDestino === rutaSeleccionada) : []), [viajes, rutaSeleccionada]);
 
   const renderCelda = (v: Viaje, c: CampoViaje) => {
     const valor = v[c.key] || "";
@@ -420,6 +484,89 @@ export default function MonitoreoViajesPage() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-3.5">
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+            <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Seguimiento a Rutas</p>
+            <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
+              <table className="border-collapse min-w-max w-full">
+                <thead>
+                  <tr>
+                    {["ECO. Unidad", "Operador", "Destino", "Estatus", "Ubicación", "Indicador monitoreo", "Avance"].map((c) => (
+                      <th key={c} className="text-left text-[8.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {viajes.map((v) => (
+                    <tr key={v.id} className="border-b border-[var(--gray-200)]">
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{v.ecoUnidad || "—"}</td>
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{v.operador || "—"}</td>
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{v.rutaDestino || "—"}</td>
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{v.terminoServicio ? "Terminado" : "En curso"}</td>
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-[var(--gray-400)]">—</td>
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-[var(--gray-400)]">—</td>
+                      <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-[var(--gray-400)]">—</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {viajes.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12.5px] py-6">Sin datos.</p>}
+            </div>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+            <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Detalle por ruta</p>
+            <div className="relative mb-3">
+              <div className="flex items-center gap-2 bg-white border border-[var(--gray-200)] rounded-lg px-3 py-2">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+                <input
+                  value={busquedaRuta}
+                  onChange={(e) => {
+                    setBusquedaRuta(e.target.value);
+                    setRutaSeleccionada(null);
+                  }}
+                  placeholder="Busca un destino o viaje en curso..."
+                  className="flex-1 outline-none text-[12.5px]"
+                />
+              </div>
+              {sugerenciasRuta.length > 0 && !rutaSeleccionada && (
+                <div className="absolute z-10 top-full left-0 right-0 bg-white border border-[var(--gray-200)] rounded-lg shadow-md mt-1 max-h-[180px] overflow-y-auto">
+                  {sugerenciasRuta.map((d) => (
+                    <div
+                      key={d}
+                      onClick={() => {
+                        setRutaSeleccionada(d);
+                        setBusquedaRuta(d);
+                      }}
+                      className="px-3 py-2 text-[12.5px] text-[var(--navy)] cursor-pointer hover:bg-[var(--gray-100)]"
+                    >
+                      {d}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {!rutaSeleccionada ? (
+              <p className="text-center text-[var(--gray-400)] text-[12.5px] py-8">Selecciona un destino para ver su detalle.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5 max-h-[150px] overflow-y-auto">
+                <p className="text-[12px] text-[var(--navy)] font-bold m-0">
+                  {viajesDeRutaSeleccionada.length} viaje(s) a {rutaSeleccionada}
+                </p>
+                {viajesDeRutaSeleccionada.map((v) => (
+                  <div key={v.id} className="flex items-center justify-between text-[11.5px] border-b border-[var(--gray-200)] pb-1">
+                    <span className="text-[var(--navy)]">
+                      {v.operador || "—"} · {v.ecoUnidad || "—"}
+                    </span>
+                    <span className={v.terminoServicio ? "text-[var(--green)] font-semibold" : "text-[var(--blue)] font-semibold"}>{v.terminoServicio ? "Terminado" : "En curso"}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-5">
           <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
             <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por día</p>
@@ -478,7 +625,22 @@ export default function MonitoreoViajesPage() {
               <table className="border-collapse min-w-max w-full">
                 <thead>
                   <tr>
-                    {["Operador", "Total", "Foráneos", "Locales", "Llegadas a patio Logisticar ON TIME/TARDE", "Llegada a carga con cliente ON TIME/TARDE", "Eficiencia de operador"].map((c) => (
+                    <th className="text-left text-[8.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">Operador</th>
+                    {([
+                      ["total", "Total"],
+                      ["foraneos", "Foráneos"],
+                      ["locales", "Locales"],
+                    ] as const).map(([campo, label]) => (
+                      <th key={campo} className="text-left text-[8.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
+                        <button type="button" onClick={() => alternarOrdenOperador(campo)} className="flex items-center gap-1 text-white">
+                          {label}
+                          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3">
+                            {ordenOperador?.campo === campo && ordenOperador.dir === "asc" ? <path d="M18 15l-6-6-6 6" /> : <path d="M6 9l6 6 6-6" />}
+                          </svg>
+                        </button>
+                      </th>
+                    ))}
+                    {["LLEGADA A PATIO", "CARGA CON CLIENTE", "Eficiencia de operador"].map((c) => (
                       <th key={c} className="text-left text-[8.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
                         {c}
                       </th>
@@ -491,16 +653,16 @@ export default function MonitoreoViajesPage() {
                     return (
                       <tr key={d.op} className="border-b border-[var(--gray-200)]">
                         <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.op}</td>
-                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.total}</td>
-                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.foraneos}</td>
-                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.locales}</td>
-                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-center">{d.total}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-center">{d.foraneos}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-center">{d.locales}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-center">
                           <span className="text-[var(--green)] font-semibold">{d.asistenciaOnTime}</span> / <span className="text-[var(--red)] font-semibold">{d.asistenciaTarde}</span>
                         </td>
-                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-center">
                           <span className="text-[var(--green)] font-semibold">{d.cargaOnTime}</span> / <span className="text-[var(--red)] font-semibold">{d.cargaTarde}</span>
                         </td>
-                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{eficiencia === "—" ? "—" : `${eficiencia}%`}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap text-center font-semibold text-[var(--navy)]">{eficiencia === "—" ? "—" : `${eficiencia}%`}</td>
                       </tr>
                     );
                   })}
@@ -558,7 +720,7 @@ export default function MonitoreoViajesPage() {
             <table className="border-collapse min-w-max w-full">
               <thead>
                 <tr>
-                  {["Día", "Cuenta", "ECO. Unidad", "Operador", "Estado/Destino", "Tiros", "Indicador asistencia", "Indicador carga c/cliente", "Termino de servicio", "Tiempo en ruta", "Detalles"].map((c) => (
+                  {["Detalles", "Cuenta", "ECO. Unidad", "Operador", "Estado/Destino", "Tiros", "Indicador asistencia", "Indicador carga c/cliente", "Indicador Monitoreo", "Termino de servicio", "Tiempo en ruta"].map((c) => (
                     <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
                       {c}
                     </th>
@@ -572,18 +734,24 @@ export default function MonitoreoViajesPage() {
                   const tiempoRuta = calcularTiempoRuta(v.inicioRuta, v.terminoServicio, tick);
                   return (
                     <tr key={v.id} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
-                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.dia || "—"}</td>
+                      <td className="px-2.5 py-2.5 whitespace-nowrap">
+                        <Link href={`/monitoreo-viajes/detalle?id=${v.id}`} className="inline-flex items-center gap-1 text-[11.5px] text-[var(--blue)] font-semibold no-underline" title="Detalles de viaje">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+                          Detalles
+                        </Link>
+                      </td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.nombreCuenta || "—"}</td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.ecoUnidad || "—"}</td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.operador || "—"}</td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.rutaDestino || "—"}</td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{v.tiros || "—"}</td>
                       <td className="px-2.5 py-2.5 whitespace-nowrap">
-                        <span className={`text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${indAsistencia.clase}`}>{indAsistencia.texto}</span>
+                        <span className={`inline-block text-center text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${indAsistencia.clase}`}>{indAsistencia.texto}</span>
                       </td>
                       <td className="px-2.5 py-2.5 whitespace-nowrap">
-                        <span className={`text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${indCarga.clase}`}>{indCarga.texto}</span>
+                        <span className={`inline-block text-center text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${indCarga.clase}`}>{indCarga.texto}</span>
                       </td>
+                      <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap text-[var(--gray-400)]">—</td>
                       <td className="px-2.5 py-2.5 whitespace-nowrap">
                         <input
                           type="datetime-local"
@@ -593,12 +761,6 @@ export default function MonitoreoViajesPage() {
                         />
                       </td>
                       <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{tiempoRuta}</td>
-                      <td className="px-2.5 py-2.5 whitespace-nowrap">
-                        <Link href={`/monitoreo-viajes/detalle?id=${v.id}`} className="inline-flex items-center gap-1 text-[11.5px] text-[var(--blue)] font-semibold no-underline" title="Detalles de viaje">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
-                          Detalles
-                        </Link>
-                      </td>
                     </tr>
                   );
                 })}
@@ -619,6 +781,42 @@ export default function MonitoreoViajesPage() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
                 + Viaje
               </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setPanelColumnasAbierto((p) => !p)}
+                  className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="3" y="3" width="7" height="18" /><rect x="14" y="3" width="7" height="18" /></svg>
+                  Columnas
+                </button>
+                {panelColumnasAbierto && (
+                  <div className="absolute z-20 top-full left-0 mt-1 bg-white border border-[var(--gray-200)] rounded-lg shadow-lg w-[260px] max-h-[340px] overflow-y-auto p-2">
+                    <p className="text-[10.5px] text-[var(--gray-400)] px-2 pt-1 pb-2 m-0">Marca para mostrar/ocultar. Arrastra para reordenar.</p>
+                    {ordenColumnas.map((key) => {
+                      const c = campos.find((x) => x.key === key);
+                      if (!c) return null;
+                      return (
+                        <div
+                          key={key}
+                          draggable
+                          onDragStart={() => setColArrastrada(key)}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => {
+                            if (colArrastrada) moverColumna(colArrastrada, key);
+                            setColArrastrada(null);
+                          }}
+                          className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-[var(--gray-100)] cursor-grab"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><circle cx="8" cy="6" r="1" /><circle cx="8" cy="12" r="1" /><circle cx="8" cy="18" r="1" /><circle cx="16" cy="6" r="1" /><circle cx="16" cy="12" r="1" /><circle cx="16" cy="18" r="1" /></svg>
+                          <input type="checkbox" checked={!columnasOcultas.has(key)} onChange={() => toggleColumnaVisible(key)} className="accent-[var(--blue)]" />
+                          <span className="text-[12px] text-[var(--navy)]">{c.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <div
@@ -656,8 +854,19 @@ export default function MonitoreoViajesPage() {
             <table className="border-collapse min-w-max w-full">
               <thead>
                 <tr>
-                  {campos.map((c) => (
-                    <th key={c.key} className="text-left text-[9.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-2 whitespace-nowrap">
+                  {columnasMostrar.map((c) => (
+                    <th
+                      key={c.key}
+                      draggable
+                      onDragStart={() => setColArrastrada(c.key)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => {
+                        if (colArrastrada) moverColumna(colArrastrada, c.key);
+                        setColArrastrada(null);
+                      }}
+                      className="text-left text-[9.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-2 whitespace-nowrap cursor-grab"
+                      title="Arrastra para reordenar"
+                    >
                       {c.label}
                     </th>
                   ))}
@@ -667,7 +876,7 @@ export default function MonitoreoViajesPage() {
               <tbody>
                 {viajes.map((v) => (
                   <tr key={v.id} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
-                    {campos.map((c) => (
+                    {columnasMostrar.map((c) => (
                       <td key={c.key} className="px-1.5 py-1.5 whitespace-nowrap">
                         {renderCelda(v, c)}
                       </td>

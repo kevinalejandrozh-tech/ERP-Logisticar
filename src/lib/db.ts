@@ -132,4 +132,34 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS inventario_items (
+id SERIAL PRIMARY KEY,
+codigo TEXT UNIQUE NOT NULL,
+descripcion TEXT,
+categoria TEXT,
+referencia TEXT,
+costo_unitario NUMERIC,
+cantidad NUMERIC NOT NULL DEFAULT 0,
+proveedor TEXT,
+ubicacion TEXT,
+fecha_ingreso TEXT,
+unidad TEXT,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS inventario_movimientos (
+id SERIAL PRIMARY KEY,
+tipo TEXT NOT NULL,
+codigo TEXT,
+descripcion TEXT,
+cantidad NUMERIC,
+datos JSONB DEFAULT '{}'::jsonb,
+fecha TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

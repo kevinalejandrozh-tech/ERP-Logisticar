@@ -52,9 +52,10 @@ titulo="Plan de trabajo y seguimiento"
 descripcion="Crea, asigna y da seguimiento a los planes de trabajo."
 />
 <MenuCard
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
-titulo="Reportes"
-descripcion="Consulta y genera reportes clave del sistema."
+href="/ordenes-servicio/inventario"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
+titulo="Almacén de insumos y refacciones"
+descripcion="Controla el inventario de insumos y refacciones."
 />
 <MenuCard
 href="/monitoreo-viajes"
@@ -103,9 +104,9 @@ titulo="Personas"
 descripcion="Gestiona la información del personal del sistema."
 />
 <MenuCard
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
-titulo="Almacén de insumos y refacciones"
-descripcion="Controla el inventario de insumos y refacciones."
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
+titulo="Reportes"
+descripcion="Consulta y genera reportes clave del sistema."
 />
 </div>
 <Link

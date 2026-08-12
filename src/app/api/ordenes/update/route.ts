@@ -20,7 +20,7 @@ fotoReparacion: r.foto_reparacion || null,
 export async function POST(req: NextRequest) {
 try {
 const body = await req.json();
-const { folio, diagnostico, responsable, requisicion, fechaDiagnostico, fechaIngreso, fechaCierre, quedoBien, fotoReparacion, estado } = body;
+const { folio, diagnostico, responsable, requisicion, fechaDiagnostico, fechaIngreso, fechaCierre, quedoBien, fotoReparacion, estado, ecoUnidad, fallaDetectada } = body;
 if (!folio) {
 return NextResponse.json({ error: "Falta el folio de la orden." }, { status: 400 });
 }
@@ -37,6 +37,8 @@ fecha_cierre = COALESCE($7::timestamptz, fecha_cierre),
 quedo_bien = COALESCE($8, quedo_bien),
 foto_reparacion = COALESCE($9, foto_reparacion),
 estado = COALESCE($10, estado),
+eco_unidad = COALESCE($11, eco_unidad),
+falla_detectada = COALESCE($12, falla_detectada),
 updated_at = now()
 WHERE folio = $1
 RETURNING *`,
@@ -51,6 +53,8 @@ fechaCierre ?? null,
 quedoBien ?? null,
 fotoReparacion ?? null,
 estado ?? null,
+ecoUnidad ?? null,
+fallaDetectada ?? null,
 ]
 );
 if (result.rows.length === 0) {

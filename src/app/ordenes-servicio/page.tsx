@@ -74,10 +74,10 @@ const horas = Math.max(0, (fin - inicio) / 3600000);
 return `${horas.toFixed(1)} hrs`;
 }
 const ESTADO_INFO: Record<EstadoOrden, { label: string; clases: string; clicable: boolean }> = {
-diagnostico_pendiente: { label: "Diagnóstico pendiente", clases: "bg-[var(--amber)] text-[#52350a]", clicable: true },
-autorizacion_pendiente: { label: "Autorización pendiente", clases: "bg-[var(--red)] text-white", clicable: false },
-cerrar_orden: { label: "Cerrar Orden de servicio", clases: "bg-[var(--blue)] text-white", clicable: true },
-servicio_realizado: { label: "Servicio Realizado", clases: "bg-[var(--green)] text-white", clicable: false },
+diagnostico_pendiente: { label: "Diagnóstico", clases: "bg-[var(--amber)] text-[#52350a]", clicable: true },
+autorizacion_pendiente: { label: "Autorización", clases: "bg-[var(--red)] text-white", clicable: false },
+cerrar_orden: { label: "Cerrar", clases: "bg-[var(--blue)] text-white", clicable: true },
+servicio_realizado: { label: "Realizado", clases: "bg-[var(--green)] text-white", clicable: false },
 };
 export default function OrdenesServicioPage() {
 const [ordenes, setOrdenes] = useState<Orden[]>([]);
@@ -709,6 +709,35 @@ setGuardandoReq(false);
 };
 // ---- Derivados para las tablas ----
 const totalUnidadesEnMantenimiento = ordenes.filter((o) => o.estado !== "servicio_realizado").length;
+const conteoPorEstado = useMemo(() => {
+const mapa: Record<EstadoOrden, number> = { diagnostico_pendiente: 0, autorizacion_pendiente: 0, cerrar_orden: 0, servicio_realizado: 0 };
+ordenes.forEach((o) => {
+if (mapa[o.estado] !== undefined) mapa[o.estado]++;
+});
+return mapa;
+}, [ordenes]);
+// ---- Edicion en linea de Unidades en mantenimiento ----
+const actualizarOrdenLocal = (folio: string, campo: string, valor: string) => {
+setOrdenes((prev) => prev.map((o) => (o.folio === folio ? { ...o, [campo]: valor } : o)));
+};
+const guardarCampoOrden = (folio: string, campo: string, valor: string) => {
+fetch("/api/ordenes/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ folio, [campo]: valor }),
+}).catch(() => cargarOrdenes());
+};
+const [filtroEstadoUnidades, setFiltroEstadoUnidades] = useState<EstadoOrden | "">("");
+const ordenesFiltradas = filtroEstadoUnidades ? ordenes.filter((o) => o.estado === filtroEstadoUnidades) : ordenes;
+// ---- Grafica de costos de reparacion por ECO. Unidad ----
+const costosPorEco = useMemo(() => {
+const mapa: Record<string, number> = {};
+ordenes.forEach((o) => {
+const costo = (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0);
+if (costo > 0 && o.ecoUnidad) mapa[o.ecoUnidad] = (mapa[o.ecoUnidad] || 0) + costo;
+});
+return Object.entries(mapa).sort((a, b) => b[1] - a[1]);
+}, [ordenes]);
 const totalGastos = ordenes.reduce(
 (acc, o) => acc + (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0),
 0
@@ -828,12 +857,56 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 md:gap-5 mb-6">
 <div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de unidades en mantenimiento</p>
-<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">{totalUnidadesEnMantenimiento}</p>
+<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0 mb-2.5">{totalUnidadesEnMantenimiento}</p>
+<div className="flex flex-wrap gap-1.5">
+<span className="bg-[var(--green)]/10 text-[var(--green)] text-[10.5px] font-bold px-2.5 py-1 rounded-full">Servicios realizados: {conteoPorEstado.servicio_realizado}</span>
+<span className="bg-[var(--blue)]/10 text-[var(--blue)] text-[10.5px] font-bold px-2.5 py-1 rounded-full">Servicios activos: {conteoPorEstado.cerrar_orden}</span>
+<span className="bg-[var(--red)]/10 text-[var(--red)] text-[10.5px] font-bold px-2.5 py-1 rounded-full">Pendientes de autorización: {conteoPorEstado.autorizacion_pendiente}</span>
+<span className="bg-[var(--amber)]/20 text-[#8a5a05] text-[10.5px] font-bold px-2.5 py-1 rounded-full">Pendientes de diagnosticar: {conteoPorEstado.diagnostico_pendiente}</span>
+</div>
 </div>
 <div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)]">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de gastos en mantenimiento</p>
 <p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
 </div>
+</div>
+
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 mb-6">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-3">Gráfica de costos de reparación</p>
+{costosPorEco.length === 0 ? (
+<p className="text-center text-[var(--gray-400)] text-[12.5px] py-8">Sin gastos registrados aún.</p>
+) : (
+(() => {
+const maxCosto = Math.max(...costosPorEco.map(([, c]) => c));
+const anchoBarra = 46;
+const espacio = 18;
+const alturaMax = 160;
+const anchoSvg = costosPorEco.length * (anchoBarra + espacio) + espacio;
+return (
+<div className="overflow-x-auto">
+<svg viewBox={`0 0 ${anchoSvg} 230`} width={Math.max(anchoSvg, 500)} height="230">
+<line x1={0} y1={190} x2={anchoSvg} y2={190} stroke="#e5e8ee" strokeWidth={1} />
+{costosPorEco.map(([eco, costo], i) => {
+const alto = (costo / maxCosto) * alturaMax;
+const x = espacio + i * (anchoBarra + espacio);
+const y = 190 - alto;
+return (
+<g key={eco}>
+<rect x={x} y={y} width={anchoBarra} height={alto} rx={5} fill="#2f6fed" />
+<text x={x + anchoBarra / 2} y={y - 8} fontSize={10.5} textAnchor="middle" fill="#16215c" fontWeight="bold">
+${costo.toFixed(0)}
+</text>
+<text x={x + anchoBarra / 2} y={207} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
+{eco}
+</text>
+</g>
+);
+})}
+</svg>
+</div>
+);
+})()
+)}
 </div>
 <div className="flex flex-wrap gap-2.5 mb-5">
 <button type="button" onClick={() => setSeccionActiva("unidades")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "unidades" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
@@ -851,7 +924,7 @@ Ocultar
 </div>
 {seccionActiva === "unidades" && (
 <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
-<div className="flex items-center justify-between mb-4">
+<div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
 <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Unidades en mantenimiento</h3>
 {!cargando && ordenes.length > 0 && (
 <button type="button" onClick={exportarUnidadesEnMantenimiento} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
@@ -860,11 +933,29 @@ Exportar Excel
 </button>
 )}
 </div>
+<div className="flex flex-wrap items-end gap-2.5 mb-4">
+<div>
+<label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">Filtrar por estado</label>
+<select value={filtroEstadoUnidades} onChange={(e) => setFiltroEstadoUnidades(e.target.value as EstadoOrden | "")} className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]">
+<option value="">Todos</option>
+{(Object.keys(ESTADO_INFO) as EstadoOrden[]).map((e) => (
+<option key={e} value={e}>
+{ESTADO_INFO[e].label}
+</option>
+))}
+</select>
+</div>
+{filtroEstadoUnidades && (
+<button type="button" onClick={() => setFiltroEstadoUnidades("")} className="text-[11.5px] text-[var(--red)] font-semibold px-2 py-1.5">
+Limpiar filtro
+</button>
+)}
+</div>
 <div className="overflow-x-auto">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
-{["Estado", "Folio", "ECO. Unidad", "Unidad", "Qué se está haciendo", "Fecha de ingreso", "Hrs dentro del taller", "Costo de reparación", "Acciones"].map((c) => (
+{["Estado", "Folio", "ECO. Unidad", "Unidad", "Detalles", "Fecha de ingreso", "HRS EN TALLER", "COSTO", "Acciones"].map((c) => (
 <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
 {c}
 </th>
@@ -872,9 +963,10 @@ Exportar Excel
 </tr>
 </thead>
 <tbody>
-{ordenes.map((o) => {
+{ordenesFiltradas.map((o) => {
 const info = ESTADO_INFO[o.estado];
 const costoReparacion = (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0);
+const campoDetalle = o.estado === "diagnostico_pendiente" ? "fallaDetectada" : "diagnostico";
 const textoQueSeHace = o.estado === "diagnostico_pendiente" ? o.fallaDetectada : o.diagnostico;
 return (
 <tr key={o.folio} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]" style={o.estado === "servicio_realizado" ? { backgroundColor: "rgba(33,168,102,0.5)" } : undefined}>
@@ -894,12 +986,46 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 </button>
 </td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{o.folio}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{o.ecoUnidad}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{unidadInfo(o.ecoUnidad)?.["Unidad"] || "—"}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap max-w-[160px] truncate" title={textoQueSeHace || ""}>
-{textoQueSeHace || "—"}
+<td className="px-2.5 py-2.5 whitespace-nowrap">
+<select
+value={o.ecoUnidad}
+onChange={(e) => {
+actualizarOrdenLocal(o.folio, "ecoUnidad", e.target.value);
+guardarCampoOrden(o.folio, "ecoUnidad", e.target.value);
+}}
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px]"
+>
+{unidadesRegistradas.map((u) => (
+<option key={u["ECO"]} value={u["ECO"]}>
+{u["ECO"]}
+</option>
+))}
+</select>
 </td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{formatearFecha(o.fechaIngreso)}</td>
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{unidadInfo(o.ecoUnidad)?.["Unidad"] || "—"}</td>
+<td className="px-2.5 py-2.5 min-w-[280px]">
+<textarea
+defaultValue={textoQueSeHace || ""}
+onBlur={(e) => {
+actualizarOrdenLocal(o.folio, campoDetalle, e.target.value);
+guardarCampoOrden(o.folio, campoDetalle, e.target.value);
+}}
+rows={2}
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-full resize-y"
+/>
+</td>
+<td className="px-2.5 py-2.5 whitespace-nowrap">
+<input
+type="date"
+defaultValue={o.fechaIngreso ? o.fechaIngreso.slice(0, 10) : ""}
+onBlur={(e) => {
+if (!e.target.value) return;
+actualizarOrdenLocal(o.folio, "fechaIngreso", e.target.value);
+guardarCampoOrden(o.folio, "fechaIngreso", e.target.value);
+}}
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[11.5px]"
+/>
+</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{horasDentroDelTaller(o, tick)}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{costoReparacion > 0 ? `$${costoReparacion.toFixed(2)}` : "—"}</td>
 <td className="px-2.5 py-2.5 whitespace-nowrap">
@@ -912,7 +1038,7 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 })}
 </tbody>
 </table>
-{!cargando && ordenes.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros.</div>}
+{!cargando && ordenesFiltradas.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros.</div>}
 {cargando && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Cargando...</div>}
 </div>
 </div>

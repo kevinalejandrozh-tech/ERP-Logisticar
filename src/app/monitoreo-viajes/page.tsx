@@ -240,12 +240,18 @@ export default function MonitoreoViajesPage() {
     return { onTime, tarde };
   }, [viajes]);
   const porOperador = useMemo(() => {
-    const mapa: Record<string, { total: number; asistenciaOnTime: number; asistenciaTarde: number; cargaOnTime: number; cargaTarde: number }> = {};
+    const mapa: Record<
+      string,
+      { total: number; foraneos: number; locales: number; asistenciaOnTime: number; asistenciaTarde: number; cargaOnTime: number; cargaTarde: number }
+    > = {};
     viajes.forEach((v) => {
       const op = v.operador?.trim();
       if (!op) return;
-      if (!mapa[op]) mapa[op] = { total: 0, asistenciaOnTime: 0, asistenciaTarde: 0, cargaOnTime: 0, cargaTarde: 0 };
+      if (!mapa[op]) mapa[op] = { total: 0, foraneos: 0, locales: 0, asistenciaOnTime: 0, asistenciaTarde: 0, cargaOnTime: 0, cargaTarde: 0 };
       mapa[op].total++;
+      const serv = (v.tipoServicio || "").trim().toUpperCase();
+      if (serv === "FORANEO") mapa[op].foraneos++;
+      if (serv === "LOCAL") mapa[op].locales++;
       const ra = calcularIndicador(v.horaArriboPatio, v.citaCargaPatio);
       if (ra.texto === "ON TIME") mapa[op].asistenciaOnTime++;
       else if (ra.texto.startsWith("TARDE")) mapa[op].asistenciaTarde++;
@@ -255,6 +261,21 @@ export default function MonitoreoViajesPage() {
     });
     return mapa;
   }, [viajes]);
+
+  const [filtroOperadorTiene, setFiltroOperadorTiene] = useState<"todos" | "con" | "sin">("todos");
+  const filasOperador = useMemo(() => {
+    const vacio = { total: 0, foraneos: 0, locales: 0, asistenciaOnTime: 0, asistenciaTarde: 0, cargaOnTime: 0, cargaTarde: 0 };
+    if (filtroOperadorTiene === "con") {
+      return Object.entries(porOperador).map(([op, d]) => ({ op, ...d }));
+    }
+    if (filtroOperadorTiene === "sin") {
+      return operadores.filter((o) => !porOperador[o]).map((op) => ({ op, ...vacio }));
+    }
+    const nombres = Array.from(new Set([...Object.keys(porOperador), ...operadores]));
+    return nombres.map((op) => ({ op, ...(porOperador[op] || vacio) }));
+  }, [porOperador, operadores, filtroOperadorTiene]);
+
+  const [seccionActiva, setSeccionActiva] = useState<"resumen" | "registrados" | null>(null);
 
   const [filtroEstadoResumen, setFiltroEstadoResumen] = useState<"todos" | "curso" | "terminado">("todos");
   const viajesResumenFiltrados = useMemo(() => {
@@ -345,100 +366,174 @@ export default function MonitoreoViajesPage() {
         />
 
         {/* Dashboard */}
-        <div className="flex flex-col gap-3 mb-5">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="bg-[var(--navy)] text-white text-[13px] font-bold px-4 py-2 rounded-full">Sem {semanaActual}</span>
-              <span className="bg-white border border-[var(--gray-200)] text-[var(--navy)] text-[12.5px] font-bold px-4 py-2 rounded-full">
-                Unidades en ruta: <span className="text-[var(--blue)]">{unidadesEnRuta}</span>
-              </span>
-              <span className="bg-white border border-[var(--gray-200)] text-[var(--navy)] text-[12.5px] font-bold px-4 py-2 rounded-full">
-                Total de viajes: <span className="text-[var(--blue)]">{viajes.length}</span>
-              </span>
-              <span className="bg-white border border-[var(--gray-200)] text-[12.5px] font-bold px-4 py-2 rounded-full">
-                Asistencia: <span className="text-[var(--green)]">{conteoAsistencia.onTime} ON TIME</span> · <span className="text-[var(--red)]">{conteoAsistencia.tarde} TARDE</span>
-              </span>
-              <span className="bg-white border border-[var(--gray-200)] text-[12.5px] font-bold px-4 py-2 rounded-full">
-                Carga c/cliente: <span className="text-[var(--green)]">{conteoCarga.onTime} ON TIME</span> · <span className="text-[var(--red)]">{conteoCarga.tarde} TARDE</span>
-              </span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 mb-5">
+          <div className="bg-gradient-to-br from-[var(--navy)] to-[#2a3a8f] rounded-2xl p-5 flex flex-col justify-center items-center text-center lg:col-span-1">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[#a9c2ee] m-0 mb-1">Semana</p>
+            <p className="text-[46px] font-bold text-white m-0 leading-none">{semanaActual}</p>
+            <p className="text-[11px] text-[#a9c2ee] m-0 mt-1">{new Date().getFullYear()}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-5 flex flex-col justify-center">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Unidades en ruta</p>
+            <p className="text-[32px] font-bold text-[var(--blue)] m-0 leading-none">{unidadesEnRuta}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-5 flex flex-col justify-center">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de viajes</p>
+            <p className="text-[32px] font-bold text-[var(--navy)] m-0 leading-none">{viajes.length}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-5 flex flex-col justify-center">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Asistencia a patio</p>
+            <div className="flex items-end gap-4">
+              <div>
+                <p className="text-[28px] font-bold text-[var(--green)] m-0 leading-none">{conteoAsistencia.onTime}</p>
+                <p className="text-[9.5px] font-bold text-[var(--gray-400)] uppercase m-0">On time</p>
+              </div>
+              <div>
+                <p className="text-[28px] font-bold text-[var(--red)] m-0 leading-none">{conteoAsistencia.tarde}</p>
+                <p className="text-[9.5px] font-bold text-[var(--gray-400)] uppercase m-0">Tarde</p>
+              </div>
             </div>
-            <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
-              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por cuenta</p>
-              <div className="flex flex-wrap gap-1.5">
-                {Object.entries(porCuenta).length === 0 && <span className="text-[12px] text-[var(--gray-400)]">Sin datos.</span>}
-                {Object.entries(porCuenta).map(([cuenta, n]) => (
-                  <span key={cuenta} className="bg-[var(--blue-light)] text-[var(--navy)] text-[11px] font-bold px-2.5 py-1 rounded-full">
-                    {cuenta} ({n})
-                  </span>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-5 flex flex-col justify-center">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Carga con cliente</p>
+            <div className="flex items-end gap-4">
+              <div>
+                <p className="text-[28px] font-bold text-[var(--green)] m-0 leading-none">{conteoCarga.onTime}</p>
+                <p className="text-[9.5px] font-bold text-[var(--gray-400)] uppercase m-0">On time</p>
+              </div>
+              <div>
+                <p className="text-[28px] font-bold text-[var(--red)] m-0 leading-none">{conteoCarga.tarde}</p>
+                <p className="text-[9.5px] font-bold text-[var(--gray-400)] uppercase m-0">Tarde</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 mb-5">
+          <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por cuenta</p>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(porCuenta).length === 0 && <span className="text-[12px] text-[var(--gray-400)]">Sin datos.</span>}
+            {Object.entries(porCuenta).map(([cuenta, n]) => (
+              <span key={cuenta} className="bg-[var(--blue-light)] text-[var(--navy)] text-[11px] font-bold px-2.5 py-1 rounded-full">
+                {cuenta} ({n})
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 mb-5">
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+            <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por día</p>
+            <svg viewBox="0 0 500 150" className="w-full h-auto">
+              <line x1={30} y1={110} x2={470} y2={110} stroke="#e5e8ee" strokeWidth={1} />
+              <polyline
+                points={DIAS_SEMANA.map((dia, i) => {
+                  const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
+                  const n = porDia[dia] || 0;
+                  const y = 110 - (n / maxDia) * 80;
+                  return `${x},${y}`;
+                }).join(" ")}
+                fill="none"
+                stroke="#2f6fed"
+                strokeWidth={2}
+              />
+              {DIAS_SEMANA.map((dia, i) => {
+                const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
+                const n = porDia[dia] || 0;
+                const y = 110 - (n / maxDia) * 80;
+                return (
+                  <g key={dia}>
+                    <circle cx={x} cy={y} r={5} fill="#2f6fed" />
+                    <text x={x} y={y - 10} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
+                      {n}
+                    </text>
+                    <text x={x} y={128} fontSize={9} textAnchor="middle" fill="#9aa1b0">
+                      {dia.slice(0, 3)}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Desempeño por operador</p>
+              <div className="flex gap-1">
+                {([
+                  ["todos", "Todos"],
+                  ["con", "Con viajes"],
+                  ["sin", "Sin viajes"],
+                ] as const).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFiltroOperadorTiene(key)}
+                    className={`text-[9.5px] font-bold px-2 py-1 rounded-full ${filtroOperadorTiene === key ? "bg-[var(--navy)] text-white" : "bg-[var(--gray-100)] text-[var(--navy)]"}`}
+                  >
+                    {label}
+                  </button>
                 ))}
               </div>
             </div>
-            <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
-              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Viajes por día</p>
-              <div className="max-w-[50%] min-w-[220px]">
-                <svg viewBox="0 0 500 150" className="w-full h-auto">
-                  <line x1={30} y1={110} x2={470} y2={110} stroke="#e5e8ee" strokeWidth={1} />
-                  <polyline
-                    points={DIAS_SEMANA.map((dia, i) => {
-                      const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
-                      const n = porDia[dia] || 0;
-                      const y = 110 - (n / maxDia) * 80;
-                      return `${x},${y}`;
-                    }).join(" ")}
-                    fill="none"
-                    stroke="#2f6fed"
-                    strokeWidth={2}
-                  />
-                  {DIAS_SEMANA.map((dia, i) => {
-                    const x = 30 + i * ((470 - 30) / (DIAS_SEMANA.length - 1));
-                    const n = porDia[dia] || 0;
-                    const y = 110 - (n / maxDia) * 80;
+            <div className="overflow-x-auto max-h-[220px] overflow-y-auto">
+              <table className="border-collapse min-w-max w-full">
+                <thead>
+                  <tr>
+                    {["Operador", "Total", "Foráneos", "Locales", "Llegadas a patio Logisticar ON TIME/TARDE", "Llegada a carga con cliente ON TIME/TARDE", "Eficiencia de operador"].map((c) => (
+                      <th key={c} className="text-left text-[8.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filasOperador.map((d) => {
+                    const eficiencia = d.total > 0 ? (((d.asistenciaTarde + d.cargaTarde) / d.total) * 100).toFixed(1) : "—";
                     return (
-                      <g key={dia}>
-                        <circle cx={x} cy={y} r={5} fill="#2f6fed" />
-                        <text x={x} y={y - 10} fontSize={10} textAnchor="middle" fill="#16215c" fontWeight="bold">
-                          {n}
-                        </text>
-                        <text x={x} y={128} fontSize={9} textAnchor="middle" fill="#9aa1b0">
-                          {dia.slice(0, 3)}
-                        </text>
-                      </g>
+                      <tr key={d.op} className="border-b border-[var(--gray-200)]">
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.op}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.total}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.foraneos}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{d.locales}</td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">
+                          <span className="text-[var(--green)] font-semibold">{d.asistenciaOnTime}</span> / <span className="text-[var(--red)] font-semibold">{d.asistenciaTarde}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">
+                          <span className="text-[var(--green)] font-semibold">{d.cargaOnTime}</span> / <span className="text-[var(--red)] font-semibold">{d.cargaTarde}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{eficiencia === "—" ? "—" : `${eficiencia}%`}</td>
+                      </tr>
                     );
                   })}
-                </svg>
-              </div>
+                </tbody>
+              </table>
+              {filasOperador.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12.5px] py-6">Sin datos.</p>}
             </div>
-            <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
-              <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-2">Desempeño por operador</p>
-              <div className="overflow-x-auto">
-                <table className="border-collapse min-w-max w-full">
-                  <thead>
-                    <tr>
-                      {["Operador", "Total viajes", "Asist. ON TIME", "Asist. TARDE", "Carga ON TIME", "Carga TARDE"].map((c) => (
-                        <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
-                          {c}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(porOperador).map(([op, d]) => (
-                      <tr key={op} className="border-b border-[var(--gray-200)]">
-                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{op}</td>
-                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{d.total}</td>
-                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--green)] font-semibold">{d.asistenciaOnTime}</td>
-                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--red)] font-semibold">{d.asistenciaTarde}</td>
-                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--green)] font-semibold">{d.cargaOnTime}</td>
-                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap text-[var(--red)] font-semibold">{d.cargaTarde}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {Object.keys(porOperador).length === 0 && <p className="text-center text-[var(--gray-400)] text-[12.5px] py-6">Sin datos.</p>}
-              </div>
-            </div>
+          </div>
+        </div>
+
+        {/* Botones para mostrar/ocultar tablas */}
+        <div className="flex flex-wrap gap-2.5 mb-5">
+          <button
+            type="button"
+            onClick={() => setSeccionActiva("resumen")}
+            className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "resumen" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}
+          >
+            Resumen de monitoreo
+          </button>
+          <button
+            type="button"
+            onClick={() => setSeccionActiva("registrados")}
+            className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "registrados" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}
+          >
+            Viajes registrados
+          </button>
+          <button type="button" onClick={() => setSeccionActiva(null)} className="text-[13px] font-bold px-5 py-2.5 rounded-lg bg-white border border-[var(--gray-200)] text-[var(--gray-400)]">
+            Ocultar
+          </button>
         </div>
 
         {/* Resumen de monitoreo */}
+        {seccionActiva === "resumen" && (
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
           <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
             <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Resumen de monitoreo</h3>
@@ -512,8 +607,10 @@ export default function MonitoreoViajesPage() {
             {!cargando && viajes.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin viajes registrados.</div>}
           </div>
         </div>
+        )}
 
         {/* Viajes registrados: tabla editable en linea */}
+        {seccionActiva === "registrados" && (
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -589,6 +686,7 @@ export default function MonitoreoViajesPage() {
             )}
           </div>
         </div>
+        )}
 
         <PageFooter />
       </div>

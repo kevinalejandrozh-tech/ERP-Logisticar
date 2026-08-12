@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
@@ -32,6 +33,15 @@ quedoBien?: string;
 fotoReparacion?: string | null;
 };
 type RegistroUnidad = Record<string, string>;
+type CambioAceite = {
+id: number;
+eco: string;
+unidad: string;
+fechaUltimoCambio: string;
+kmUltimoCambio: string;
+kmActual: string;
+};
+const KM_INTERVALO_CAMBIO = 18000;
 declare global {
 interface Window {
 jspdf: any;
@@ -70,6 +80,9 @@ servicio_realizado: { label: "Servicio Realizado", clases: "bg-[var(--green)] te
 export default function OrdenesServicioPage() {
 const [ordenes, setOrdenes] = useState<Orden[]>([]);
 const [cargando, setCargando] = useState(true);
+const [seccionActiva, setSeccionActiva] = useState<"unidades" | "gastos" | "aceite" | null>(null);
+const [cambiosAceite, setCambiosAceite] = useState<CambioAceite[]>([]);
+const [cargandoAceite, setCargandoAceite] = useState(true);
 const [unidadesRegistradas, setUnidadesRegistradas] = useState<RegistroUnidad[]>([]);
 const [tick, setTick] = useState(Date.now());
 const [errorCarga, setErrorCarga] = useState("");
@@ -92,9 +105,20 @@ if (res.ok) setUnidadesRegistradas(data.registros || []);
 // se reintenta con el sondeo periódico
 }
 };
+const cargarCambiosAceite = async () => {
+try {
+const res = await fetch("/api/cambios-aceite/list", { cache: "no-store" });
+const data = await res.json();
+if (res.ok) setCambiosAceite(data.registros || []);
+} catch {
+// se reintenta con el sondeo periódico
+} finally {
+setCargandoAceite(false);
+}
+};
 useEffect(() => {
 (async () => {
-await Promise.all([cargarOrdenes(), cargarUnidades()]);
+await Promise.all([cargarOrdenes(), cargarUnidades(), cargarCambiosAceite()]);
 setCargando(false);
 })();
 }, []);
@@ -103,6 +127,7 @@ useEffect(() => {
 const id = setInterval(() => {
 cargarOrdenes();
 cargarUnidades();
+cargarCambiosAceite();
 }, 20000);
 return () => clearInterval(id);
 }, []);
@@ -112,6 +137,70 @@ const id = setInterval(() => setTick(Date.now()), 60000);
 return () => clearInterval(id);
 }, []);
 const unidadInfo = (eco: string) => unidadesRegistradas.find((u) => u["ECO"] === eco);
+
+// ---- Cambios de aceite ----
+const agregarCambioAceite = async () => {
+try {
+const res = await fetch("/api/cambios-aceite", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({}),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al crear el registro.");
+setCambiosAceite((prev) => [{ id: data.id, eco: "", unidad: "", fechaUltimoCambio: "", kmUltimoCambio: "", kmActual: "" }, ...prev]);
+} catch (err: any) {
+alert(err.message || "No se pudo agregar el registro.");
+}
+};
+const actualizarAceiteLocal = (id: number, campo: keyof CambioAceite, valor: string) => {
+setCambiosAceite((prev) => prev.map((c) => (c.id === id ? { ...c, [campo]: valor } : c)));
+};
+const guardarAceiteCampo = (id: number, campo: string, valor: string) => {
+fetch("/api/cambios-aceite/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ id, [campo]: valor === "" ? null : valor }),
+}).catch(() => cargarCambiosAceite());
+};
+const cambiarEcoAceite = (id: number, eco: string) => {
+const unidad = unidadInfo(eco)?.["Unidad"] || "";
+setCambiosAceite((prev) => prev.map((c) => (c.id === id ? { ...c, eco, unidad } : c)));
+fetch("/api/cambios-aceite/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ id, eco, unidad: unidad || null }),
+}).catch(() => cargarCambiosAceite());
+};
+const eliminarCambioAceite = async (id: number) => {
+if (!confirm("¿Eliminar este registro de cambio de aceite?")) return;
+setCambiosAceite((prev) => prev.filter((c) => c.id !== id));
+try {
+await fetch("/api/cambios-aceite/delete", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ id }),
+});
+} catch {
+await cargarCambiosAceite();
+}
+};
+const calcularAceite = (c: CambioAceite) => {
+const kmUltimo = parseFloat(c.kmUltimoCambio);
+const kmActual = parseFloat(c.kmActual);
+const kmSiguiente = isNaN(kmUltimo) ? null : kmUltimo + KM_INTERVALO_CAMBIO;
+let porcentaje: number | null = null;
+if (!isNaN(kmUltimo) && !isNaN(kmActual)) {
+porcentaje = ((kmActual - kmUltimo) * 100) / KM_INTERVALO_CAMBIO;
+porcentaje = Math.max(0, porcentaje);
+}
+let etiqueta = "";
+if (porcentaje !== null) {
+if (porcentaje > 85) etiqueta = "Urgente";
+else if (porcentaje >= 70) etiqueta = "Se programa para la siguiente semana";
+}
+return { kmSiguiente, porcentaje, etiqueta };
+};
 // ---- Formulario: nueva orden ----
 const [nuevaOrdenAbierta, setNuevaOrdenAbierta] = useState(false);
 const [nEco, setNEco] = useState("");
@@ -546,6 +635,7 @@ const filasGastos = ordenes.flatMap((o) =>
 (o.requisicion || []).map((it, idx) => ({
 key: `${o.folio}-${idx}`,
 folio: o.folio,
+ecoUnidad: o.ecoUnidad,
 idxEnOrden: idx,
 fecha: it.fechaCompra ? it.fechaCompra : o.fechaDiagnostico ? new Date(o.fechaDiagnostico).toLocaleDateString("es-MX") : "—",
 cantidad: it.cantidad,
@@ -558,11 +648,14 @@ proveedor: it.proveedor || "—",
 }))
 );
 const [filtroGastoFolio, setFiltroGastoFolio] = useState("");
+const [filtroGastoEco, setFiltroGastoEco] = useState("");
 const [filtroGastoFecha, setFiltroGastoFecha] = useState("");
 const [filtroGastoDescripcion, setFiltroGastoDescripcion] = useState("");
 const foliosGastos = Array.from(new Set(filasGastos.map((f) => f.folio)));
+const ecosGastos = Array.from(new Set(ordenes.map((o) => o.ecoUnidad)));
 const filasGastosFiltradas = filasGastos.filter((f) => {
 if (filtroGastoFolio && f.folio !== filtroGastoFolio) return false;
+if (filtroGastoEco && f.ecoUnidad !== filtroGastoEco) return false;
 if (filtroGastoFecha && !f.fecha.includes(filtroGastoFecha)) return false;
 if (filtroGastoDescripcion && !f.descripcion.toLowerCase().includes(filtroGastoDescripcion.toLowerCase())) return false;
 return true;
@@ -637,6 +730,10 @@ Autorizaciones pendientes
 </span>
 )}
 </button>
+<Link href="/ordenes-servicio/inventario" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-3 text-[13px] font-bold no-underline">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
+Inventario
+</Link>
 <button
 type="button"
 onClick={abrirImprimir}
@@ -656,8 +753,22 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 <p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
 </div>
 </div>
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div className="flex flex-wrap gap-2.5 mb-5">
+<button type="button" onClick={() => setSeccionActiva("unidades")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "unidades" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Unidades en mantenimiento
+</button>
+<button type="button" onClick={() => setSeccionActiva("gastos")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "gastos" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Gastos en mantenimiento
+</button>
+<button type="button" onClick={() => setSeccionActiva("aceite")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "aceite" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Cambios de aceite
+</button>
+<button type="button" onClick={() => setSeccionActiva(null)} className="text-[13px] font-bold px-5 py-2.5 rounded-lg bg-white border border-[var(--gray-200)] text-[var(--gray-400)]">
+Ocultar
+</button>
+</div>
+{seccionActiva === "unidades" && (
+<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
 <div className="flex items-center justify-between mb-4">
 <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Unidades en mantenimiento</h3>
 {!cargando && ordenes.length > 0 && (
@@ -682,8 +793,9 @@ Exportar Excel
 {ordenes.map((o) => {
 const info = ESTADO_INFO[o.estado];
 const costoReparacion = (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0);
+const textoQueSeHace = o.estado === "diagnostico_pendiente" ? o.fallaDetectada : o.diagnostico;
 return (
-<tr key={o.folio} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
+<tr key={o.folio} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]" style={o.estado === "servicio_realizado" ? { backgroundColor: "rgba(33,168,102,0.5)" } : undefined}>
 <td className="px-2.5 py-2.5">
 <button
 type="button"
@@ -702,8 +814,8 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{o.folio}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{o.ecoUnidad}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{unidadInfo(o.ecoUnidad)?.["Unidad"] || "—"}</td>
-<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap max-w-[160px] truncate" title={o.diagnostico || ""}>
-{o.diagnostico || "—"}
+<td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap max-w-[160px] truncate" title={textoQueSeHace || ""}>
+{textoQueSeHace || "—"}
 </td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{formatearFecha(o.fechaIngreso)}</td>
 <td className="px-2.5 py-2.5 text-[12.5px] whitespace-nowrap">{horasDentroDelTaller(o, tick)}</td>
@@ -722,7 +834,9 @@ info.clicable ? "cursor-pointer" : "cursor-default opacity-90"
 {cargando && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Cargando...</div>}
 </div>
 </div>
-<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+)}
+{seccionActiva === "gastos" && (
+<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
 <div className="flex items-center justify-between mb-4">
 <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Gastos en mantenimiento</h3>
 {!cargando && filasGastos.length > 0 && (
@@ -745,6 +859,17 @@ Exportar Excel
 </select>
 </div>
 <div>
+<label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">ECO. Unidad</label>
+<select value={filtroGastoEco} onChange={(e) => setFiltroGastoEco(e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]">
+<option value="">Todas</option>
+{ecosGastos.map((eco) => (
+<option key={eco} value={eco}>
+{eco}
+</option>
+))}
+</select>
+</div>
+<div>
 <label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">Fecha de compra</label>
 <input type="date" value={filtroGastoFecha} onChange={(e) => setFiltroGastoFecha(e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]" />
 </div>
@@ -752,11 +877,12 @@ Exportar Excel
 <label className="block text-[10.5px] font-bold text-[var(--gray-400)] uppercase mb-1">Descripción</label>
 <input value={filtroGastoDescripcion} onChange={(e) => setFiltroGastoDescripcion(e.target.value)} placeholder="Buscar..." className="border border-[var(--gray-200)] rounded-md px-2.5 py-1.5 text-[12px]" />
 </div>
-{(filtroGastoFolio || filtroGastoFecha || filtroGastoDescripcion) && (
+{(filtroGastoFolio || filtroGastoEco || filtroGastoFecha || filtroGastoDescripcion) && (
 <button
 type="button"
 onClick={() => {
 setFiltroGastoFolio("");
+setFiltroGastoEco("");
 setFiltroGastoFecha("");
 setFiltroGastoDescripcion("");
 }}
@@ -801,7 +927,106 @@ Limpiar filtros
 {!cargando && filasGastosFiltradas.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">{filasGastos.length === 0 ? "Sin registros." : "Ningún gasto coincide con el filtro."}</div>}
 </div>
 </div>
+)}
+{seccionActiva === "aceite" && (
+<div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
+<div className="flex items-center justify-between mb-4">
+<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Cambios de aceite</h3>
+<button type="button" onClick={agregarCambioAceite} className="flex items-center gap-1.5 bg-[var(--navy)] text-white rounded-lg px-3.5 py-1.5 text-[12px] font-bold">
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
++ Agregar
+</button>
 </div>
+<div className="overflow-x-auto">
+<table className="border-collapse min-w-max w-full">
+<thead>
+<tr>
+{["ECO. Unidad", "Unidad", "Fecha último cambio", "KM último cambio", "KM próximo cambio", "KM actual", "% recorrido", "Indicador", "Acciones"].map((c) => (
+<th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+{c}
+</th>
+))}
+</tr>
+</thead>
+<tbody>
+{cambiosAceite.map((c) => {
+const { kmSiguiente, porcentaje, etiqueta } = calcularAceite(c);
+const urgente = porcentaje !== null && porcentaje > 85;
+const colorBarra = porcentaje === null ? "#9aa1b0" : porcentaje > 85 ? "var(--red)" : porcentaje >= 70 ? "var(--amber)" : "var(--green)";
+return (
+<tr key={c.id} className="border-b border-[var(--gray-200)]" style={urgente ? { backgroundColor: "rgba(226,65,44,0.12)" } : undefined}>
+<td className="px-2.5 py-2 whitespace-nowrap">
+<select value={c.eco} onChange={(e) => cambiarEcoAceite(c.id, e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[100px]">
+<option value=""></option>
+{unidadesRegistradas.map((u) => (
+<option key={u["ECO"]} value={u["ECO"]}>
+{u["ECO"]}
+</option>
+))}
+</select>
+</td>
+<td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{c.unidad || "—"}</td>
+<td className="px-2.5 py-2 whitespace-nowrap">
+<input
+type="date"
+value={c.fechaUltimoCambio}
+onChange={(e) => actualizarAceiteLocal(c.id, "fechaUltimoCambio", e.target.value)}
+onBlur={(e) => guardarAceiteCampo(c.id, "fechaUltimoCambio", e.target.value)}
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px]"
+/>
+</td>
+<td className="px-2.5 py-2 whitespace-nowrap">
+<input
+type="number"
+value={c.kmUltimoCambio}
+onChange={(e) => actualizarAceiteLocal(c.id, "kmUltimoCambio", e.target.value)}
+onBlur={(e) => guardarAceiteCampo(c.id, "kmUltimoCambio", e.target.value)}
+placeholder="0"
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[85px]"
+/>
+</td>
+<td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{kmSiguiente !== null ? kmSiguiente.toLocaleString("es-MX") : "—"}</td>
+<td className="px-2.5 py-2 whitespace-nowrap">
+<input
+type="number"
+value={c.kmActual}
+onChange={(e) => actualizarAceiteLocal(c.id, "kmActual", e.target.value)}
+onBlur={(e) => guardarAceiteCampo(c.id, "kmActual", e.target.value)}
+placeholder="0"
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[85px]"
+/>
+</td>
+<td className="px-2.5 py-2 whitespace-nowrap">
+{porcentaje === null ? (
+"—"
+) : (
+<div className="flex items-center gap-2 w-[140px]">
+<div className="flex-1 h-2.5 rounded-full bg-[var(--gray-200)] overflow-hidden">
+<div className="h-full rounded-full" style={{ width: `${Math.min(100, porcentaje)}%`, backgroundColor: colorBarra }} />
+</div>
+<span className="text-[11px] font-semibold text-[var(--navy)] whitespace-nowrap">{porcentaje.toFixed(1)}%</span>
+</div>
+)}
+</td>
+<td className="px-2.5 py-2 whitespace-nowrap">
+{etiqueta && (
+<span className={`text-[9.5px] font-bold uppercase px-2 py-1 rounded-full ${urgente ? "bg-[var(--red)] text-white" : "bg-[var(--amber)] text-[#52350a]"}`}>{etiqueta}</span>
+)}
+</td>
+<td className="px-2.5 py-2 whitespace-nowrap">
+<span onClick={() => eliminarCambioAceite(c.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar registro">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+</span>
+</td>
+</tr>
+);
+})}
+</tbody>
+</table>
+{!cargandoAceite && cambiosAceite.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros. Usa &quot;+ Agregar&quot; para crear el primero.</div>}
+</div>
+</div>
+)}
 <PageFooter />
 </div>
 {/* Nueva orden */}

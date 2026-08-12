@@ -13,8 +13,8 @@ export async function POST(req: NextRequest) {
     await ensureSchema();
     const pool = getPool();
     const result = await pool.query(
-      `INSERT INTO tareas_kanban (tarea, responsable, fecha_entrega, estado) VALUES ($1, $2, $3, 'lista') RETURNING id`,
-      [tarea.trim(), responsable || null, fechaEntrega || null]
+      `INSERT INTO tareas_kanban (tarea, responsable, fecha_entrega, estado, orden) VALUES ($1, $2, $3, 'lista', $4) RETURNING id`,
+      [tarea.trim(), responsable || null, fechaEntrega || null, Date.now()]
     );
     return NextResponse.json({ ok: true, id: result.rows[0].id });
   } catch (err: any) {

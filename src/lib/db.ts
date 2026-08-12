@@ -105,6 +105,22 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS avances JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS color TEXT;`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS categoria TEXT;`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS urgente BOOLEAN NOT NULL DEFAULT false;`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS orden DOUBLE PRECISION NOT NULL DEFAULT 0;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS cambios_aceite (
+id SERIAL PRIMARY KEY,
+eco TEXT,
+unidad TEXT,
+fecha_ultimo_cambio TEXT,
+km_ultimo_cambio NUMERIC,
+km_actual NUMERIC,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS viajes (

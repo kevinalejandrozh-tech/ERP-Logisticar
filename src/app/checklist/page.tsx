@@ -14,6 +14,29 @@ SwitchState,
 } from "@/lib/checklistData";
 import { UNIDADES, DICTAMEN_OPCIONES, imagenLlantaPorClave } from "@/lib/unidadesData";
 type PuntoState = { valor: SwitchState; comentarioActivo: boolean; comentario: string };
+type DetalleNoOk = { seccion: string; punto: string; comentario: string };
+type FilaReporte = {
+eco: string;
+descripcion: string;
+placas: string;
+estado: "ok" | "con_detalles" | "sin_registro";
+fechaHora: string | null;
+detalles: DetalleNoOk[];
+};
+function calcularEstadoUnidad(checklistGuardado: Record<string, any> | null | undefined): { estado: "ok" | "con_detalles" | "sin_registro"; detalles: DetalleNoOk[] } {
+if (!checklistGuardado) return { estado: "sin_registro", detalles: [] };
+const detalles: DetalleNoOk[] = [];
+SECCIONES.forEach((sec) => {
+sec.puntos.forEach((p) => {
+const key = `${sec.key}__${p}`;
+const v = checklistGuardado[key];
+if (v?.valor === "no") {
+detalles.push({ seccion: sec.titulo, punto: p, comentario: v.comentario || "" });
+}
+});
+});
+return { estado: detalles.length > 0 ? "con_detalles" : "ok", detalles };
+}
 const FOTOS_LABELS = [
 "Vista Frontal",
 "Vista lateral izquierda",
@@ -27,6 +50,39 @@ const [kmActual, setKmActual] = useState("");
 const [modoSoloLectura, setModoSoloLectura] = useState(false);
 const [registroVista, setRegistroVista] = useState<{ folio: string; descripcion_unidad: string | null; placas: string | null; fecha_hora: string } | null>(null);
 const [cargandoVista, setCargandoVista] = useState(false);
+const [reporteAbierto, setReporteAbierto] = useState(false);
+const [cargandoReporte, setCargandoReporte] = useState(false);
+const [filasReporte, setFilasReporte] = useState<FilaReporte[]>([]);
+const [filtroReporte, setFiltroReporte] = useState<"todas" | "ok" | "con_detalles">("todas");
+const abrirReporte = async () => {
+setReporteAbierto(true);
+setCargandoReporte(true);
+try {
+const res = await fetch("/api/checklist/reporte-estado", { cache: "no-store" });
+const data = await res.json();
+const porEco: Record<string, any> = {};
+(data.registros || []).forEach((r: any) => {
+porEco[r.eco_unidad] = r;
+});
+const filas: FilaReporte[] = UNIDADES.map((u) => {
+const r = porEco[u.eco];
+const { estado, detalles } = calcularEstadoUnidad(r?.checklist);
+return {
+eco: u.eco,
+descripcion: r?.descripcion_unidad || u.descripcion || "",
+placas: r?.placas || u.placa || "",
+estado,
+fechaHora: r?.fecha_hora || null,
+detalles,
+};
+});
+setFilasReporte(filas);
+} catch {
+setFilasReporte([]);
+} finally {
+setCargandoReporte(false);
+}
+};
 const unidadSeleccionada = useMemo(
 () => UNIDADES.find((u) => u.eco === ecoUnidad),
 [ecoUnidad]
@@ -191,6 +247,18 @@ return (
 Check List Diario de Unidades
 </h1>
 </div>
+{!modoSoloLectura && (
+<div className="px-4 py-2.5 border-b border-[var(--gray-200)]">
+<button
+type="button"
+onClick={abrirReporte}
+className="w-full flex items-center justify-center gap-1.5 bg-[var(--blue-light)] text-[var(--blue)] font-display font-bold text-[11.5px] rounded-lg py-2"
+>
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+Reporte de estado de unidades
+</button>
+</div>
+)}
 {modoSoloLectura && (
 <div className="bg-[var(--blue-light)] px-4 py-2.5 flex items-center justify-between gap-2 border-b border-[var(--gray-200)]">
 <span className="text-[11px] font-bold text-[var(--navy)]">
@@ -445,6 +513,74 @@ Generar Orden de Mantenimiento
 )}
 </div>
 </div>
+
+{reporteAbierto && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.5)] z-50 flex items-end sm:items-center justify-center">
+<div className="bg-white w-full sm:max-w-[440px] sm:rounded-2xl rounded-t-2xl max-h-[85vh] flex flex-col">
+<div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--gray-200)]">
+<h2 className="font-display font-extrabold text-[var(--navy)] text-[13.5px] uppercase">Reporte de estado de unidades</h2>
+<span onClick={() => setReporteAbierto(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">✕</span>
+</div>
+<div className="flex gap-1.5 px-4 py-2.5 border-b border-[var(--gray-200)]">
+{([
+["todas", "Todas"],
+["ok", "OK"],
+["con_detalles", "Con detalles"],
+] as const).map(([key, label]) => (
+<button
+key={key}
+type="button"
+onClick={() => setFiltroReporte(key)}
+className={`text-[10.5px] font-bold px-2.5 py-1.5 rounded-full ${filtroReporte === key ? "bg-[var(--navy)] text-white" : "bg-[var(--gray-100)] text-[var(--navy)]"}`}
+>
+{label}
+</button>
+))}
+</div>
+<div className="flex-1 overflow-y-auto px-4 py-3">
+{cargandoReporte && <p className="text-center text-xs text-[var(--gray-400)] py-6">Generando reporte...</p>}
+{!cargandoReporte &&
+filasReporte
+.filter((f) => (filtroReporte === "todas" ? true : f.estado === filtroReporte))
+.map((f) => (
+<div key={f.eco} className="py-2.5 border-b border-[var(--gray-200)] last:border-0">
+<div className="flex items-center justify-between gap-2 mb-1">
+<span className="font-display font-bold text-[var(--navy)] text-[12.5px]">{f.eco}</span>
+<span
+className={`text-[9.5px] font-bold uppercase px-2 py-0.5 rounded-full whitespace-nowrap ${
+f.estado === "ok" ? "bg-[var(--green)] text-white" : f.estado === "con_detalles" ? "bg-[var(--red)] text-white" : "bg-[var(--gray-200)] text-[var(--gray-400)]"
+}`}
+>
+{f.estado === "ok" ? "OK" : f.estado === "con_detalles" ? `${f.detalles.length} detalle(s)` : "Sin checklist"}
+</span>
+</div>
+<p className="text-[10.5px] text-[var(--gray-400)] m-0 mb-1">
+{f.descripcion || "—"} {f.placas ? `· ${f.placas}` : ""} {f.fechaHora ? `· ${new Date(f.fechaHora).toLocaleDateString("es-MX")}` : ""}
+</p>
+{f.detalles.length > 0 && (
+<ul className="pl-4 m-0 flex flex-col gap-0.5">
+{f.detalles.map((d, i) => (
+<li key={i} className="text-[11px] text-[var(--red)] list-disc">
+<b>{d.punto}</b>
+{d.comentario ? `: ${d.comentario}` : ""} <span className="text-[var(--gray-400)]">({d.seccion})</span>
+</li>
+))}
+</ul>
+)}
+</div>
+))}
+{!cargandoReporte && filasReporte.filter((f) => (filtroReporte === "todas" ? true : f.estado === filtroReporte)).length === 0 && (
+<p className="text-center text-xs text-[var(--gray-400)] py-6">Sin unidades para mostrar.</p>
+)}
+</div>
+<div className="p-3.5 border-t border-[var(--gray-200)]">
+<button type="button" onClick={() => setReporteAbierto(false)} className="w-full bg-[var(--navy)] text-white font-display font-bold text-xs rounded-lg py-2.5">
+Cerrar
+</button>
+</div>
+</div>
+</div>
+)}
 </div>
 );
 }

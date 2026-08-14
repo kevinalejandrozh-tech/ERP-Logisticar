@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import PuntoChecklist from "@/components/PuntoChecklist";
 import BarraNivel from "@/components/BarraNivel";
@@ -24,6 +24,9 @@ const FOTOS_INTERIOR_LABELS = ["Vista interior cabina", "Vista interior de caja"
 export default function ChecklistPage() {
 const [ecoUnidad, setEcoUnidad] = useState(UNIDADES[0]?.eco || "");
 const [kmActual, setKmActual] = useState("");
+const [modoSoloLectura, setModoSoloLectura] = useState(false);
+const [registroVista, setRegistroVista] = useState<{ folio: string; descripcion_unidad: string | null; placas: string | null; fecha_hora: string } | null>(null);
+const [cargandoVista, setCargandoVista] = useState(false);
 const unidadSeleccionada = useMemo(
 () => UNIDADES.find((u) => u.eco === ecoUnidad),
 [ecoUnidad]
@@ -66,6 +69,47 @@ comentarioActivo: prev[key]?.comentarioActivo ?? false,
 comentario,
 },
 }));
+useEffect(() => {
+const params = new URLSearchParams(window.location.search);
+const id = params.get("id");
+if (!id) return;
+setCargandoVista(true);
+fetch(`/api/checklist/get?id=${id}`)
+.then((res) => res.json())
+.then((data) => {
+if (!data.ok) {
+setMensaje({ tipo: "error", texto: data.error || "No se encontró el registro." });
+return;
+}
+const r = data.registro;
+setModoSoloLectura(true);
+setRegistroVista({ folio: r.folio, descripcion_unidad: r.descripcion_unidad, placas: r.placas, fecha_hora: r.fecha_hora });
+setEcoUnidad(r.eco_unidad || "");
+setKmActual(r.kilometraje_actual != null ? String(r.kilometraje_actual) : "");
+setFotos(r.fotos_evidencia || {});
+setFotosLibres(r.fotos_libres || []);
+const estadoLlantas = r.estado_llantas || {};
+setLlantasComentario(estadoLlantas.comentario || "");
+setLlantasDictamen(estadoLlantas.dictamen || DICTAMEN_OPCIONES[0]);
+setLlantasFotos(estadoLlantas.fotos || []);
+const nivelesGuardados = r.niveles || {};
+const nivelesNum: Record<string, number> = {};
+const nivelesLit: Record<string, string> = {};
+const nivelesObsMap: Record<string, string> = {};
+Object.entries(nivelesGuardados).forEach(([key, v]: [string, any]) => {
+const idx = NIVEL_OPCIONES.indexOf(v?.nivel || "");
+nivelesNum[key] = idx >= 0 ? idx + 1 : 0;
+nivelesLit[key] = v?.litros || "";
+nivelesObsMap[key] = v?.observaciones || "";
+});
+setNiveles(nivelesNum);
+setNivelesLitros(nivelesLit);
+setNivelesObs(nivelesObsMap);
+setChecklist(r.checklist || {});
+})
+.catch(() => setMensaje({ tipo: "error", texto: "No se pudo cargar el registro." }))
+.finally(() => setCargandoVista(false));
+}, []);
 const porcentajeLlenado = useMemo(() => {
 const respondidos = Object.values(checklist).filter(
 (p) => p.valor === "si" || p.valor === "no"
@@ -147,7 +191,18 @@ return (
 Check List Diario de Unidades
 </h1>
 </div>
-<div className="px-4 py-4 flex flex-col gap-5">
+{modoSoloLectura && (
+<div className="bg-[var(--blue-light)] px-4 py-2.5 flex items-center justify-between gap-2 border-b border-[var(--gray-200)]">
+<span className="text-[11px] font-bold text-[var(--navy)]">
+👁 Viendo registro {registroVista ? `· Folio: ${registroVista.folio}` : ""} (solo lectura)
+</span>
+<a href="/registros" className="text-[11px] text-[var(--blue)] font-bold whitespace-nowrap">
+← Registros
+</a>
+</div>
+)}
+{cargandoVista && <p className="text-center text-xs text-[var(--gray-400)] py-3">Cargando registro...</p>}
+<div className={`px-4 py-4 flex flex-col gap-5 ${modoSoloLectura ? "pointer-events-none" : ""}`}>
 <div className="flex items-center gap-3">
 <label className="font-display font-extrabold text-[var(--navy)] text-xs whitespace-nowrap">
 ECO. UNIDAD
@@ -178,10 +233,10 @@ className="flex-1 h-9 bg-[var(--gray-100)] border border-[var(--gray-200)] round
 </div>
 <div className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[11.5px] flex flex-col gap-1">
 <span>
-<b className="text-[var(--navy)]">Descripción de unidad:</b> {unidadSeleccionada?.descripcion || "—"}
+<b className="text-[var(--navy)]">Descripción de unidad:</b> {(modoSoloLectura ? registroVista?.descripcion_unidad : unidadSeleccionada?.descripcion) || "—"}
 </span>
 <span>
-<b className="text-[var(--navy)]">Placas:</b> {unidadSeleccionada?.placa || "—"}
+<b className="text-[var(--navy)]">Placas:</b> {(modoSoloLectura ? registroVista?.placas : unidadSeleccionada?.placa) || "—"}
 </span>
 </div>
 <div>
@@ -363,6 +418,14 @@ onChange={setFotosLibres}
 {mensaje.texto}
 </p>
 )}
+{modoSoloLectura ? (
+<a
+href="/registros"
+className="block text-center w-full bg-[var(--navy)] text-white font-display font-extrabold uppercase text-xs tracking-wide rounded-lg py-3"
+>
+← Volver a registros guardados
+</a>
+) : (
 <div className="flex gap-2">
 <button
 type="button"
@@ -379,6 +442,7 @@ className="flex-1 bg-[var(--amber)] text-white font-display font-extrabold upper
 Generar Orden de Mantenimiento
 </button>
 </div>
+)}
 </div>
 </div>
 </div>

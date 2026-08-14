@@ -146,6 +146,9 @@ Exportar Excel
 <span className="text-[var(--gray-400)] text-xs">
 {new Date(r.fecha_hora).toLocaleString("es-MX")}
 </span>
+<Link href={`/checklist?id=${r.id}`} className="text-[var(--blue)] text-xs font-bold">
+Ver
+</Link>
 <span onClick={() => eliminarRegistro(r.id, r.eco_unidad)} className="text-[var(--red)] cursor-pointer">
 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
 </span>

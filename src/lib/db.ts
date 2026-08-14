@@ -162,4 +162,21 @@ datos JSONB DEFAULT '{}'::jsonb,
 fecha TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS reporte_columnas (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS reporte_filas (
+id SERIAL PRIMARY KEY,
+datos JSONB NOT NULL DEFAULT '{}'::jsonb,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

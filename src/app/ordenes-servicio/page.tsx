@@ -85,7 +85,7 @@ servicio_realizado: { label: "Realizado", clases: "bg-[var(--green)] text-white"
 export default function OrdenesServicioPage() {
 const [ordenes, setOrdenes] = useState<Orden[]>([]);
 const [cargando, setCargando] = useState(true);
-const [seccionActiva, setSeccionActiva] = useState<"unidades" | "gastos" | "aceite" | null>(null);
+const [seccionActiva, setSeccionActiva] = useState<"reportes" | "unidades" | "gastos" | "aceite" | null>(null);
 const [cambiosAceite, setCambiosAceite] = useState<CambioAceite[]>([]);
 const [cargandoAceite, setCargandoAceite] = useState(true);
 const [unidadesRegistradas, setUnidadesRegistradas] = useState<RegistroUnidad[]>([]);
@@ -781,6 +781,30 @@ if (costo > 0 && o.ecoUnidad) mapa[o.ecoUnidad] = (mapa[o.ecoUnidad] || 0) + cos
 });
 return Object.entries(mapa).sort((a, b) => b[1] - a[1]);
 }, [ordenes]);
+const DIAS_SEMANA_CORTO = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const comparativoSemanal = useMemo(() => {
+const lunesDeSemana = (f: Date) => {
+const d = new Date(f);
+const dia = d.getDay() || 7;
+d.setDate(d.getDate() - (dia - 1));
+d.setHours(0, 0, 0, 0);
+return d;
+};
+const lunesActual = lunesDeSemana(new Date());
+const lunesAnterior = new Date(lunesActual);
+lunesAnterior.setDate(lunesAnterior.getDate() - 7);
+const contarEnFecha = (fecha: Date) => {
+const clave = fecha.toISOString().slice(0, 10);
+return ordenes.filter((o) => o.fechaIngreso && o.fechaIngreso.slice(0, 10) === clave).length;
+};
+return DIAS_SEMANA_CORTO.map((dia, i) => {
+const fA = new Date(lunesActual);
+fA.setDate(fA.getDate() + i);
+const fP = new Date(lunesAnterior);
+fP.setDate(fP.getDate() + i);
+return { dia, actual: contarEnFecha(fA), anterior: contarEnFecha(fP) };
+});
+}, [ordenes]);
 const totalGastos = ordenes.reduce(
 (acc, o) => acc + (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0),
 0
@@ -897,37 +921,99 @@ className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[va
 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
 </button>
 </div>
+<div className="flex flex-wrap gap-2.5 mb-5">
+<button type="button" onClick={() => setSeccionActiva("reportes")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "reportes" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Reportes
+</button>
+<button type="button" onClick={() => setSeccionActiva("unidades")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "unidades" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Unidades en mantenimiento
+</button>
+<button type="button" onClick={() => setSeccionActiva("gastos")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "gastos" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Gastos en mantenimiento
+</button>
+<button type="button" onClick={() => setSeccionActiva("aceite")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "aceite" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
+Cambios de aceite
+</button>
+<button type="button" onClick={() => setSeccionActiva(null)} className="text-[13px] font-bold px-5 py-2.5 rounded-lg bg-white border border-[var(--gray-200)] text-[var(--gray-400)]">
+Ocultar
+</button>
+</div>
+
+{seccionActiva === "reportes" && (
 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 md:gap-5 mb-6">
 {/* 1. Total de unidades en mantenimiento */}
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[380px] flex flex-col">
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[460px] flex flex-col">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de unidades en mantenimiento</p>
-<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0 mb-2.5">{totalUnidadesEnMantenimiento}</p>
-<div className="flex-1 flex flex-col justify-center gap-3">
-<div className="flex items-center justify-between text-[13px] border-b border-[var(--gray-100)] pb-2.5">
-<span className="text-[var(--green)] font-semibold">Servicios realizados</span>
-<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.servicio_realizado}</span>
+<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0 mb-3">{totalUnidadesEnMantenimiento}</p>
+<div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+<div className="text-center bg-[var(--gray-100)] rounded-lg py-2 px-1">
+<p className="text-[16px] font-bold text-[var(--green)] m-0">{conteoPorEstado.servicio_realizado}</p>
+<p className="text-[9.5px] text-[var(--gray-400)] font-semibold m-0 leading-tight">Realizados</p>
 </div>
-<div className="flex items-center justify-between text-[13px] border-b border-[var(--gray-100)] pb-2.5">
-<span className="text-[var(--blue)] font-semibold">Servicios activos</span>
-<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.cerrar_orden}</span>
+<div className="text-center bg-[var(--gray-100)] rounded-lg py-2 px-1">
+<p className="text-[16px] font-bold text-[var(--blue)] m-0">{conteoPorEstado.cerrar_orden}</p>
+<p className="text-[9.5px] text-[var(--gray-400)] font-semibold m-0 leading-tight">Activos</p>
 </div>
-<div className="flex items-center justify-between text-[13px] border-b border-[var(--gray-100)] pb-2.5">
-<span className="text-[var(--red)] font-semibold">Pendientes de autorización</span>
-<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.autorizacion_pendiente}</span>
+<div className="text-center bg-[var(--gray-100)] rounded-lg py-2 px-1">
+<p className="text-[16px] font-bold text-[var(--red)] m-0">{conteoPorEstado.autorizacion_pendiente}</p>
+<p className="text-[9.5px] text-[var(--gray-400)] font-semibold m-0 leading-tight">Aut. pendiente</p>
 </div>
-<div className="flex items-center justify-between text-[13px]">
-<span className="text-[#8a5a05] font-semibold">Pendientes de diagnosticar</span>
-<span className="font-bold text-[var(--navy)] text-[15px]">{conteoPorEstado.diagnostico_pendiente}</span>
+<div className="text-center bg-[var(--gray-100)] rounded-lg py-2 px-1">
+<p className="text-[16px] font-bold text-[#8a5a05] m-0">{conteoPorEstado.diagnostico_pendiente}</p>
+<p className="text-[9.5px] text-[var(--gray-400)] font-semibold m-0 leading-tight">Diagnóstico</p>
+</div>
+</div>
+<div className="border-t border-[var(--gray-100)] pt-2.5 mb-2">
+<p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Total de gastos</p>
+<p className="text-[19px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
+</div>
+<div className="flex-1 min-h-0">
+<p className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1">Unidades ingresadas por día</p>
+<svg viewBox="0 0 480 170" className="w-full h-full">
+<line x1={25} y1={125} x2={465} y2={125} stroke="#e5e8ee" strokeWidth={1} />
+{(() => {
+const maxVal = Math.max(1, ...comparativoSemanal.map((d) => Math.max(d.actual, d.anterior)));
+const puntos = (campo: "actual" | "anterior") =>
+comparativoSemanal
+.map((d, i) => {
+const x = 25 + i * ((465 - 25) / (comparativoSemanal.length - 1));
+const y = 125 - (d[campo] / maxVal) * 90;
+return `${x},${y}`;
+})
+.join(" ");
+return (
+<>
+<polyline points={puntos("anterior")} fill="none" stroke="#c3c9d4" strokeWidth={2} />
+<polyline points={puntos("actual")} fill="none" stroke="#2f6fed" strokeWidth={2.4} />
+{comparativoSemanal.map((d, i) => {
+const x = 25 + i * ((465 - 25) / (comparativoSemanal.length - 1));
+const yA = 125 - (d.actual / maxVal) * 90;
+const yP = 125 - (d.anterior / maxVal) * 90;
+return (
+<g key={d.dia}>
+<circle cx={x} cy={yP} r={2.6} fill="#c3c9d4" />
+<circle cx={x} cy={yA} r={3.2} fill="#2f6fed" />
+<text x={x} y={142} fontSize={9.5} textAnchor="middle" fill="#9aa1b0">
+{d.dia}
+</text>
+</g>
+);
+})}
+</>
+);
+})()}
+</svg>
+<div className="flex items-center justify-center gap-4 -mt-1">
+<span className="flex items-center gap-1 text-[10px] text-[var(--navy)] font-semibold"><span className="w-3 h-[2.5px] bg-[var(--blue)] inline-block rounded" /> Semana en curso</span>
+<span className="flex items-center gap-1 text-[10px] text-[var(--gray-400)] font-semibold"><span className="w-3 h-[2.5px] bg-[#c3c9d4] inline-block rounded" /> Semana anterior</span>
 </div>
 </div>
 </div>
 
-{/* 2. Total de gastos + mini tabla de Cambios de aceite */}
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[380px] flex flex-col">
-<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de gastos en mantenimiento</p>
-<p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
-<div className="flex items-center justify-between gap-2 mt-4 mb-2.5">
-<p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Cambios de aceite</p>
+{/* 2. Cambios de aceite */}
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[460px] flex flex-col">
+<div className="flex items-center justify-between gap-2 mb-2.5">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Cambios de aceite</p>
 <div className="flex gap-1.5">
 <button
 type="button"
@@ -978,7 +1064,7 @@ return (
 </div>
 
 {/* 3. Grafica de costos de reparacion (barras horizontales estilo dashboard) */}
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[380px] flex flex-col">
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[460px] flex flex-col">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-4">Gráfica de costos de reparación</p>
 {costosPorEco.length === 0 ? (
 <p className="text-center text-[var(--gray-400)] text-[12.5px] py-8">Sin gastos registrados aún.</p>
@@ -1021,7 +1107,7 @@ clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0
 </div>
 
 {/* 4. Historial de mantenimientos por unidad */}
-<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[380px] flex flex-col">
+<div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[460px] flex flex-col">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-3">Historial de mantenimientos por unidad</p>
 <div className="relative mb-3">
 <div className="flex items-center gap-2 bg-white border border-[var(--gray-200)] rounded-lg px-3 py-2">
@@ -1058,20 +1144,7 @@ className="px-3 py-2 text-[12.5px] text-[var(--navy)] cursor-pointer hover:bg-[v
 </div>
 </div>
 </div>
-<div className="flex flex-wrap gap-2.5 mb-5">
-<button type="button" onClick={() => setSeccionActiva("unidades")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "unidades" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
-Unidades en mantenimiento
-</button>
-<button type="button" onClick={() => setSeccionActiva("gastos")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "gastos" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
-Gastos en mantenimiento
-</button>
-<button type="button" onClick={() => setSeccionActiva("aceite")} className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${seccionActiva === "aceite" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}>
-Cambios de aceite
-</button>
-<button type="button" onClick={() => setSeccionActiva(null)} className="text-[13px] font-bold px-5 py-2.5 rounded-lg bg-white border border-[var(--gray-200)] text-[var(--gray-400)]">
-Ocultar
-</button>
-</div>
+)}
 {seccionActiva === "unidades" && (
 <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5">
 <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">

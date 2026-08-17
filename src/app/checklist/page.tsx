@@ -51,6 +51,7 @@ const [modoSoloLectura, setModoSoloLectura] = useState(false);
 const [registroVista, setRegistroVista] = useState<{ folio: string; descripcion_unidad: string | null; placas: string | null; fecha_hora: string } | null>(null);
 const [cargandoVista, setCargandoVista] = useState(false);
 const [reporteAbierto, setReporteAbierto] = useState(false);
+const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
 const [cargandoReporte, setCargandoReporte] = useState(false);
 const [filasReporte, setFilasReporte] = useState<FilaReporte[]>([]);
 const [filtroReporte, setFiltroReporte] = useState<"todas" | "ok" | "con_detalles">("todas");
@@ -224,6 +225,31 @@ res.status === 413
 );
 }
 if (!res.ok) throw new Error(data.error || "Error al guardar.");
+const resumenNiveles: string[] = [];
+NIVELES_LABELS.forEach((n) => {
+const v = niveles[n.key] || 0;
+if (v > 0 && v < NIVEL_OPCIONES.length) {
+const litros = nivelesLitros[n.key] || "";
+resumenNiveles.push(`Se completa el nivel de ${n.label.replace(/^Nivel de /i, "")}${litros ? `, cantidad completada: ${litros} L` : ""}.`);
+}
+});
+const resumenPuntos: string[] = [];
+SECCIONES.forEach((sec) => {
+sec.puntos.forEach((p) => {
+const key = `${sec.key}__${p}`;
+if (checklist[key]?.valor === "no") {
+resumenPuntos.push(`${p} NO PASA`);
+}
+});
+});
+const resumenTexto = [...resumenNiveles, ...resumenPuntos].join(" · ");
+if (resumenTexto) {
+fetch("/api/revision-semanal/comentarios", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ eco: ecoUnidad, comentario: resumenTexto }),
+}).catch(() => {});
+}
 setMensaje({ tipo: "ok", texto: `Guardado correctamente. Folio: ${data.folio}` });
 } catch (err: any) {
 setMensaje({ tipo: "error", texto: err?.message || "Error al guardar. Revisa tu conexión." });
@@ -235,8 +261,8 @@ return (
 <div className="min-h-screen flex justify-center bg-[#dcdfe6] py-6">
 <div className="w-full max-w-[430px] bg-white min-h-screen sm:min-h-0 sm:rounded-3xl sm:shadow-xl overflow-hidden pb-28 relative">
 <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-[var(--gray-200)]">
-<a href="/" className="text-[var(--blue)] text-xs font-semibold">
-← Menú principal
+<a href="/ordenes-servicio?seccion=reportes" className="text-[var(--blue)] text-xs font-semibold">
+← Regresar a reportes
 </a>
 <div className="flex items-center gap-2">
 <Logo size={32} />
@@ -331,6 +357,8 @@ key={label}
 label={label}
 foto={fotos[label] || null}
 onFoto={(dataUrl) => setFotos((prev) => ({ ...prev, [label]: dataUrl }))}
+soloLectura={modoSoloLectura}
+onVer={() => setFotoAmpliada(fotos[label] || null)}
 />
 ))}
 </div>
@@ -377,7 +405,7 @@ className="flex-1 h-7 bg-[var(--gray-100)] border border-[var(--gray-200)] round
 </select>
 </div>
 <span className="text-[10.5px] font-bold text-[var(--blue)]">Evidencia de estado de llantas</span>
-<MultiFotoUploader fotos={llantasFotos} onChange={setLlantasFotos} />
+<MultiFotoUploader fotos={llantasFotos} onChange={setLlantasFotos} soloLectura={modoSoloLectura} onVerFoto={(i) => setFotoAmpliada(llantasFotos[i])} />
 </div>
 </div>
 </div>
@@ -451,6 +479,8 @@ key={label}
 label={label}
 foto={fotos[label] || null}
 onFoto={(dataUrl) => setFotos((prev) => ({ ...prev, [label]: dataUrl }))}
+soloLectura={modoSoloLectura}
+onVer={() => setFotoAmpliada(fotos[label] || null)}
 />
 ))}
 </div>
@@ -478,6 +508,8 @@ onComentarioChange={(v) => setComentario(key, v)}
 titulo="Agrega fotos de los detalles encontrados (si hay)"
 fotos={fotosLibres}
 onChange={setFotosLibres}
+soloLectura={modoSoloLectura}
+onVerFoto={(i) => setFotoAmpliada(fotosLibres[i])}
 />
 </div>
 )}
@@ -583,6 +615,14 @@ Cerrar
 </button>
 </div>
 </div>
+</div>
+)}
+{fotoAmpliada && (
+<div onClick={() => setFotoAmpliada(null)} className="fixed inset-0 bg-black/85 z-[60] flex items-center justify-center p-4">
+<img src={fotoAmpliada} alt="Foto ampliada" className="max-w-full max-h-full rounded-lg object-contain" />
+<span onClick={() => setFotoAmpliada(null)} className="absolute top-4 right-5 text-white text-2xl leading-none cursor-pointer">
+✕
+</span>
 </div>
 )}
 </div>

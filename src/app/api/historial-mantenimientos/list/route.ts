@@ -9,7 +9,7 @@ export async function GET() {
     await ensureSchema();
     const pool = getPool();
     const result = await pool.query(
-      `SELECT id, estado, folio, eco_unidad, unidad, tipo_mantenimiento, reporte_falla, fecha_ingreso_taller, costo, orden
+      `SELECT id, estado, folio, eco_unidad, unidad, tipo_mantenimiento, reporte_falla, fecha_ingreso_taller, costo, orden, evidencias, reportado_por
        FROM historial_mantenimientos ORDER BY orden ASC`
     );
     const registros = result.rows.map((r) => ({
@@ -22,6 +22,8 @@ export async function GET() {
       reporteFalla: r.reporte_falla || "",
       fechaIngresoTaller: r.fecha_ingreso_taller || "",
       costo: r.costo ?? "",
+      evidencias: r.evidencias || [],
+      reportadoPor: r.reportado_por || "",
     }));
     return NextResponse.json({ ok: true, registros });
   } catch (err: any) {

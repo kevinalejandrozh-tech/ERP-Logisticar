@@ -7,6 +7,26 @@ import { exportarExcel } from "@/lib/exportExcel";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const OPCIONES_TIPO = ["Preventivo", "Correctivo"];
 
+declare global {
+  interface Window {
+    QRious: any;
+  }
+}
+function cargarQRious(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.QRious) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
+    document.body.appendChild(script);
+  });
+}
+
+type Evidencia = { foto: string; descripcion: string };
 type Fila = {
   id: number;
   estado: string;
@@ -17,12 +37,28 @@ type Fila = {
   reporteFalla: string;
   fechaIngresoTaller: string;
   costo: string;
+  evidencias: Evidencia[];
+  reportadoPor: string;
 };
 
 export default function HistorialMantenimientosPage() {
   const [filas, setFilas] = useState<Fila[]>([]);
   const [cargando, setCargando] = useState(true);
   const [bloqueado, setBloqueado] = useState(true);
+  const [evidenciasAbiertas, setEvidenciasAbiertas] = useState<Fila | null>(null);
+  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
+
+  useEffect(() => {
+    cargarQRious()
+      .then(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        const canvas = document.getElementById("qr-reportar-falla") as HTMLCanvasElement | null;
+        if (canvas) {
+          new window.QRious({ element: canvas, value: `${window.location.origin}/reportar-falla`, size: 150, level: "M" });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const cargar = async () => {
     try {
@@ -55,7 +91,7 @@ export default function HistorialMantenimientosPage() {
     try {
       const res = await fetch("/api/historial-mantenimientos", { method: "POST" });
       const data = await res.json();
-      setFilas((prev) => [...prev, { id: data.id, estado: "", folio: "", ecoUnidad: "", unidad: "", tipoMantenimiento: "Preventivo", reporteFalla: "", fechaIngresoTaller: "", costo: "" }]);
+      setFilas((prev) => [...prev, { id: data.id, estado: "", folio: "", ecoUnidad: "", unidad: "", tipoMantenimiento: "Preventivo", reporteFalla: "", fechaIngresoTaller: "", costo: "", evidencias: [], reportadoPor: "" }]);
     } catch {
       alert("No se pudo agregar la fila.");
     }
@@ -103,6 +139,14 @@ export default function HistorialMantenimientosPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
         />
 
+        <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 mb-5 flex items-center gap-4">
+          <canvas id="qr-reportar-falla" className="shrink-0" />
+          <div>
+            <p className="text-[13px] font-bold text-[var(--navy)] m-0 mb-1">Reportar falla desde cualquier dispositivo</p>
+            <p className="text-[12px] text-[var(--gray-400)] m-0">Escanea este código QR para abrir el formulario de reporte de fallas y enviarlo directo a este historial.</p>
+          </div>
+        </div>
+
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -139,7 +183,7 @@ export default function HistorialMantenimientosPage() {
             <table className="border-collapse min-w-max w-full">
               <thead>
                 <tr>
-                  {["Estado", "Folio", "Eco. Unidad", "Unidad", "Tipo de mantenimiento", "Reporte de falla", "Fecha de ingreso al taller", "Costo", "Acciones"].map((c) => (
+                  {["Estado", "Folio", "Eco. Unidad", "Unidad", "Tipo de mantenimiento", "Reporte de falla", "Fecha de ingreso al taller", "Costo", "Evidencias", "Acciones"].map((c) => (
                     <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
                       {c}
                     </th>
@@ -245,6 +289,16 @@ export default function HistorialMantenimientosPage() {
                         className="border border-[var(--gray-200)] disabled:bg-transparent disabled:border-transparent rounded px-1.5 py-1 text-[12px] w-[85px]"
                       />
                     </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                      {f.evidencias && f.evidencias.length > 0 ? (
+                        <span onClick={() => setEvidenciasAbiertas(f)} className="text-[var(--blue)] cursor-pointer inline-flex items-center gap-1" title="Ver evidencias">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></svg>
+                          <span className="text-[10.5px] font-bold">{f.evidencias.length}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[var(--gray-200)]">—</span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       {!bloqueado && (
                         <span onClick={() => eliminarFila(f.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar fila">
@@ -262,6 +316,46 @@ export default function HistorialMantenimientosPage() {
 
         <PageFooter />
       </div>
+
+      {evidenciasAbiertas && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.5)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[520px] max-w-[92%] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">Evidencias — Folio {evidenciasAbiertas.folio}</h3>
+              <span onClick={() => setEvidenciasAbiertas(null)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">
+                ✕
+              </span>
+            </div>
+            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">
+              {evidenciasAbiertas.ecoUnidad} {evidenciasAbiertas.reportadoPor ? `· Reportado por: ${evidenciasAbiertas.reportadoPor}` : ""}
+            </p>
+            <div className="flex flex-col gap-3">
+              {evidenciasAbiertas.evidencias.map((ev, i) => (
+                <div key={i} className="flex gap-3 items-start border border-[var(--gray-200)] rounded-lg p-2.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={ev.foto}
+                    alt={`Evidencia ${i + 1}`}
+                    onClick={() => setFotoAmpliada(ev.foto)}
+                    className="w-20 h-20 rounded-md object-cover shrink-0 cursor-pointer"
+                  />
+                  <p className="text-[13px] text-[var(--navy)] m-0">{ev.descripcion || <span className="text-[var(--gray-400)]">Sin descripción.</span>}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {fotoAmpliada && (
+        <div onClick={() => setFotoAmpliada(null)} className="fixed inset-0 bg-black/85 z-[60] flex items-center justify-center p-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={fotoAmpliada} alt="Foto ampliada" className="max-w-full max-h-full rounded-lg object-contain" />
+          <span onClick={() => setFotoAmpliada(null)} className="absolute top-4 right-5 text-white text-2xl leading-none cursor-pointer">
+            ✕
+          </span>
+        </div>
+      )}
     </div>
   );
 }

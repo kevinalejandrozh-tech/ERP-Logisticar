@@ -86,6 +86,10 @@ export default function OrdenesServicioPage() {
 const [ordenes, setOrdenes] = useState<Orden[]>([]);
 const [cargando, setCargando] = useState(true);
 const [seccionActiva, setSeccionActiva] = useState<"reportes" | "unidades" | "gastos" | "aceite" | null>(null);
+useEffect(() => {
+const params = new URLSearchParams(window.location.search);
+if (params.get("seccion") === "reportes") setSeccionActiva("reportes");
+}, []);
 const [cambiosAceite, setCambiosAceite] = useState<CambioAceite[]>([]);
 const [cargandoAceite, setCargandoAceite] = useState(true);
 const [unidadesRegistradas, setUnidadesRegistradas] = useState<RegistroUnidad[]>([]);
@@ -893,20 +897,33 @@ fP.setDate(fP.getDate() + i);
 return { dia, actual: contarEnFecha(fA), anterior: contarEnFecha(fP) };
 });
 }, [ordenes]);
-const porcentajeAvanceSemanal = useMemo(() => {
-if (unidadesRegistradas.length === 0) return 0;
+const lunesDeSemanaActual = () => {
 const d = new Date();
 const dia = d.getDay() || 7;
-const lunesActual = new Date(d);
-lunesActual.setDate(d.getDate() - (dia - 1));
-lunesActual.setHours(0, 0, 0, 0);
-const inspeccionadas = unidadesRegistradas.filter((u) => {
+const l = new Date(d);
+l.setDate(d.getDate() - (dia - 1));
+l.setHours(0, 0, 0, 0);
+return l;
+};
+const unidadesConEstadoSemanal = useMemo(() => {
+const lunesActual = lunesDeSemanaActual();
+return unidadesRegistradas.map((u) => {
 const info = ultimoChecklistPorEco[u["ECO"]];
-if (!info) return false;
-return new Date(info.fechaHora).getTime() >= lunesActual.getTime();
-}).length;
-return (inspeccionadas / unidadesRegistradas.length) * 100;
+const revisadaEstaSemana = !!info && new Date(info.fechaHora).getTime() >= lunesActual.getTime();
+return { u, info, revisadaEstaSemana };
+});
 }, [unidadesRegistradas, ultimoChecklistPorEco]);
+const totalRevisadasEstaSemana = unidadesConEstadoSemanal.filter((x) => x.revisadaEstaSemana).length;
+const porcentajeAvanceSemanal = useMemo(() => {
+if (unidadesRegistradas.length === 0) return 0;
+return (totalRevisadasEstaSemana / unidadesRegistradas.length) * 100;
+}, [unidadesRegistradas, totalRevisadasEstaSemana]);
+const [filtroRevisionSemanal, setFiltroRevisionSemanal] = useState<"todos" | "realizados" | "pendientes">("todos");
+const unidadesRevisionFiltradas = useMemo(() => {
+if (filtroRevisionSemanal === "realizados") return unidadesConEstadoSemanal.filter((x) => x.revisadaEstaSemana);
+if (filtroRevisionSemanal === "pendientes") return unidadesConEstadoSemanal.filter((x) => !x.revisadaEstaSemana);
+return unidadesConEstadoSemanal;
+}, [unidadesConEstadoSemanal, filtroRevisionSemanal]);
 // ---- Descargar todo (Excel + fotos) / Liberar espacio (movido desde Registros guardados) ----
 const [descargandoTodo, setDescargandoTodo] = useState(false);
 const [liberandoEspacio, setLiberandoEspacio] = useState(false);
@@ -1292,9 +1309,10 @@ return (
 
 {/* 3. Revision semanal de unidades */}
 <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[460px] flex flex-col">
-<div className="flex items-center justify-between gap-2 mb-3">
+<div className="flex items-center justify-between gap-2 mb-2">
 <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">REVISION SEMANAL DE UNIDADES</p>
 <div className="flex items-center gap-2 shrink-0">
+<span className="text-[11px] font-bold text-[var(--navy)] whitespace-nowrap">{totalRevisadasEstaSemana}/{unidadesRegistradas.length} revisadas</span>
 <div className="w-[90px] h-[8px] bg-[var(--gray-200)] rounded-full overflow-hidden">
 <div
 className="h-full rounded-full"
@@ -1307,11 +1325,27 @@ backgroundColor: porcentajeAvanceSemanal > 95 ? "var(--green)" : porcentajeAvanc
 <span className="text-[11px] font-bold text-[var(--navy)] whitespace-nowrap">{porcentajeAvanceSemanal.toFixed(0)}%</span>
 </div>
 </div>
+<div className="flex gap-1.5 mb-2.5">
+{([
+["todos", "Todos"],
+["realizados", "Realizados"],
+["pendientes", "Pendientes"],
+] as const).map(([key, label]) => (
+<button
+key={key}
+type="button"
+onClick={() => setFiltroRevisionSemanal(key)}
+className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full ${filtroRevisionSemanal === key ? "bg-[var(--navy)] text-white" : "bg-[var(--gray-100)] text-[var(--navy)]"}`}
+>
+{label}
+</button>
+))}
+</div>
 <div className="flex-1 overflow-y-auto min-h-0">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
-{["ECO", "Marca", "Modelo/Tipo", "Inspección semanal", "Comentarios", ""].map((c) => (
+{["ECO", "Modelo/Tipo", "Inspección semanal", "Fecha de revisión", "Comentarios", ""].map((c) => (
 <th key={c} className="text-left text-[9px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
 {c}
 </th>
@@ -1319,27 +1353,22 @@ backgroundColor: porcentajeAvanceSemanal > 95 ? "var(--green)" : porcentajeAvanc
 </tr>
 </thead>
 <tbody>
-{unidadesRegistradas.map((u) => {
+{unidadesRevisionFiltradas.map(({ u, info, revisadaEstaSemana }) => {
 const eco = u["ECO"];
-const info = ultimoChecklistPorEco[eco];
-const d = new Date();
-const dia = d.getDay() || 7;
-const lunesActual = new Date(d);
-lunesActual.setDate(d.getDate() - (dia - 1));
-lunesActual.setHours(0, 0, 0, 0);
-const inspeccionadaEstaSemana = !!info && new Date(info.fechaHora).getTime() >= lunesActual.getTime();
 return (
-<tr key={eco} className="border-b border-[var(--gray-200)]" style={inspeccionadaEstaSemana ? { backgroundColor: "rgba(33,168,102,0.18)" } : undefined}>
+<tr key={eco} className="border-b border-[var(--gray-200)]" style={revisadaEstaSemana ? { backgroundColor: "rgba(33,168,102,0.18)" } : undefined}>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{eco}</td>
-<td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Marca"] || "—"}</td>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Modelo/Tipo"] || "—"}</td>
 <td className="px-2 py-1.5 whitespace-nowrap">
 <Link
 href={`/checklist?eco=${encodeURIComponent(eco)}`}
-className={`inline-block text-white text-[10px] font-bold rounded-full px-2.5 py-1 no-underline whitespace-nowrap ${inspeccionadaEstaSemana ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`}
+className={`inline-block text-white text-[10px] font-bold rounded-full px-2.5 py-1 no-underline whitespace-nowrap ${revisadaEstaSemana ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`}
 >
 Realizar Check List
 </Link>
+</td>
+<td className="px-2 py-1.5 text-[11px] whitespace-nowrap text-[var(--gray-400)]">
+{info ? new Date(info.fechaHora).toLocaleDateString("es-MX", { weekday: "short", day: "2-digit", month: "short" }) : "—"}
 </td>
 <td className="px-2 py-1.5 min-w-[160px]">
 <input
@@ -1365,7 +1394,7 @@ className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-ful
 })}
 </tbody>
 </table>
-{unidadesRegistradas.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12px] py-4">Sin unidades registradas.</p>}
+{unidadesRevisionFiltradas.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12px] py-4">Sin unidades para mostrar.</p>}
 </div>
 <div className="shrink-0 pt-2.5 mt-1 border-t border-[var(--gray-100)] flex flex-wrap items-center gap-2">
 <button

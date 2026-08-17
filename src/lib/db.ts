@@ -110,6 +110,20 @@ await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS categoria TEXT
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS urgente BOOLEAN NOT NULL DEFAULT false;`);
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS orden DOUBLE PRECISION NOT NULL DEFAULT 0;`);
 await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS ancho TEXT NOT NULL DEFAULT 'full';`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS archivada BOOLEAN NOT NULL DEFAULT false;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS gantt_actividades (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+fecha_inicio TEXT,
+fecha_fin TEXT,
+responsable TEXT,
+color TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS cambios_aceite (
@@ -203,6 +217,8 @@ orden DOUBLE PRECISION NOT NULL DEFAULT 0,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS evidencias JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS reportado_por TEXT;`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS revision_semanal_comentarios (

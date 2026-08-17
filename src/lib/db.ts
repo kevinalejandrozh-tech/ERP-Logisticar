@@ -179,4 +179,12 @@ orden DOUBLE PRECISION NOT NULL DEFAULT 0,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS organigrama (
+id SERIAL PRIMARY KEY,
+datos JSONB NOT NULL DEFAULT '{}'::jsonb,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

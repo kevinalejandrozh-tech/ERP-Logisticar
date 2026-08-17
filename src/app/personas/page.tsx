@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import MenuCard from "@/components/MenuCard";
@@ -51,6 +52,10 @@ export default function PersonasPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="8" cy="12" r="2.3" /><path d="M13.5 10.5h6M13.5 13.5h4.5" /></svg>
             Crear credencial
           </button>
+          <Link href="/personas/organigrama" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold no-underline">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="9" y="3" width="6" height="4" rx="1" /><rect x="2" y="14" width="6" height="4" rx="1" /><rect x="16" y="14" width="6" height="4" rx="1" /><path d="M12 7v4M12 11H5v3M12 11h7v3" /></svg>
+            Organigrama
+          </Link>
         </div>
 
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">

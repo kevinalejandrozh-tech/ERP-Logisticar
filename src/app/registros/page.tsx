@@ -15,8 +15,6 @@ porcentaje_llenado: number | null;
 export default function RegistrosPage() {
 const [registros, setRegistros] = useState<Registro[]>([]);
 const [cargando, setCargando] = useState(true);
-const [descargando, setDescargando] = useState(false);
-const [liberando, setLiberando] = useState(false);
 const [mensaje, setMensaje] = useState("");
 const cargar = async () => {
 setCargando(true);
@@ -28,54 +26,6 @@ setCargando(false);
 useEffect(() => {
 cargar();
 }, []);
-const descargar = async () => {
-setDescargando(true);
-setMensaje("");
-try {
-const res = await fetch("/api/checklist/export");
-if (!res.ok) {
-const data = await res.json();
-throw new Error(data.error || "Error al descargar.");
-}
-const blob = await res.blob();
-const url = URL.createObjectURL(blob);
-const a = document.createElement("a");
-a.href = url;
-a.download = `Checklist_Unidades_${new Date()
-.toISOString()
-.slice(0, 10)}.zip`;
-document.body.appendChild(a);
-a.click();
-a.remove();
-URL.revokeObjectURL(url);
-setMensaje("Descarga completa. Guárdala en tu PC antes de liberar espacio.");
-} catch (err: any) {
-setMensaje(err.message);
-} finally {
-setDescargando(false);
-}
-};
-const liberarEspacio = async () => {
-if (
-!confirm(
-"¿Ya guardaste el archivo descargado en tu PC? Esto borrará todos los registros de la nube de forma permanente."
-)
-)
-return;
-setLiberando(true);
-setMensaje("");
-try {
-const res = await fetch("/api/checklist/clear", { method: "POST" });
-const data = await res.json();
-if (!res.ok) throw new Error(data.error);
-setMensaje(`Se liberaron ${data.borrados} registros de la nube.`);
-cargar();
-} catch (err: any) {
-setMensaje(err.message);
-} finally {
-setLiberando(false);
-}
-};
 const eliminarRegistro = async (id: number, eco: string) => {
 if (!confirm(`¿Eliminar el registro de ${eco}? Esta acción no se puede deshacer.`)) return;
 try {
@@ -162,22 +112,6 @@ Folio: {r.folio} · Placas: {r.placas || "—"} · {r.porcentaje_llenado ?? 0}% 
 </div>
 </div>
 {mensaje && <p className="mt-4 text-xs text-[var(--blue)]">{mensaje}</p>}
-<div className="fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--gray-200)] p-4 space-y-2 max-w-[430px] mx-auto">
-<button
-onClick={descargar}
-disabled={descargando || registros.length === 0}
-className="w-full bg-[var(--navy)] disabled:opacity-50 text-white font-display font-bold rounded-lg py-3"
->
-{descargando ? "Generando descarga..." : "Descargar todo (Excel + fotos)"}
-</button>
-<button
-onClick={liberarEspacio}
-disabled={liberando || registros.length === 0}
-className="w-full bg-[var(--red)] disabled:opacity-50 text-white font-display font-bold rounded-lg py-3"
->
-{liberando ? "Liberando..." : "Liberar espacio en la nube"}
-</button>
-</div>
 </div>
 </div>
 );

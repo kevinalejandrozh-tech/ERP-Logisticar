@@ -121,23 +121,41 @@ if (res.ok) setCambiosAceite(data.registros || []);
 setCargandoAceite(false);
 }
 };
-const [ultimoChecklistPorEco, setUltimoChecklistPorEco] = useState<Record<string, number>>({});
+const [ultimoChecklistPorEco, setUltimoChecklistPorEco] = useState<Record<string, { id: number; fechaHora: string }>>({});
 const cargarUltimoChecklist = async () => {
 try {
 const res = await fetch("/api/checklist/reporte-estado", { cache: "no-store" });
 const data = await res.json();
-const mapa: Record<string, number> = {};
+const mapa: Record<string, { id: number; fechaHora: string }> = {};
 (data.registros || []).forEach((r: any) => {
-mapa[r.eco_unidad] = r.id;
+mapa[r.eco_unidad] = { id: r.id, fechaHora: r.fecha_hora };
 });
 setUltimoChecklistPorEco(mapa);
 } catch {
 // se reintenta con el sondeo periódico
 }
 };
+const [comentariosRevision, setComentariosRevision] = useState<Record<string, string>>({});
+const cargarComentariosRevision = async () => {
+try {
+const res = await fetch("/api/revision-semanal/comentarios", { cache: "no-store" });
+const data = await res.json();
+setComentariosRevision(data.comentarios || {});
+} catch {
+// se reintenta con el sondeo periódico
+}
+};
+const guardarComentarioRevision = (eco: string, comentario: string) => {
+setComentariosRevision((prev) => ({ ...prev, [eco]: comentario }));
+fetch("/api/revision-semanal/comentarios", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ eco, comentario }),
+}).catch(() => cargarComentariosRevision());
+};
 useEffect(() => {
 (async () => {
-await Promise.all([cargarOrdenes(), cargarUnidades(), cargarCambiosAceite(), cargarUltimoChecklist()]);
+await Promise.all([cargarOrdenes(), cargarUnidades(), cargarCambiosAceite(), cargarUltimoChecklist(), cargarComentariosRevision()]);
 setCargando(false);
 })();
 }, []);
@@ -148,6 +166,7 @@ cargarOrdenes();
 cargarUnidades();
 cargarCambiosAceite();
 cargarUltimoChecklist();
+cargarComentariosRevision();
 }, 20000);
 return () => clearInterval(id);
 }, []);
@@ -874,6 +893,65 @@ fP.setDate(fP.getDate() + i);
 return { dia, actual: contarEnFecha(fA), anterior: contarEnFecha(fP) };
 });
 }, [ordenes]);
+const porcentajeAvanceSemanal = useMemo(() => {
+if (unidadesRegistradas.length === 0) return 0;
+const d = new Date();
+const dia = d.getDay() || 7;
+const lunesActual = new Date(d);
+lunesActual.setDate(d.getDate() - (dia - 1));
+lunesActual.setHours(0, 0, 0, 0);
+const inspeccionadas = unidadesRegistradas.filter((u) => {
+const info = ultimoChecklistPorEco[u["ECO"]];
+if (!info) return false;
+return new Date(info.fechaHora).getTime() >= lunesActual.getTime();
+}).length;
+return (inspeccionadas / unidadesRegistradas.length) * 100;
+}, [unidadesRegistradas, ultimoChecklistPorEco]);
+// ---- Descargar todo (Excel + fotos) / Liberar espacio (movido desde Registros guardados) ----
+const [descargandoTodo, setDescargandoTodo] = useState(false);
+const [liberandoEspacio, setLiberandoEspacio] = useState(false);
+const [mensajeDescarga, setMensajeDescarga] = useState("");
+const descargarTodoChecklist = async () => {
+setDescargandoTodo(true);
+setMensajeDescarga("");
+try {
+const res = await fetch("/api/checklist/export");
+if (!res.ok) {
+const data = await res.json();
+throw new Error(data.error || "Error al descargar.");
+}
+const blob = await res.blob();
+const url = URL.createObjectURL(blob);
+const a = document.createElement("a");
+a.href = url;
+a.download = `Checklist_Unidades_${new Date().toISOString().slice(0, 10)}.zip`;
+document.body.appendChild(a);
+a.click();
+a.remove();
+URL.revokeObjectURL(url);
+setMensajeDescarga("Descarga completa. Guárdala en tu PC antes de liberar espacio.");
+} catch (err: any) {
+setMensajeDescarga(err.message || "Error al descargar.");
+} finally {
+setDescargandoTodo(false);
+}
+};
+const liberarEspacioNube = async () => {
+if (!confirm("¿Ya guardaste el archivo descargado en tu PC? Esto borrará todos los registros de checklist de la nube de forma permanente.")) return;
+setLiberandoEspacio(true);
+setMensajeDescarga("");
+try {
+const res = await fetch("/api/checklist/clear", { method: "POST" });
+const data = await res.json();
+if (!res.ok) throw new Error(data.error);
+setMensajeDescarga(`Se liberaron ${data.borrados} registros de la nube.`);
+await cargarUltimoChecklist();
+} catch (err: any) {
+setMensajeDescarga(err.message || "Error al liberar espacio.");
+} finally {
+setLiberandoEspacio(false);
+}
+};
 const totalGastos = ordenes.reduce(
 (acc, o) => acc + (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0),
 0
@@ -1212,14 +1290,28 @@ return (
 </div>
 </div>
 
-{/* 3. Revision Preventiva de niveles y unidad */}
+{/* 3. Revision semanal de unidades */}
 <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[460px] flex flex-col">
-<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-3">Revisión Preventiva de niveles y unidad</p>
-<div className="flex-1 overflow-y-auto">
+<div className="flex items-center justify-between gap-2 mb-3">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">REVISION SEMANAL DE UNIDADES</p>
+<div className="flex items-center gap-2 shrink-0">
+<div className="w-[90px] h-[8px] bg-[var(--gray-200)] rounded-full overflow-hidden">
+<div
+className="h-full rounded-full"
+style={{
+width: `${Math.min(100, porcentajeAvanceSemanal)}%`,
+backgroundColor: porcentajeAvanceSemanal > 95 ? "var(--green)" : porcentajeAvanceSemanal >= 50 ? "#14b8a6" : "#c3c9d4",
+}}
+/>
+</div>
+<span className="text-[11px] font-bold text-[var(--navy)] whitespace-nowrap">{porcentajeAvanceSemanal.toFixed(0)}%</span>
+</div>
+</div>
+<div className="flex-1 overflow-y-auto min-h-0">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
-{["ECO", "Marca", "Modelo/Tipo", "Inspección semanal", "Comentarios"].map((c) => (
+{["ECO", "Marca", "Modelo/Tipo", "Inspección semanal", "Comentarios", ""].map((c) => (
 <th key={c} className="text-left text-[9px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
 {c}
 </th>
@@ -1229,20 +1321,37 @@ return (
 <tbody>
 {unidadesRegistradas.map((u) => {
 const eco = u["ECO"];
-const idChecklist = ultimoChecklistPorEco[eco];
+const info = ultimoChecklistPorEco[eco];
+const d = new Date();
+const dia = d.getDay() || 7;
+const lunesActual = new Date(d);
+lunesActual.setDate(d.getDate() - (dia - 1));
+lunesActual.setHours(0, 0, 0, 0);
+const inspeccionadaEstaSemana = !!info && new Date(info.fechaHora).getTime() >= lunesActual.getTime();
 return (
-<tr key={eco} className="border-b border-[var(--gray-200)]">
+<tr key={eco} className="border-b border-[var(--gray-200)]" style={inspeccionadaEstaSemana ? { backgroundColor: "rgba(33,168,102,0.18)" } : undefined}>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{eco}</td>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Marca"] || "—"}</td>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Modelo/Tipo"] || "—"}</td>
 <td className="px-2 py-1.5 whitespace-nowrap">
-<Link href={`/checklist?eco=${encodeURIComponent(eco)}`} className="inline-block bg-[var(--blue)] text-white text-[10px] font-bold rounded-full px-2.5 py-1 no-underline whitespace-nowrap">
+<Link
+href={`/checklist?eco=${encodeURIComponent(eco)}`}
+className={`inline-block text-white text-[10px] font-bold rounded-full px-2.5 py-1 no-underline whitespace-nowrap ${inspeccionadaEstaSemana ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`}
+>
 Realizar Check List
 </Link>
 </td>
+<td className="px-2 py-1.5 min-w-[160px]">
+<input
+defaultValue={comentariosRevision[eco] || ""}
+onBlur={(e) => guardarComentarioRevision(eco, e.target.value)}
+placeholder="Escribe un comentario..."
+className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-full"
+/>
+</td>
 <td className="px-2 py-1.5 whitespace-nowrap text-center">
-{idChecklist ? (
-<Link href={`/checklist?id=${idChecklist}`} className="text-[var(--blue)]" title="Ver último checklist registrado">
+{info ? (
+<Link href={`/checklist?id=${info.id}`} className="text-[var(--blue)]" title="Ver último checklist registrado">
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
 </Link>
 ) : (
@@ -1257,6 +1366,26 @@ Realizar Check List
 </tbody>
 </table>
 {unidadesRegistradas.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12px] py-4">Sin unidades registradas.</p>}
+</div>
+<div className="shrink-0 pt-2.5 mt-1 border-t border-[var(--gray-100)] flex flex-wrap items-center gap-2">
+<button
+type="button"
+onClick={descargarTodoChecklist}
+disabled={descargandoTodo}
+className="text-[10.5px] font-bold text-[var(--gray-400)] hover:text-[var(--navy)] disabled:opacity-60"
+>
+{descargandoTodo ? "Generando..." : "Descargar todo (Excel + fotos)"}
+</button>
+<span className="text-[var(--gray-200)]">|</span>
+<button
+type="button"
+onClick={liberarEspacioNube}
+disabled={liberandoEspacio}
+className="text-[10.5px] font-bold text-[var(--red)] hover:text-[#a12817] disabled:opacity-60"
+>
+{liberandoEspacio ? "Liberando..." : "Liberar espacio en la nube"}
+</button>
+{mensajeDescarga && <span className="text-[10px] text-[var(--blue)] w-full">{mensajeDescarga}</span>}
 </div>
 </div>
 

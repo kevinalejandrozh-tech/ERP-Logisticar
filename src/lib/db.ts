@@ -203,4 +203,13 @@ orden DOUBLE PRECISION NOT NULL DEFAULT 0,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS revision_semanal_comentarios (
+id SERIAL PRIMARY KEY,
+eco TEXT UNIQUE NOT NULL,
+comentario TEXT,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

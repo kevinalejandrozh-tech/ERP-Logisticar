@@ -111,18 +111,6 @@ titulo="Reportes"
 descripcion="Consulta y genera reportes clave del sistema."
 />
 </div>
-<Link
-href="/registros"
-className="mt-4 border border-[var(--gray-200)] rounded-xl px-5 py-4 flex items-center gap-3.5 no-underline"
->
-<div className="w-10 h-10 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
-<svg width="18" height="18" viewBox="0 0 24 24" {...sw}><path d="M7 18a4.5 4.5 0 01-1-8.9A5 5 0 0116 8a4 4 0 011 7.9" /><path d="M12 12v8M9 17l3 3 3-3" /></svg>
-</div>
-<div>
-<h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-0.5">Ver / Descargar registros</h3>
-<p className="text-[12.5px] text-[var(--gray-400)] m-0">Accede y descarga registros y reportes del sistema.</p>
-</div>
-</Link>
 </div>
 <PageFooter />
 </div>

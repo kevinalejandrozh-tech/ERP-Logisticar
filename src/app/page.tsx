@@ -88,12 +88,6 @@ titulo="Logis SCANNER"
 descripcion="Escanea documentos y expórtalos a PDF con calidad profesional."
 />
 <MenuCard
-href="/checklist"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="9" y="2" width="6" height="4" rx="1" /><path d="M9 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3" /><path d="M9 12h6M9 16h6" /></svg>}
-titulo="Check list de unidades"
-descripcion="Revisa y valida el estado operativo de las unidades."
-/>
-<MenuCard
 href="/unidades"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
 titulo="Unidades"

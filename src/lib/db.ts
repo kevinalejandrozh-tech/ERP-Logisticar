@@ -187,4 +187,20 @@ datos JSONB NOT NULL DEFAULT '{}'::jsonb,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS historial_mantenimientos (
+id SERIAL PRIMARY KEY,
+estado TEXT,
+folio TEXT,
+eco_unidad TEXT,
+unidad TEXT,
+tipo_mantenimiento TEXT,
+reporte_falla TEXT,
+fecha_ingreso_taller TEXT,
+costo NUMERIC,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

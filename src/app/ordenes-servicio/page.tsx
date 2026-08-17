@@ -121,9 +121,23 @@ if (res.ok) setCambiosAceite(data.registros || []);
 setCargandoAceite(false);
 }
 };
+const [ultimoChecklistPorEco, setUltimoChecklistPorEco] = useState<Record<string, number>>({});
+const cargarUltimoChecklist = async () => {
+try {
+const res = await fetch("/api/checklist/reporte-estado", { cache: "no-store" });
+const data = await res.json();
+const mapa: Record<string, number> = {};
+(data.registros || []).forEach((r: any) => {
+mapa[r.eco_unidad] = r.id;
+});
+setUltimoChecklistPorEco(mapa);
+} catch {
+// se reintenta con el sondeo periódico
+}
+};
 useEffect(() => {
 (async () => {
-await Promise.all([cargarOrdenes(), cargarUnidades(), cargarCambiosAceite()]);
+await Promise.all([cargarOrdenes(), cargarUnidades(), cargarCambiosAceite(), cargarUltimoChecklist()]);
 setCargando(false);
 })();
 }, []);
@@ -133,6 +147,7 @@ const id = setInterval(() => {
 cargarOrdenes();
 cargarUnidades();
 cargarCambiosAceite();
+cargarUltimoChecklist();
 }, 20000);
 return () => clearInterval(id);
 }, []);
@@ -758,7 +773,7 @@ body: JSON.stringify({ folio, [campo]: valor }),
 }).catch(() => cargarOrdenes());
 };
 const [filtroEstadoUnidades, setFiltroEstadoUnidades] = useState<EstadoOrden | "">("");
-const [filtroMiniAceite, setFiltroMiniAceite] = useState<"urgentes" | "siguiente" | null>(null);
+const [filtroMiniAceite, setFiltroMiniAceite] = useState<"urgentes" | "siguiente" | "todos" | null>(null);
 const [busquedaHistorialUnidad, setBusquedaHistorialUnidad] = useState("");
 const [unidadHistorialSeleccionada, setUnidadHistorialSeleccionada] = useState<string | null>(null);
 const sugerenciasHistorialUnidad = useMemo(() => {
@@ -769,8 +784,62 @@ return unidadesRegistradas.map((u) => u["ECO"]).filter((eco) => eco.toLowerCase(
 const miniAceiteFiltrado = useMemo(() => {
 if (filtroMiniAceite === "urgentes") return cambiosAceite.filter((c) => calcularAceite(c).etiqueta === "Urgente");
 if (filtroMiniAceite === "siguiente") return cambiosAceite.filter((c) => calcularAceite(c).etiqueta === "Se programa para la siguiente semana");
+if (filtroMiniAceite === "todos") {
+return [...cambiosAceite].sort((a, b) => {
+const pa = calcularAceite(a).porcentaje ?? -1;
+const pb = calcularAceite(b).porcentaje ?? -1;
+return pb - pa;
+});
+}
 return cambiosAceite;
 }, [cambiosAceite, filtroMiniAceite]);
+// ---- Checkbox de check rapido en Cambios de aceite (mini tabla) ----
+const [aceiteCheckAbierto, setAceiteCheckAbierto] = useState<CambioAceite | null>(null);
+const [aceiteCheckKm, setAceiteCheckKm] = useState("");
+const [guardandoAceiteCheck, setGuardandoAceiteCheck] = useState(false);
+const iniciarCheckAceite = (c: CambioAceite) => {
+const clave = prompt("Ingresa la contraseña para registrar el cambio de aceite:");
+if (clave === null) return;
+if (clave !== "4321") {
+alert("Contraseña incorrecta.");
+return;
+}
+setAceiteCheckKm("");
+setAceiteCheckAbierto(c);
+};
+const confirmarCheckAceite = async () => {
+if (!aceiteCheckAbierto || !aceiteCheckKm.trim()) {
+alert("Captura el kilometraje del cambio.");
+return;
+}
+setGuardandoAceiteCheck(true);
+const hoy = new Date().toISOString().slice(0, 10);
+try {
+const res = await fetch("/api/cambios-aceite/update", {
+method: "POST",
+headers: { "Content-Type": "application/json" },
+body: JSON.stringify({ id: aceiteCheckAbierto.id, kmUltimoCambio: aceiteCheckKm.trim(), kmActual: aceiteCheckKm.trim(), fechaUltimoCambio: hoy }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error || "Error al guardar.");
+await cargarCambiosAceite();
+setAceiteCheckAbierto(null);
+} catch (err: any) {
+alert(err.message || "No se pudo guardar el cambio de aceite.");
+} finally {
+setGuardandoAceiteCheck(false);
+}
+};
+// ---- Filtro por ECO para el dashboard "Ordenes de Servicio" ----
+const [filtroEcoOrdenes, setFiltroEcoOrdenes] = useState("");
+const gastosEcoFiltrado = useMemo(() => {
+if (!filtroEcoOrdenes) return [];
+return ordenes
+.filter((o) => o.ecoUnidad === filtroEcoOrdenes)
+.map((o) => ({ folio: o.folio, fecha: o.fechaIngreso || o.fechaCierre || "", costo: (o.requisicion || []).reduce((s, it) => s + (parseFloat(it.costo) || 0), 0) }))
+.filter((g) => g.costo > 0)
+.sort((a, b) => (a.fecha || "").localeCompare(b.fecha || ""));
+}, [ordenes, filtroEcoOrdenes]);
 const ordenesFiltradas = filtroEstadoUnidades ? ordenes.filter((o) => o.estado === filtroEstadoUnidades) : ordenes;
 // ---- Grafica de costos de reparacion por ECO. Unidad ----
 const costosPorEco = useMemo(() => {
@@ -912,6 +981,10 @@ Autorizaciones pendientes
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
 Inventario
 </Link>
+<Link href="/ordenes-servicio/historial-mantenimientos" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-3 text-[13px] font-bold no-underline">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+Historial de mantenimientos
+</Link>
 <button
 type="button"
 onClick={abrirImprimir}
@@ -941,9 +1014,30 @@ Ocultar
 
 {seccionActiva === "reportes" && (
 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3.5 md:gap-5 mb-6">
-{/* 1. Total de unidades en mantenimiento */}
+{/* 1. Ordenes de Servicio */}
 <div className="bg-white rounded-2xl border border-[var(--gray-200)] px-4 sm:px-6 py-4 sm:py-5 shadow-[0_1px_2px_rgba(22,33,92,0.04)] h-[460px] flex flex-col">
-<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1.5">Total de unidades en mantenimiento</p>
+<div className="flex items-center justify-between gap-2 mb-1.5">
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Órdenes de Servicio</p>
+<div className="flex items-center gap-1.5">
+<input
+list="dl-eco-filtro-ordenes"
+value={filtroEcoOrdenes}
+onChange={(e) => setFiltroEcoOrdenes(e.target.value)}
+placeholder="Buscar ECO..."
+className="border border-[var(--gray-200)] rounded-md px-2 py-1 text-[11px] w-[110px]"
+/>
+<datalist id="dl-eco-filtro-ordenes">
+{unidadesRegistradas.map((u) => (
+<option key={u["ECO"]} value={u["ECO"]} />
+))}
+</datalist>
+{filtroEcoOrdenes && (
+<span onClick={() => setFiltroEcoOrdenes("")} className="text-[10.5px] text-[var(--red)] font-semibold cursor-pointer whitespace-nowrap">
+Borrar filtro
+</span>
+)}
+</div>
+</div>
 <p className="text-[24px] md:text-[28px] font-bold text-[var(--navy)] m-0 mb-3">{totalUnidadesEnMantenimiento}</p>
 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
 <div className="text-center bg-[var(--gray-100)] rounded-lg py-2 px-1">
@@ -968,6 +1062,49 @@ Ocultar
 <p className="text-[19px] font-bold text-[var(--navy)] m-0">${totalGastos.toFixed(2)}</p>
 </div>
 <div className="flex-1 min-h-0">
+{filtroEcoOrdenes ? (
+<>
+<p className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1">Gastos de {filtroEcoOrdenes} (todas las fechas)</p>
+{gastosEcoFiltrado.length === 0 ? (
+<p className="text-center text-[var(--gray-400)] text-[12px] py-8">Sin gastos registrados para esta unidad.</p>
+) : (
+<svg viewBox="0 0 480 170" className="w-full h-full">
+<line x1={25} y1={125} x2={465} y2={125} stroke="#e5e8ee" strokeWidth={1} />
+{(() => {
+const maxVal = Math.max(1, ...gastosEcoFiltrado.map((g) => g.costo));
+const puntos = gastosEcoFiltrado
+.map((g, i) => {
+const x = gastosEcoFiltrado.length > 1 ? 25 + i * ((465 - 25) / (gastosEcoFiltrado.length - 1)) : 245;
+const y = 125 - (g.costo / maxVal) * 90;
+return `${x},${y}`;
+})
+.join(" ");
+return (
+<>
+<polyline points={puntos} fill="none" stroke="#2f6fed" strokeWidth={2.4} />
+{gastosEcoFiltrado.map((g, i) => {
+const x = gastosEcoFiltrado.length > 1 ? 25 + i * ((465 - 25) / (gastosEcoFiltrado.length - 1)) : 245;
+const y = 125 - (g.costo / maxVal) * 90;
+return (
+<g key={g.folio + i}>
+<circle cx={x} cy={y} r={3.4} fill="#2f6fed" />
+<text x={x} y={y - 8} fontSize={9} textAnchor="middle" fill="#16215c" fontWeight="bold">
+${g.costo.toFixed(0)}
+</text>
+<text x={x} y={142} fontSize={8.5} textAnchor="middle" fill="#9aa1b0">
+{g.fecha ? new Date(g.fecha).toLocaleDateString("es-MX", { day: "2-digit", month: "short" }) : "—"}
+</text>
+</g>
+);
+})}
+</>
+);
+})()}
+</svg>
+)}
+</>
+) : (
+<>
 <p className="text-[10.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1">Unidades ingresadas por día</p>
 <svg viewBox="0 0 480 170" className="w-full h-full">
 <line x1={25} y1={125} x2={465} y2={125} stroke="#e5e8ee" strokeWidth={1} />
@@ -1007,6 +1144,8 @@ return (
 <span className="flex items-center gap-1 text-[10px] text-[var(--navy)] font-semibold"><span className="w-3 h-[2.5px] bg-[var(--blue)] inline-block rounded" /> Semana en curso</span>
 <span className="flex items-center gap-1 text-[10px] text-[var(--gray-400)] font-semibold"><span className="w-3 h-[2.5px] bg-[#c3c9d4] inline-block rounded" /> Semana anterior</span>
 </div>
+</>
+)}
 </div>
 </div>
 
@@ -1029,13 +1168,20 @@ className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full ${filtroMiniAceite 
 >
 Próximo
 </button>
+<button
+type="button"
+onClick={() => setFiltroMiniAceite((p) => (p === "todos" ? null : "todos"))}
+className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full ${filtroMiniAceite === "todos" ? "bg-[var(--navy)] text-white" : "bg-[var(--gray-100)] text-[var(--navy)]"}`}
+>
+Todos
+</button>
 </div>
 </div>
 <div className="flex-1 overflow-y-auto">
 <table className="border-collapse min-w-max w-full">
 <thead>
 <tr>
-{["ECO", "Unidad", "KM próximo", "%"].map((c) => (
+{["✔", "ECO", "Unidad", "KM próximo", "%"].map((c) => (
 <th key={c} className="text-left text-[9px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
 {c}
 </th>
@@ -1048,6 +1194,9 @@ const { kmSiguiente, porcentaje } = calcularAceite(c);
 const colorBarra = porcentaje === null ? "#9aa1b0" : porcentaje > 85 ? "var(--red)" : porcentaje >= 70 ? "var(--amber)" : "var(--green)";
 return (
 <tr key={c.id} className="border-b border-[var(--gray-200)]">
+<td className="px-2 py-1.5 whitespace-nowrap">
+<input type="checkbox" checked={c.servicioRealizado} onChange={() => !c.servicioRealizado && iniciarCheckAceite(c)} className="w-3.5 h-3.5 accent-[var(--green)] cursor-pointer" title="Registrar cambio de aceite" />
+</td>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{c.eco}</td>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{c.unidad}</td>
 <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{kmSiguiente ?? "—"}</td>
@@ -1063,47 +1212,52 @@ return (
 </div>
 </div>
 
-{/* 3. Grafica de costos de reparacion (barras horizontales estilo dashboard) */}
+{/* 3. Revision Preventiva de niveles y unidad */}
 <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 h-[460px] flex flex-col">
-<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-4">Gráfica de costos de reparación</p>
-{costosPorEco.length === 0 ? (
-<p className="text-center text-[var(--gray-400)] text-[12.5px] py-8">Sin gastos registrados aún.</p>
+<p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-3">Revisión Preventiva de niveles y unidad</p>
+<div className="flex-1 overflow-y-auto">
+<table className="border-collapse min-w-max w-full">
+<thead>
+<tr>
+{["ECO", "Marca", "Modelo/Tipo", "Inspección semanal", "Comentarios"].map((c) => (
+<th key={c} className="text-left text-[9px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
+{c}
+</th>
+))}
+</tr>
+</thead>
+<tbody>
+{unidadesRegistradas.map((u) => {
+const eco = u["ECO"];
+const idChecklist = ultimoChecklistPorEco[eco];
+return (
+<tr key={eco} className="border-b border-[var(--gray-200)]">
+<td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{eco}</td>
+<td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Marca"] || "—"}</td>
+<td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Modelo/Tipo"] || "—"}</td>
+<td className="px-2 py-1.5 whitespace-nowrap">
+<Link href={`/checklist?eco=${encodeURIComponent(eco)}`} className="inline-block bg-[var(--blue)] text-white text-[10px] font-bold rounded-full px-2.5 py-1 no-underline whitespace-nowrap">
+Realizar Check List
+</Link>
+</td>
+<td className="px-2 py-1.5 whitespace-nowrap text-center">
+{idChecklist ? (
+<Link href={`/checklist?id=${idChecklist}`} className="text-[var(--blue)]" title="Ver último checklist registrado">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
+</Link>
 ) : (
-(() => {
-const maxCosto = Math.max(...costosPorEco.map(([, c]) => c));
-const AZUL_CLARO = [142, 205, 245];
-const AZUL_NAVY = [22, 33, 92];
-const n = costosPorEco.length;
-return (
-<div className="flex-1 overflow-y-auto flex flex-col justify-center gap-3.5 pr-1">
-{costosPorEco.map(([eco, costo], i) => {
-const t = n > 1 ? i / (n - 1) : 0;
-const rgb = AZUL_NAVY.map((v, k) => Math.round(v + (AZUL_CLARO[k] - v) * t));
-const color = `rgb(${rgb.join(",")})`;
-const pct = Math.max(12, (costo / maxCosto) * 100);
-return (
-<div key={eco} className="flex items-center gap-2.5">
-<span className="text-white text-[11px] font-bold rounded-md px-2.5 py-1.5 w-[62px] text-center shrink-0" style={{ backgroundColor: color }}>
-{eco}
+<span className="text-[var(--gray-400)]" title="Sin checklist registrado">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
 </span>
-<div className="flex-1 bg-[var(--gray-100)] rounded-md h-[24px] relative">
-<div
-className="h-full"
-style={{
-width: `${pct}%`,
-backgroundColor: color,
-clipPath: "polygon(0 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 0 100%)",
-}}
-/>
-</div>
-<span className="text-[11.5px] font-bold text-[var(--navy)] w-[70px] shrink-0 text-right">${costo.toFixed(0)}</span>
-</div>
+)}
+</td>
+</tr>
 );
 })}
+</tbody>
+</table>
+{unidadesRegistradas.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12px] py-4">Sin unidades registradas.</p>}
 </div>
-);
-})()
-)}
 </div>
 
 {/* 4. Historial de mantenimientos por unidad */}
@@ -1840,6 +1994,35 @@ Salir
 </button>
 <button type="button" onClick={guardarCierre} disabled={guardandoCierre} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
 {guardandoCierre ? "Guardando..." : "Guardar"}
+</button>
+</div>
+</div>
+</div>
+)}
+
+{/* Check rapido de cambio de aceite (mini tabla del dashboard) */}
+{aceiteCheckAbierto && (
+<div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+<div className="bg-white rounded-2xl w-[380px] max-w-[92%] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<h3 className="text-[16px] font-bold text-[var(--navy)] mb-1">Registrar cambio de aceite</h3>
+<p className="text-[12.5px] text-[var(--gray-400)] mb-4">
+{aceiteCheckAbierto.eco} — {aceiteCheckAbierto.unidad}
+</p>
+<label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Kilometraje con el que se realizó el cambio</label>
+<input
+type="number"
+autoFocus
+value={aceiteCheckKm}
+onChange={(e) => setAceiteCheckKm(e.target.value)}
+placeholder="0"
+className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px] mb-6"
+/>
+<div className="flex gap-2.5 justify-end">
+<button type="button" onClick={() => setAceiteCheckAbierto(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+Cancelar
+</button>
+<button type="button" onClick={confirmarCheckAceite} disabled={guardandoAceiteCheck} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+{guardandoAceiteCheck ? "Guardando..." : "Guardar"}
 </button>
 </div>
 </div>

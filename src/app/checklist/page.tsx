@@ -128,7 +128,11 @@ comentario,
 useEffect(() => {
 const params = new URLSearchParams(window.location.search);
 const id = params.get("id");
-if (!id) return;
+if (!id) {
+const eco = params.get("eco");
+if (eco && UNIDADES.some((u) => u.eco === eco)) setEcoUnidad(eco);
+return;
+}
 setCargandoVista(true);
 fetch(`/api/checklist/get?id=${id}`)
 .then((res) => res.json())

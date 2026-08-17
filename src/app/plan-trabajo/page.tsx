@@ -18,7 +18,18 @@ type Tarea = {
   urgente: boolean;
   orden: number;
   ancho: "full" | "mitad";
+  archivada: boolean;
 };
+type Actividad = {
+  id: number;
+  nombre: string;
+  fechaInicio: string;
+  fechaFin: string;
+  responsable: string;
+  color: string;
+  orden: number;
+};
+const COLORES_GANTT = ["#2f6fed", "#8b5cf6", "#21a866", "#f2b134", "#e2412c", "#16215c", "#0ea5a5", "#ec4899"];
 const COLUMNAS: { key: string; titulo: string }[] = [
   { key: "lista", titulo: "Lista de tareas" },
   { key: "proceso", titulo: "En proceso" },
@@ -35,6 +46,7 @@ function formatearFecha(f: string) {
 }
 
 export default function PlanTrabajoPage() {
+  const [vistaActiva, setVistaActiva] = useState<"kanban" | "gantt">("kanban");
   const [tareas, setTareas] = useState<Tarea[]>([]);
   const [cargando, setCargando] = useState(true);
   const [formAbierto, setFormAbierto] = useState(false);
@@ -280,6 +292,166 @@ export default function PlanTrabajoPage() {
     }
   };
 
+  // ---- Papelera (archivar tareas sin borrarlas) ----
+  const [papeleraAbierta, setPapeleraAbierta] = useState(false);
+  const [sobrePapelera, setSobrePapelera] = useState(false);
+  const tareasArchivadas = useMemo(() => tareas.filter((t) => t.archivada), [tareas]);
+
+  const archivarTarea = async (id: number) => {
+    setTareas((prev) => prev.map((t) => (t.id === id ? { ...t, archivada: true } : t)));
+    setArrastrandoId(null);
+    setSobrePapelera(false);
+    try {
+      await fetch("/api/tareas/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, archivada: true }),
+      });
+    } catch {
+      await cargar();
+    }
+  };
+  const restaurarTarea = async (id: number) => {
+    setTareas((prev) => prev.map((t) => (t.id === id ? { ...t, archivada: false } : t)));
+    try {
+      await fetch("/api/tareas/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, archivada: false }),
+      });
+    } catch {
+      await cargar();
+    }
+  };
+  const vaciarPapelera = async () => {
+    if (tareasArchivadas.length === 0) return;
+    if (!confirm(`¿Eliminar definitivamente ${tareasArchivadas.length} etiqueta(s) de la papelera? Esta acción no se puede deshacer.`)) return;
+    const ids = tareasArchivadas.map((t) => t.id);
+    setTareas((prev) => prev.filter((t) => !t.archivada));
+    try {
+      await Promise.all(ids.map((id) => fetch("/api/tareas/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) })));
+    } catch {
+      await cargar();
+    }
+  };
+
+  // ---- Gantt ----
+  const [actividades, setActividades] = useState<Actividad[]>([]);
+  const [cargandoGantt, setCargandoGantt] = useState(true);
+  const [ganttFormAbierto, setGanttFormAbierto] = useState(false);
+  const [ganttEditandoId, setGanttEditandoId] = useState<number | null>(null);
+  const [gNombre, setGNombre] = useState("");
+  const [gInicio, setGInicio] = useState("");
+  const [gFin, setGFin] = useState("");
+  const [gResponsable, setGResponsable] = useState("");
+  const [gColor, setGColor] = useState(COLORES_GANTT[0]);
+  const [guardandoGantt, setGuardandoGantt] = useState(false);
+
+  const cargarGantt = async () => {
+    try {
+      const res = await fetch("/api/gantt/list", { cache: "no-store" });
+      const data = await res.json();
+      setActividades(data.registros || []);
+    } catch {
+      // se reintenta con el sondeo periodico
+    } finally {
+      setCargandoGantt(false);
+    }
+  };
+  useEffect(() => {
+    cargarGantt();
+    const id = setInterval(cargarGantt, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const abrirNuevaActividad = () => {
+    setGanttEditandoId(null);
+    setGNombre("");
+    setGInicio("");
+    setGFin("");
+    setGResponsable("");
+    setGColor(COLORES_GANTT[actividades.length % COLORES_GANTT.length]);
+    setGanttFormAbierto(true);
+  };
+  const abrirEditarActividad = (a: Actividad) => {
+    setGanttEditandoId(a.id);
+    setGNombre(a.nombre);
+    setGInicio(a.fechaInicio);
+    setGFin(a.fechaFin);
+    setGResponsable(a.responsable);
+    setGColor(a.color);
+    setGanttFormAbierto(true);
+  };
+  const guardarActividad = async () => {
+    if (!gNombre.trim() || !gInicio || !gFin) {
+      alert("Captura el nombre, fecha de inicio y fecha fin.");
+      return;
+    }
+    if (gFin < gInicio) {
+      alert("La fecha fin no puede ser anterior a la fecha de inicio.");
+      return;
+    }
+    setGuardandoGantt(true);
+    try {
+      if (ganttEditandoId !== null) {
+        await fetch("/api/gantt/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: ganttEditandoId, nombre: gNombre.trim(), fechaInicio: gInicio, fechaFin: gFin, responsable: gResponsable.trim(), color: gColor }),
+        });
+      } else {
+        await fetch("/api/gantt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre: gNombre.trim(), fechaInicio: gInicio, fechaFin: gFin, responsable: gResponsable.trim(), color: gColor }),
+        });
+      }
+      setGanttFormAbierto(false);
+      await cargarGantt();
+    } catch {
+      alert("No se pudo guardar la actividad.");
+    } finally {
+      setGuardandoGantt(false);
+    }
+  };
+  const eliminarActividad = async (id: number) => {
+    if (!confirm("¿Eliminar esta actividad del cronograma?")) return;
+    setActividades((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await fetch("/api/gantt/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      await cargarGantt();
+    }
+  };
+
+  const diasGantt = useMemo(() => {
+    let inicio: Date, fin: Date;
+    const conFechas = actividades.filter((a) => a.fechaInicio && a.fechaFin);
+    if (conFechas.length === 0) {
+      const hoy = new Date();
+      inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    } else {
+      const tiempos = conFechas.flatMap((a) => [new Date(`${a.fechaInicio}T00:00:00`).getTime(), new Date(`${a.fechaFin}T00:00:00`).getTime()]);
+      inicio = new Date(Math.min(...tiempos));
+      fin = new Date(Math.max(...tiempos));
+      inicio.setDate(inicio.getDate() - 1);
+      fin.setDate(fin.getDate() + 1);
+    }
+    const arr: Date[] = [];
+    const cursor = new Date(inicio);
+    while (cursor <= fin) {
+      arr.push(new Date(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    return arr;
+  }, [actividades]);
+  const claveDia = (d: Date) => d.toISOString().slice(0, 10);
+
   // ---- Filtros ----
   const [filtroResponsable, setFiltroResponsable] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
@@ -316,13 +488,34 @@ export default function PlanTrabajoPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>}
         />
 
+        <div className="flex flex-wrap gap-2.5 md:gap-3 mb-4">
+          <button
+            type="button"
+            onClick={() => setVistaActiva("kanban")}
+            className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${vistaActiva === "kanban" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}
+          >
+            KANBAN
+          </button>
+          <button
+            type="button"
+            onClick={() => setVistaActiva("gantt")}
+            className={`text-[13px] font-bold px-5 py-2.5 rounded-lg ${vistaActiva === "gantt" ? "bg-[var(--navy)] text-white" : "bg-white border border-[var(--gray-200)] text-[var(--navy)]"}`}
+          >
+            CRONOGRAMA GANTT
+          </button>
+        </div>
+
+        {vistaActiva === "kanban" && (
         <div className="flex flex-wrap gap-2.5 md:gap-3 mb-5">
           <button type="button" onClick={abrirForm} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
             Nueva tarea
           </button>
         </div>
+        )}
 
+        {vistaActiva === "kanban" && (
+        <>
         {/* Badges de resumen */}
         <div className="flex flex-wrap gap-3 mb-5">
           <div className="bg-white rounded-2xl border border-[var(--gray-200)] px-6 py-4">
@@ -385,7 +578,7 @@ export default function PlanTrabajoPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
             {COLUMNAS.map((col) => {
-              const tareasCol = tareasFiltradas.filter((t) => t.estado === col.key).sort((a, b) => a.orden - b.orden);
+              const tareasCol = tareasFiltradas.filter((t) => t.estado === col.key && !t.archivada).sort((a, b) => a.orden - b.orden);
               return (
                 <div
                   key={col.key}
@@ -497,6 +690,97 @@ export default function PlanTrabajoPage() {
           </div>
         )}
 
+        {/* Bote de basura discreto: arrastra una etiqueta aquí para quitarla del tablero sin borrarla */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setSobrePapelera(true);
+          }}
+          onDragLeave={() => setSobrePapelera(false)}
+          onDrop={() => arrastrandoId !== null && archivarTarea(arrastrandoId)}
+          onClick={() => setPapeleraAbierta(true)}
+          title="Arrastra una etiqueta aquí para quitarla del tablero · clic para ver la papelera"
+          className={`fixed bottom-6 right-6 w-12 h-12 rounded-full shadow-lg flex items-center justify-center cursor-pointer transition-colors z-40 ${
+            sobrePapelera ? "bg-[var(--red)]" : "bg-[var(--navy)]"
+          }`}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+          {tareasArchivadas.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-[var(--red)] text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">{tareasArchivadas.length}</span>
+          )}
+        </div>
+        </>
+        )}
+
+        {vistaActiva === "gantt" && (
+        <div>
+          <div className="flex flex-wrap gap-2.5 mb-5">
+            <button type="button" onClick={abrirNuevaActividad} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+              + Agregar actividad
+            </button>
+          </div>
+          <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            {cargandoGantt ? (
+              <p className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Cargando cronograma...</p>
+            ) : actividades.length === 0 ? (
+              <p className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Sin actividades. Usa &quot;+ Agregar actividad&quot; para comenzar.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <div style={{ minWidth: 200 + diasGantt.length * 30 }}>
+                  <div className="flex sticky top-0 z-10">
+                    <div className="w-[200px] shrink-0 bg-[var(--navy)] text-white text-[10px] font-bold flex items-center px-3 py-2.5 rounded-tl-lg">
+                      Actividad / Responsable
+                    </div>
+                    {diasGantt.map((d, i) => (
+                      <div
+                        key={i}
+                        className="w-[30px] shrink-0 text-center text-[9px] font-bold text-white bg-[var(--navy)] border-l border-white/15 py-1"
+                      >
+                        <div className="opacity-70 text-[7.5px] leading-tight">{d.toLocaleDateString("es-MX", { weekday: "short" }).slice(0, 2)}</div>
+                        <div>{d.getDate()}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {actividades.map((a) => {
+                    const idxInicio = diasGantt.findIndex((d) => claveDia(d) === a.fechaInicio);
+                    const idxFin = diasGantt.findIndex((d) => claveDia(d) === a.fechaFin);
+                    return (
+                      <div key={a.id} className="flex items-center border-b border-[var(--gray-200)] group">
+                        <div className="w-[200px] shrink-0 px-3 py-2.5">
+                          <p className="text-[11.5px] font-bold text-[var(--navy)] m-0 truncate">{a.nombre}</p>
+                          <div className="flex items-center justify-between gap-1">
+                            <p className="text-[10px] text-[var(--gray-400)] m-0 truncate">{a.responsable || "—"}</p>
+                            <div className="hidden group-hover:flex gap-1.5 shrink-0">
+                              <span onClick={() => abrirEditarActividad(a)} className="text-[var(--gray-400)] cursor-pointer" title="Editar">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                              </span>
+                              <span onClick={() => eliminarActividad(a.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar">
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="relative h-9" style={{ width: diasGantt.length * 30 }}>
+                          {idxInicio >= 0 && idxFin >= 0 && (
+                            <div
+                              onClick={() => abrirEditarActividad(a)}
+                              className="absolute h-5 top-2 rounded-full cursor-pointer flex items-center px-2"
+                              style={{ left: idxInicio * 30 + 2, width: (idxFin - idxInicio + 1) * 30 - 4, backgroundColor: a.color }}
+                              title={`${a.nombre} · ${formatearFecha(a.fechaInicio)} - ${formatearFecha(a.fechaFin)}`}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        )}
+
         <PageFooter />
       </div>
 
@@ -593,6 +877,93 @@ export default function PlanTrabajoPage() {
               </button>
               <button type="button" onClick={guardarAvance} disabled={guardandoAvance || !nuevoAvance.trim()} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
                 {guardandoAvance ? "Guardando..." : "Agregar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ganttFormAbierto && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">{ganttEditandoId !== null ? "Editar actividad" : "Nueva actividad"}</h3>
+            <div className="mb-4">
+              <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Actividad</label>
+              <input value={gNombre} onChange={(e) => setGNombre(e.target.value)} placeholder="Nombre de la actividad" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Fecha inicio</label>
+                <input type="date" value={gInicio} onChange={(e) => setGInicio(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+              </div>
+              <div>
+                <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Fecha fin</label>
+                <input type="date" value={gFin} onChange={(e) => setGFin(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+              </div>
+            </div>
+            <div className="mb-4">
+              <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Responsable</label>
+              <input value={gResponsable} onChange={(e) => setGResponsable(e.target.value)} placeholder="Nombre del responsable" className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]" />
+            </div>
+            <div className="mb-6">
+              <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-2">Color</label>
+              <div className="flex flex-wrap gap-2">
+                {COLORES_GANTT.map((c) => (
+                  <span
+                    key={c}
+                    onClick={() => setGColor(c)}
+                    className={`w-7 h-7 rounded-full cursor-pointer ${gColor === c ? "ring-2 ring-offset-2 ring-[var(--navy)]" : ""}`}
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2.5 justify-end">
+              <button type="button" onClick={() => setGanttFormAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cancelar
+              </button>
+              <button type="button" onClick={guardarActividad} disabled={guardandoGantt} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                {guardandoGantt ? "Guardando..." : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {papeleraAbierta && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[440px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[17px] font-bold text-[var(--navy)] m-0">Papelera</h3>
+              <span onClick={() => setPapeleraAbierta(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">
+                ✕
+              </span>
+            </div>
+            {tareasArchivadas.length === 0 ? (
+              <p className="text-[13px] text-[var(--gray-400)] mb-2">La papelera está vacía.</p>
+            ) : (
+              <div className="flex flex-col gap-2.5 mb-5">
+                {tareasArchivadas.map((t) => (
+                  <div key={t.id} className="border border-[var(--gray-200)] rounded-lg px-3 py-2.5 flex items-center justify-between gap-2">
+                    <p className="text-[12.5px] text-[var(--navy)] m-0 truncate">{t.tarea}</p>
+                    <button type="button" onClick={() => restaurarTarea(t.id)} className="text-[11px] font-bold text-[var(--blue)] whitespace-nowrap shrink-0">
+                      Restaurar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2.5 justify-end">
+              <button type="button" onClick={() => setPapeleraAbierta(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={vaciarPapelera}
+                disabled={tareasArchivadas.length === 0}
+                className="bg-[var(--red)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold"
+              >
+                Vaciar papelera
               </button>
             </div>
           </div>

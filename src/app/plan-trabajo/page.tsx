@@ -28,6 +28,16 @@ type Actividad = {
   responsable: string;
   color: string;
   orden: number;
+  avance: number;
+};
+type CostoItem = {
+  id: number;
+  actividadId: number;
+  cantidad: string;
+  unidad: string;
+  descripcion: string;
+  subTotal: string;
+  proveedor: string;
 };
 const COLORES_GANTT = ["#2f6fed", "#8b5cf6", "#21a866", "#f2b134", "#e2412c", "#16215c", "#0ea5a5", "#ec4899"];
 const COLUMNAS: { key: string; titulo: string }[] = [
@@ -427,6 +437,107 @@ export default function PlanTrabajoPage() {
       await cargarGantt();
     }
   };
+  const guardarAvanceActividad = async (id: number, avance: number) => {
+    setActividades((prev) => prev.map((a) => (a.id === id ? { ...a, avance } : a)));
+    try {
+      await fetch("/api/gantt/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, avance }),
+      });
+    } catch {
+      await cargarGantt();
+    }
+  };
+
+  // ---- Costos por actividad ----
+  const [costos, setCostos] = useState<CostoItem[]>([]);
+  const cargarCostos = async () => {
+    try {
+      const res = await fetch("/api/gantt/costos/list", { cache: "no-store" });
+      const data = await res.json();
+      setCostos(data.registros || []);
+    } catch {
+      // se reintenta con el sondeo periodico
+    }
+  };
+  useEffect(() => {
+    cargarCostos();
+    const id = setInterval(cargarCostos, 15000);
+    return () => clearInterval(id);
+  }, []);
+
+  const totalPorActividad = useMemo(() => {
+    const mapa: Record<number, number> = {};
+    costos.forEach((c) => {
+      mapa[c.actividadId] = (mapa[c.actividadId] || 0) + (parseFloat(c.subTotal) || 0);
+    });
+    return mapa;
+  }, [costos]);
+  const totalProyecto = useMemo(() => costos.reduce((s, c) => s + (parseFloat(c.subTotal) || 0), 0), [costos]);
+  const avanceProyecto = useMemo(() => {
+    if (actividades.length === 0) return 0;
+    return actividades.reduce((s, a) => s + (a.avance || 0), 0) / actividades.length;
+  }, [actividades]);
+
+  const [costosAbiertos, setCostosAbiertos] = useState<Actividad | null>(null);
+  const [ccCantidad, setCcCantidad] = useState("");
+  const [ccUnidad, setCcUnidad] = useState("");
+  const [ccDescripcion, setCcDescripcion] = useState("");
+  const [ccSubTotal, setCcSubTotal] = useState("");
+  const [ccProveedor, setCcProveedor] = useState("");
+  const [guardandoCosto, setGuardandoCosto] = useState(false);
+  const costosDeActividad = useMemo(() => costos.filter((c) => c.actividadId === costosAbiertos?.id), [costos, costosAbiertos]);
+
+  const abrirCostos = (a: Actividad) => {
+    setCcCantidad("");
+    setCcUnidad("");
+    setCcDescripcion("");
+    setCcSubTotal("");
+    setCcProveedor("");
+    setCostosAbiertos(a);
+  };
+  const guardarRegistroCosto = async () => {
+    if (!costosAbiertos) return;
+    if (!ccDescripcion.trim() || !ccSubTotal) {
+      alert("Captura al menos la descripción y el sub total.");
+      return;
+    }
+    setGuardandoCosto(true);
+    try {
+      await fetch("/api/gantt/costos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actividadId: costosAbiertos.id, cantidad: ccCantidad, unidad: ccUnidad, descripcion: ccDescripcion.trim(), subTotal: ccSubTotal, proveedor: ccProveedor }),
+      });
+      setCcCantidad("");
+      setCcUnidad("");
+      setCcDescripcion("");
+      setCcSubTotal("");
+      setCcProveedor("");
+      await cargarCostos();
+    } catch {
+      alert("No se pudo guardar el registro de costo.");
+    } finally {
+      setGuardandoCosto(false);
+    }
+  };
+  const eliminarCosto = async (id: number) => {
+    if (!confirm("¿Eliminar este registro de costo?")) return;
+    setCostos((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await fetch("/api/gantt/costos/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+    } catch {
+      await cargarCostos();
+    }
+  };
+
+  const [detallesProyectoAbierto, setDetallesProyectoAbierto] = useState(false);
+
 
   const diasGantt = useMemo(() => {
     let inicio: Date, fin: Date;
@@ -714,6 +825,44 @@ export default function PlanTrabajoPage() {
 
         {vistaActiva === "gantt" && (
         <div>
+          <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-4 items-center bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 mb-5">
+            <div className="flex items-center gap-3 justify-center sm:justify-start">
+              <svg width="86" height="86" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="40" fill="none" stroke="#e5e8ee" strokeWidth="11" />
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="40"
+                  fill="none"
+                  stroke="#2f6fed"
+                  strokeWidth="11"
+                  strokeLinecap="round"
+                  strokeDasharray={`${2 * Math.PI * 40 * (avanceProyecto / 100)} ${2 * Math.PI * 40}`}
+                  transform="rotate(-90 50 50)"
+                />
+                <text x="50" y="56" textAnchor="middle" fontSize="21" fontWeight="bold" fill="#16215c">
+                  {avanceProyecto.toFixed(0)}%
+                </text>
+              </svg>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Avance del proyecto</p>
+                <p className="text-[12.5px] text-[var(--navy)] m-0">{actividades.length} actividad(es)</p>
+              </div>
+            </div>
+            <div className="text-center sm:text-left">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-1">Costo total del proyecto</p>
+              <p className="text-[30px] md:text-[36px] font-bold text-[var(--navy)] m-0 leading-none">${totalProyecto.toFixed(2)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDetallesProyectoAbierto(true)}
+              className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-2.5 text-[12.5px] font-bold justify-self-center sm:justify-self-end"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+              Detalles del proyecto
+            </button>
+          </div>
+
           <div className="flex flex-wrap gap-2.5 mb-5">
             <button type="button" onClick={abrirNuevaActividad} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
@@ -727,10 +876,16 @@ export default function PlanTrabajoPage() {
               <p className="text-center text-[var(--gray-400)] text-[13.5px] py-10">Sin actividades. Usa &quot;+ Agregar actividad&quot; para comenzar.</p>
             ) : (
               <div className="overflow-x-auto">
-                <div style={{ minWidth: 200 + diasGantt.length * 30 }}>
+                <div style={{ minWidth: 80 + 190 + 90 + diasGantt.length * 30 }}>
                   <div className="flex sticky top-0 z-10">
-                    <div className="w-[200px] shrink-0 bg-[var(--navy)] text-white text-[10px] font-bold flex items-center px-3 py-2.5 rounded-tl-lg">
+                    <div className="w-[80px] shrink-0 bg-[var(--navy)] text-white text-[9px] font-bold flex items-center justify-center px-1.5 py-2.5 rounded-tl-lg text-center">
+                      % Avance
+                    </div>
+                    <div className="w-[190px] shrink-0 bg-[var(--navy)] text-white text-[10px] font-bold flex items-center px-3 py-2.5">
                       Actividad / Responsable
+                    </div>
+                    <div className="w-[90px] shrink-0 bg-[var(--navy)] text-white text-[10px] font-bold flex items-center justify-center px-2 py-2.5">
+                      Costos
                     </div>
                     {diasGantt.map((d, i) => (
                       <div
@@ -745,9 +900,23 @@ export default function PlanTrabajoPage() {
                   {actividades.map((a) => {
                     const idxInicio = diasGantt.findIndex((d) => claveDia(d) === a.fechaInicio);
                     const idxFin = diasGantt.findIndex((d) => claveDia(d) === a.fechaFin);
+                    const anchoBarra = idxInicio >= 0 && idxFin >= 0 ? (idxFin - idxInicio + 1) * 30 - 4 : 0;
                     return (
                       <div key={a.id} className="flex items-center border-b border-[var(--gray-200)] group">
-                        <div className="w-[200px] shrink-0 px-3 py-2.5">
+                        <div className="w-[80px] shrink-0 px-1.5 py-2.5 flex justify-center">
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            defaultValue={a.avance}
+                            onBlur={(e) => {
+                              const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                              guardarAvanceActividad(a.id, v);
+                            }}
+                            className="w-[52px] text-center border border-[var(--gray-200)] rounded px-1 py-1 text-[11px]"
+                          />
+                        </div>
+                        <div className="w-[190px] shrink-0 px-3 py-2.5">
                           <p className="text-[11.5px] font-bold text-[var(--navy)] m-0 truncate">{a.nombre}</p>
                           <div className="flex items-center justify-between gap-1">
                             <p className="text-[10px] text-[var(--gray-400)] m-0 truncate">{a.responsable || "—"}</p>
@@ -761,14 +930,22 @@ export default function PlanTrabajoPage() {
                             </div>
                           </div>
                         </div>
+                        <div className="w-[90px] shrink-0 flex items-center justify-center gap-1.5 px-2 py-2.5">
+                          <span className="text-[10.5px] font-bold text-[var(--navy)] truncate">${(totalPorActividad[a.id] || 0).toFixed(0)}</span>
+                          <span onClick={() => abrirCostos(a)} className="text-[var(--blue)] cursor-pointer shrink-0" title="Detalles de costo">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></svg>
+                          </span>
+                        </div>
                         <div className="relative h-9" style={{ width: diasGantt.length * 30 }}>
                           {idxInicio >= 0 && idxFin >= 0 && (
                             <div
                               onClick={() => abrirEditarActividad(a)}
-                              className="absolute h-5 top-2 rounded-full cursor-pointer flex items-center px-2"
-                              style={{ left: idxInicio * 30 + 2, width: (idxFin - idxInicio + 1) * 30 - 4, backgroundColor: a.color }}
-                              title={`${a.nombre} · ${formatearFecha(a.fechaInicio)} - ${formatearFecha(a.fechaFin)}`}
-                            />
+                              className="absolute h-5 top-2 rounded-full cursor-pointer bg-[var(--gray-200)] overflow-hidden"
+                              style={{ left: idxInicio * 30 + 2, width: anchoBarra }}
+                              title={`${a.nombre} · ${formatearFecha(a.fechaInicio)} - ${formatearFecha(a.fechaFin)} · ${a.avance || 0}% avance`}
+                            >
+                              <div className="h-full rounded-full bg-[var(--blue)]" style={{ width: `${Math.min(100, a.avance || 0)}%` }} />
+                            </div>
                           )}
                         </div>
                       </div>
@@ -964,6 +1141,126 @@ export default function PlanTrabajoPage() {
                 className="bg-[var(--red)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold"
               >
                 Vaciar papelera
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {costosAbiertos && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[560px] max-w-[94%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[17px] font-bold text-[var(--navy)] m-0">Costos — {costosAbiertos.nombre}</h3>
+              <span onClick={() => setCostosAbiertos(null)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">
+                ✕
+              </span>
+            </div>
+            <p className="text-[13px] text-[var(--gray-400)] mb-4">
+              Total: <span className="font-bold text-[var(--navy)]">${(totalPorActividad[costosAbiertos.id] || 0).toFixed(2)}</span>
+            </p>
+
+            <div className="flex flex-col gap-2.5 mb-5 max-h-[220px] overflow-y-auto">
+              {costosDeActividad.length === 0 && <p className="text-[12.5px] text-[var(--gray-400)]">Aún no hay registros de costo.</p>}
+              {costosDeActividad.map((c) => (
+                <div key={c.id} className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[12.5px] font-semibold text-[var(--navy)] m-0 truncate">{c.descripcion}</p>
+                    <p className="text-[10.5px] text-[var(--gray-400)] m-0 truncate">
+                      {c.cantidad || "—"} {c.unidad} {c.proveedor ? `· ${c.proveedor}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[12.5px] font-bold text-[var(--navy)]">${(parseFloat(c.subTotal) || 0).toFixed(2)}</span>
+                    <span onClick={() => eliminarCosto(c.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[12.5px] font-bold text-[var(--navy)] mb-2.5">Agregar registro de costo</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className="block text-[11px] font-bold text-[var(--gray-400)] uppercase mb-1">Cantidad</label>
+                <input type="number" value={ccCantidad} onChange={(e) => setCcCantidad(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[var(--gray-400)] uppercase mb-1">Unidad</label>
+                <input value={ccUnidad} onChange={(e) => setCcUnidad(e.target.value)} placeholder="Pza, kg, servicio..." className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+              </div>
+            </div>
+            <div className="mb-3">
+              <label className="block text-[11px] font-bold text-[var(--gray-400)] uppercase mb-1">Descripción</label>
+              <input value={ccDescripcion} onChange={(e) => setCcDescripcion(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div>
+                <label className="block text-[11px] font-bold text-[var(--gray-400)] uppercase mb-1">Sub total</label>
+                <input type="number" value={ccSubTotal} onChange={(e) => setCcSubTotal(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold text-[var(--gray-400)] uppercase mb-1">Proveedor</label>
+                <input value={ccProveedor} onChange={(e) => setCcProveedor(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+              </div>
+            </div>
+            <div className="flex gap-2.5 justify-end">
+              <button type="button" onClick={() => setCostosAbiertos(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+              <button type="button" onClick={guardarRegistroCosto} disabled={guardandoCosto} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                {guardandoCosto ? "Guardando..." : "Guardar registro"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {detallesProyectoAbierto && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[680px] max-w-[95%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-[17px] font-bold text-[var(--navy)] m-0">Detalles del proyecto</h3>
+              <span onClick={() => setDetallesProyectoAbierto(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">
+                ✕
+              </span>
+            </div>
+            <p className="text-[13px] text-[var(--gray-400)] mb-4">
+              Costo total: <span className="font-bold text-[var(--navy)]">${totalProyecto.toFixed(2)}</span>
+            </p>
+            <div className="overflow-x-auto">
+              <table className="border-collapse min-w-max w-full">
+                <thead>
+                  <tr>
+                    {["Actividad", "Cantidad", "Unidad", "Descripción", "Sub total", "Proveedor"].map((c) => (
+                      <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {costos.map((c) => {
+                    const act = actividades.find((a) => a.id === c.actividadId);
+                    return (
+                      <tr key={c.id} className="border-b border-[var(--gray-200)]">
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{act?.nombre || "—"}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{c.cantidad || "—"}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{c.unidad || "—"}</td>
+                        <td className="px-2.5 py-2 text-[12.5px]">{c.descripcion || "—"}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">${(parseFloat(c.subTotal) || 0).toFixed(2)}</td>
+                        <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{c.proveedor || "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              {costos.length === 0 && <p className="text-center text-[var(--gray-400)] text-[13px] py-8">Sin registros de costo aún.</p>}
+            </div>
+            <div className="flex justify-end mt-5">
+              <button type="button" onClick={() => setDetallesProyectoAbierto(false)} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
               </button>
             </div>
           </div>

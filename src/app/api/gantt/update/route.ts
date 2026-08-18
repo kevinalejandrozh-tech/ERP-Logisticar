@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
-    const { id, nombre, fechaInicio, fechaFin, responsable, color } = await req.json();
+    const { id, nombre, fechaInicio, fechaFin, responsable, color, avance } = await req.json();
     if (!id) {
       return NextResponse.json({ error: "Falta el id de la actividad." }, { status: 400 });
     }
@@ -19,9 +19,10 @@ export async function POST(req: NextRequest) {
          fecha_fin = COALESCE($4, fecha_fin),
          responsable = COALESCE($5, responsable),
          color = COALESCE($6, color),
+         avance = COALESCE($7, avance),
          updated_at = now()
        WHERE id = $1 RETURNING id`,
-      [id, nombre ?? null, fechaInicio ?? null, fechaFin ?? null, responsable ?? null, color ?? null]
+      [id, nombre ?? null, fechaInicio ?? null, fechaFin ?? null, responsable ?? null, color ?? null, avance ?? null]
     );
     if (result.rowCount === 0) {
       return NextResponse.json({ error: "No se encontró la actividad." }, { status: 404 });

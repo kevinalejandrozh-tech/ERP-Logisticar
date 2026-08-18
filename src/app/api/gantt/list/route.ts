@@ -8,7 +8,7 @@ export async function GET() {
   try {
     await ensureSchema();
     const pool = getPool();
-    const result = await pool.query(`SELECT id, nombre, fecha_inicio, fecha_fin, responsable, color, orden FROM gantt_actividades ORDER BY orden ASC`);
+    const result = await pool.query(`SELECT id, nombre, fecha_inicio, fecha_fin, responsable, color, orden, avance FROM gantt_actividades ORDER BY orden ASC`);
     const registros = result.rows.map((r) => ({
       id: r.id,
       nombre: r.nombre,
@@ -17,6 +17,7 @@ export async function GET() {
       responsable: r.responsable || "",
       color: r.color || "#2f6fed",
       orden: Number(r.orden) || 0,
+      avance: Number(r.avance) || 0,
     }));
     return NextResponse.json({ ok: true, registros });
   } catch (err: any) {

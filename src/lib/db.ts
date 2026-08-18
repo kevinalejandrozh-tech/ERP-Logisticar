@@ -124,6 +124,21 @@ orden DOUBLE PRECISION NOT NULL DEFAULT 0,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE gantt_actividades ADD COLUMN IF NOT EXISTS avance NUMERIC NOT NULL DEFAULT 0;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS gantt_costos (
+id SERIAL PRIMARY KEY,
+actividad_id INTEGER NOT NULL REFERENCES gantt_actividades(id) ON DELETE CASCADE,
+cantidad NUMERIC,
+unidad TEXT,
+descripcion TEXT,
+sub_total NUMERIC,
+proveedor TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS cambios_aceite (

@@ -9,7 +9,7 @@ export async function GET() {
     await ensureSchema();
     const pool = getPool();
     const result = await pool.query(
-      `SELECT id, codigo, descripcion, categoria, referencia, costo_unitario, cantidad, proveedor, ubicacion, fecha_ingreso, unidad, numero_etiqueta
+      `SELECT id, codigo, descripcion, categoria, referencia, costo_unitario, cantidad, proveedor, ubicacion, fecha_ingreso, unidad, numero_etiqueta, ref_compra, numero_recepcion
        FROM inventario_items ORDER BY codigo ASC`
     );
     const registros = result.rows.map((r) => ({
@@ -25,6 +25,8 @@ export async function GET() {
       fechaIngreso: r.fecha_ingreso || "",
       unidad: r.unidad || "",
       numeroEtiqueta: r.numero_etiqueta || "",
+      refCompra: r.ref_compra || "",
+      numeroRecepcion: r.numero_recepcion || "",
     }));
     return NextResponse.json({ ok: true, registros });
   } catch (err: any) {

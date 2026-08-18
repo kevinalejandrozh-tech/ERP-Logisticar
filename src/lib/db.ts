@@ -300,6 +300,63 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`ALTER TABLE inventario_items ADD COLUMN IF NOT EXISTS numero_etiqueta TEXT;`);
+await p.query(`ALTER TABLE inventario_items ADD COLUMN IF NOT EXISTS ref_compra TEXT;`);
+await p.query(`ALTER TABLE inventario_items ADD COLUMN IF NOT EXISTS numero_recepcion TEXT;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS recepciones_contador (
+id SERIAL PRIMARY KEY,
+siguiente INTEGER NOT NULL DEFAULT 1
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS recepciones_evidencia (
+id SERIAL PRIMARY KEY,
+numero_recepcion TEXT UNIQUE NOT NULL,
+evidencias JSONB NOT NULL DEFAULT '[]'::jsonb,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS proveedores (
+id SERIAL PRIMARY KEY,
+nombre TEXT,
+contacto TEXT,
+telefono TEXT,
+email TEXT,
+notas TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS ordenes_compra (
+id SERIAL PRIMARY KEY,
+folio TEXT,
+proveedor TEXT,
+fecha TEXT,
+items JSONB NOT NULL DEFAULT '[]'::jsonb,
+estado TEXT NOT NULL DEFAULT 'pendiente',
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS conteos_ciclicos (
+id SERIAL PRIMARY KEY,
+codigo TEXT,
+descripcion TEXT,
+cantidad_sistema NUMERIC,
+cantidad_contada NUMERIC,
+diferencia NUMERIC,
+contado_por TEXT,
+fecha TEXT,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS inventario_movimientos (

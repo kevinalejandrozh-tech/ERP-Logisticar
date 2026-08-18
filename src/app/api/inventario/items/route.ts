@@ -27,7 +27,7 @@ async function reservarNumeroEtiqueta(pool: ReturnType<typeof getPool>): Promise
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { descripcion, categoria, referencia, costoUnitario, cantidad, proveedor, ubicacion, fechaIngreso, unidad } = body;
+    const { descripcion, categoria, referencia, costoUnitario, cantidad, proveedor, ubicacion, fechaIngreso, unidad, refCompra, numeroRecepcion } = body;
     if (!descripcion || !String(descripcion).trim()) {
       return NextResponse.json({ error: "Falta la descripción del artículo." }, { status: 400 });
     }
@@ -47,8 +47,8 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await pool.query(
-      `INSERT INTO inventario_items (codigo, descripcion, categoria, referencia, costo_unitario, cantidad, proveedor, ubicacion, fecha_ingreso, unidad, numero_etiqueta)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO inventario_items (codigo, descripcion, categoria, referencia, costo_unitario, cantidad, proveedor, ubicacion, fecha_ingreso, unidad, numero_etiqueta, ref_compra, numero_recepcion)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (codigo) DO UPDATE SET
          descripcion = EXCLUDED.descripcion,
          categoria = EXCLUDED.categoria,
@@ -60,6 +60,8 @@ export async function POST(req: NextRequest) {
          fecha_ingreso = EXCLUDED.fecha_ingreso,
          unidad = EXCLUDED.unidad,
          numero_etiqueta = COALESCE(inventario_items.numero_etiqueta, EXCLUDED.numero_etiqueta),
+         ref_compra = EXCLUDED.ref_compra,
+         numero_recepcion = EXCLUDED.numero_recepcion,
          updated_at = now()
        RETURNING id, codigo, numero_etiqueta`,
       [
@@ -74,6 +76,8 @@ export async function POST(req: NextRequest) {
         fechaIngreso || null,
         unidad || null,
         numeroEtiqueta,
+        refCompra || null,
+        numeroRecepcion || null,
       ]
     );
 

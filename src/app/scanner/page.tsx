@@ -324,6 +324,28 @@ export default function ScannerPage() {
   const [eliminandoPdfs, setEliminandoPdfs] = useState(false);
   const [descargandoId, setDescargandoId] = useState<number | null>(null);
 
+  const [historialId, setHistorialId] = useState<string | null>(null);
+  const [facturaVinculada, setFacturaVinculada] = useState(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hId = params.get("historialId");
+    if (hId) setHistorialId(hId);
+  }, []);
+  const vincularFactura = async (pdfId: number) => {
+    if (!historialId) return;
+    try {
+      const res = await fetch("/api/historial-mantenimientos/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: historialId, facturaUrl: `/api/scanner/pdfs/get?id=${pdfId}` }),
+      });
+      if (!res.ok) throw new Error();
+      setFacturaVinculada(true);
+    } catch {
+      alert("No se pudo vincular la factura al registro de historial de mantenimientos.");
+    }
+  };
+
   const cargarPdfsGuardados = async () => {
     try {
       const res = await fetch("/api/scanner/pdfs/list", { cache: "no-store" });
@@ -422,7 +444,13 @@ export default function ScannerPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ nombre: nombreFinal, contenido: base64 }),
         });
-        if (resGuardar.ok) await cargarPdfsGuardados();
+        if (resGuardar.ok) {
+          await cargarPdfsGuardados();
+          const datosGuardado = await resGuardar.json();
+          if (historialId && datosGuardado.id) {
+            await vincularFactura(datosGuardado.id);
+          }
+        }
       } catch {
         // si falla el guardado en la nube, la descarga local ya se realizo sin problema
       }
@@ -448,6 +476,20 @@ export default function ScannerPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" /><circle cx="12" cy="12.5" r="3" /><path d="M3 10h18" /></svg>}
         />
 
+        {historialId && !facturaVinculada && (
+          <div className="bg-[var(--blue-light)] border border-[var(--blue)]/30 rounded-xl px-4 py-3 mb-5 text-[12.5px] text-[var(--navy)]">
+            Escanea la factura de la compra y usa <b>&quot;Agregar PDF de la compra&quot;</b> para vincularla al registro de Historial de mantenimientos.
+          </div>
+        )}
+        {facturaVinculada && (
+          <div className="bg-[var(--green)]/10 border border-[var(--green)]/40 rounded-xl px-4 py-3 mb-5 text-[12.5px] text-[var(--navy)] flex items-center justify-between gap-3 flex-wrap">
+            <span>✓ Factura vinculada correctamente al registro de Historial de mantenimientos.</span>
+            <a href="/ordenes-servicio/historial-mantenimientos" className="text-[var(--blue)] font-bold no-underline">
+              Regresar a Historial de mantenimientos →
+            </a>
+          </div>
+        )}
+
         <div className="flex flex-wrap gap-2.5 md:gap-3 mb-5">
           <label className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold cursor-pointer">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
@@ -461,7 +503,7 @@ export default function ScannerPage() {
             className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] disabled:opacity-50 rounded-lg px-5 py-2.5 text-[13px] font-bold"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 15l3 3 3-3M12 11v7" /></svg>
-            {exportando ? "Generando..." : "Exportar a PDF"}
+            {exportando ? "Generando..." : historialId ? "Agregar PDF de la compra" : "Exportar a PDF"}
           </button>
         </div>
 

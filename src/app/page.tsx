@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import MenuCard from "@/components/MenuCard";
@@ -13,6 +14,15 @@ function semanaISO(fecha: Date): number {
   return Math.ceil(((d.getTime() - inicioAnio.getTime()) / 86400000 + 1) / 7);
 }
 export default function Home() {
+const [almacenamiento, setAlmacenamiento] = useState<{ porcentaje: number; mbUsados: number; mbLimite: number } | null>(null);
+useEffect(() => {
+fetch("/api/sistema/almacenamiento", { cache: "no-store" })
+.then((r) => r.json())
+.then((d) => {
+if (d.ok) setAlmacenamiento({ porcentaje: d.porcentaje, mbUsados: d.mbUsados, mbLimite: d.mbLimite });
+})
+.catch(() => {});
+}, []);
 return (
 <div className="min-h-screen bg-[#eef1f6]">
 <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
@@ -29,6 +39,16 @@ return (
 <svg width="16" height="16" viewBox="0 0 24 24" {...sw} stroke="#9aa1b0"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
 Buscar...
 </div>
+<div className="hidden md:block w-px h-7 bg-[var(--gray-200)]" />
+{almacenamiento && (
+<div className="hidden md:flex items-center gap-2" title={`${almacenamiento.mbUsados.toFixed(1)} MB de ${almacenamiento.mbLimite.toFixed(0)} MB usados en la nube`}>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><path d="M20 16.58A5 5 0 0018 7h-1.26A8 8 0 104 15.25" /><path d="M12 12v9M9 18l3 3 3-3" /></svg>
+<div className="w-[70px] h-[6px] bg-[var(--gray-200)] rounded-full overflow-hidden">
+<div className="h-full rounded-full" style={{ width: `${Math.min(100, almacenamiento.porcentaje)}%`, backgroundColor: almacenamiento.porcentaje > 85 ? "var(--red)" : almacenamiento.porcentaje > 60 ? "var(--amber)" : "var(--blue)" }} />
+</div>
+<span className="text-[11px] font-bold text-[var(--gray-400)]">{almacenamiento.porcentaje.toFixed(0)}%</span>
+</div>
+)}
 <div className="hidden md:block w-px h-7 bg-[var(--gray-200)]" />
 <div className="flex items-center gap-2">
 <div className="w-8 h-8 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">

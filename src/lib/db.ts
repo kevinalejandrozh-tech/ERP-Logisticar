@@ -148,6 +148,119 @@ siguiente INTEGER NOT NULL DEFAULT 1
 `);
 
 await p.query(`
+CREATE TABLE IF NOT EXISTS empleados_datos_generales (
+id SERIAL PRIMARY KEY,
+no_empleado TEXT,
+nombre_empleado TEXT,
+rfc TEXT,
+curp TEXT,
+nss TEXT,
+puesto TEXT,
+departamento TEXT,
+salario_diario NUMERIC,
+fecha_ingreso TEXT,
+estatus TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS empleados_pagos (
+id SERIAL PRIMARY KEY,
+dias_pagados NUMERIC,
+total_percepciones NUMERIC,
+total_deducciones NUMERIC,
+total_entregado NUMERIC,
+metodo_pago TEXT,
+banco TEXT,
+ultimos_4_cuenta TEXT,
+observaciones TEXT,
+estatus TEXT,
+fecha_elaboracion TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS empleados_previsualizacion_pago (
+id SERIAL PRIMARY KEY,
+folio TEXT,
+no_empleado TEXT,
+tipo TEXT,
+concepto TEXT,
+importe NUMERIC,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+// ---- Plan de trabajo: fotos, documentos, sublista, gastos ----
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS fotos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE tareas_kanban ADD COLUMN IF NOT EXISTS documentos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS tareas_sublista (
+id SERIAL PRIMARY KEY,
+tarea_id INTEGER NOT NULL REFERENCES tareas_kanban(id) ON DELETE CASCADE,
+texto TEXT NOT NULL,
+marcado BOOLEAN NOT NULL DEFAULT false,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS tareas_gastos (
+id SERIAL PRIMARY KEY,
+tarea_id INTEGER REFERENCES tareas_kanban(id) ON DELETE CASCADE,
+tarea_nombre TEXT,
+cantidad NUMERIC,
+descripcion TEXT,
+monto NUMERIC,
+tipo_transaccion TEXT,
+referencia TEXT,
+fondo TEXT,
+fecha TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`ALTER TABLE tareas_gastos ALTER COLUMN tarea_id DROP NOT NULL;`);
+
+// ---- Historial de mantenimientos: columnas nuevas ----
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS detalle_servicio TEXT;`);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS evidencia_reparacion JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS termino_servicio TEXT;`);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS factura_url TEXT;`);
+
+// ---- Solicitudes de material (Historial de mantenimientos -> Inventario) ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS solicitudes_material (
+id SERIAL PRIMARY KEY,
+historial_id INTEGER REFERENCES historial_mantenimientos(id) ON DELETE CASCADE,
+folio_servicio TEXT,
+eco_unidad TEXT,
+items JSONB NOT NULL DEFAULT '[]'::jsonb,
+estado TEXT NOT NULL DEFAULT 'pendiente',
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+// ---- Compras pendientes (faltantes detectados al registrar salida) ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS compras_pendientes (
+id SERIAL PRIMARY KEY,
+descripcion TEXT,
+cantidad NUMERIC,
+origen TEXT,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+await p.query(`
 CREATE TABLE IF NOT EXISTS cambios_aceite (
 id SERIAL PRIMARY KEY,
 eco TEXT,

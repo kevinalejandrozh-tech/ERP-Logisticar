@@ -34,8 +34,17 @@ type FilaEntrada = {
   unidad: string;
   numeroEtiqueta: string;
 };
-type FilaSalida = { codigo: string; descripcion: string; cantidad: string; folioServicio: string; paraUnidad: string; entregadoA: string };
+type FilaSalida = { codigo: string; numeroEtiqueta: string; descripcion: string; cantidad: string; folioServicio: string; paraUnidad: string; entregadoA: string; solicitudId?: number };
 type Movimiento = { id: number; tipo: string; codigo: string; descripcion: string; cantidad: number; datos: Record<string, string>; fecha: string };
+type SolicitudMaterial = {
+  id: number;
+  historialId: number;
+  folioServicio: string;
+  ecoUnidad: string;
+  estado: string;
+  items: { noEtiqueta: string; descripcion: string; cantidad: string; folioServicio: string; paraUnidad: string; entregadoA: string }[];
+};
+type CompraPendiente = { id: number; descripcion: string; cantidad: string; origen: string };
 
 const OPCIONES_UNIDAD_MEDIDA = ["PZA", "LITRO", "CAJA", "KIT", "JUEGO", "PAR", "ROLLO", "GALON"];
 
@@ -48,7 +57,7 @@ function filaEntradaVacia(): FilaEntrada {
   return { codigo: "", descripcion: "", categoria: "", referencia: "", costoUnitario: "", cantidad: "", proveedor: "", ubicacion: "", fechaIngreso: fechaHoraLocal(), unidad: "", numeroEtiqueta: "" };
 }
 function filaSalidaVacia(): FilaSalida {
-  return { codigo: "", descripcion: "", cantidad: "", folioServicio: "", paraUnidad: "", entregadoA: "" };
+  return { codigo: "", numeroEtiqueta: "", descripcion: "", cantidad: "", folioServicio: "", paraUnidad: "", entregadoA: "" };
 }
 function escaparHtml(texto: string) {
   return String(texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -399,6 +408,8 @@ export default function InventarioPage() {
   // ---- Salida ----
   const [filasSalida, setFilasSalida] = useState<FilaSalida[]>([]);
   const [registrandoSalida, setRegistrandoSalida] = useState(false);
+  const [filasFaltantes, setFilasFaltantes] = useState<Set<number>>(new Set());
+  const [comprasAgregadas, setComprasAgregadas] = useState<Set<number>>(new Set());
 
   const agregarFilaSalida = () => setFilasSalida((prev) => [...prev, filaSalidaVacia()]);
   const actualizarFilaSalida = (idx: number, campo: keyof FilaSalida, valor: string) => {
@@ -407,7 +418,11 @@ export default function InventarioPage() {
         if (i !== idx) return f;
         if (campo === "codigo") {
           const item = items.find((it) => it.codigo === valor);
-          return { ...f, codigo: valor, descripcion: item?.descripcion || "" };
+          return { ...f, codigo: valor, numeroEtiqueta: item?.numeroEtiqueta || "", descripcion: item?.descripcion || "" };
+        }
+        if (campo === "numeroEtiqueta") {
+          const item = items.find((it) => it.numeroEtiqueta === valor);
+          return { ...f, numeroEtiqueta: valor, codigo: item?.codigo || "", descripcion: item?.descripcion || f.descripcion };
         }
         return { ...f, [campo]: valor };
       })
@@ -415,32 +430,149 @@ export default function InventarioPage() {
   };
   const quitarFilaSalida = (idx: number) => setFilasSalida((prev) => prev.filter((_, i) => i !== idx));
 
+  // ---- Solicitudes de material pendientes (desde Historial de mantenimientos) ----
+  const [solicitudesPendientes, setSolicitudesPendientes] = useState<SolicitudMaterial[]>([]);
+  const cargarSolicitudesPendientes = async () => {
+    try {
+      const res = await fetch("/api/historial-mantenimientos/solicitudes/list", { cache: "no-store" });
+      const data = await res.json();
+      setSolicitudesPendientes((data.registros || []).filter((s: SolicitudMaterial) => s.estado === "pendiente"));
+    } catch {
+      // se reintenta con el sondeo periodico
+    }
+  };
+  useEffect(() => {
+    cargarSolicitudesPendientes();
+    const id = setInterval(cargarSolicitudesPendientes, 20000);
+    return () => clearInterval(id);
+  }, []);
+
+  const [comprasPendientes, setComprasPendientes] = useState<CompraPendiente[]>([]);
+  const cargarComprasPendientes = async () => {
+    try {
+      const res = await fetch("/api/inventario/compras-pendientes/list", { cache: "no-store" });
+      const data = await res.json();
+      setComprasPendientes(data.registros || []);
+    } catch {
+      // se reintenta con el sondeo periodico
+    }
+  };
+  useEffect(() => {
+    cargarComprasPendientes();
+    const id = setInterval(cargarComprasPendientes, 20000);
+    return () => clearInterval(id);
+  }, []);
+
+  const revisarSolicitud = async (sol: SolicitudMaterial) => {
+    const nuevasFilas: FilaSalida[] = sol.items.map((it) => {
+      const item = items.find((i) => i.numeroEtiqueta === it.noEtiqueta);
+      return {
+        codigo: item?.codigo || "",
+        numeroEtiqueta: it.noEtiqueta,
+        descripcion: item?.descripcion || it.descripcion,
+        cantidad: it.cantidad,
+        folioServicio: it.folioServicio,
+        paraUnidad: it.paraUnidad,
+        entregadoA: it.entregadoA,
+        solicitudId: sol.id,
+      };
+    });
+    setFilasSalida((prev) => [...prev, ...nuevasFilas]);
+    try {
+      await fetch("/api/historial-mantenimientos/solicitudes/actualizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sol.id, estado: "en_revision" }),
+      });
+      setSolicitudesPendientes((prev) => prev.filter((s) => s.id !== sol.id));
+    } catch {
+      // no bloquea la revision local
+    }
+  };
+
   const registrarSalida = async () => {
-    const validas = filasSalida.filter((f) => f.codigo && f.cantidad);
+    const validas = filasSalida.filter((f) => (f.codigo || f.numeroEtiqueta) && f.cantidad);
     if (validas.length === 0) {
-      alert("Agrega al menos una salida con código y cantidad.");
+      alert("Agrega al menos una salida con artículo y cantidad.");
       return;
     }
     setRegistrandoSalida(true);
     try {
-      for (const f of validas) {
-        const res = await fetch("/api/inventario/salida", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ codigo: f.codigo, cantidad: f.cantidad, folioServicio: f.folioServicio, paraUnidad: f.paraUnidad, entregadoA: f.entregadoA }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Error al descontar el código ${f.codigo}.`);
-      }
-      setFilasSalida([]);
+      const res = await fetch("/api/inventario/salida-multiple", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: validas.map((f) => ({
+            numeroEtiqueta: f.numeroEtiqueta,
+            descripcion: f.descripcion,
+            cantidad: Number(f.cantidad),
+            folioServicio: f.folioServicio,
+            paraUnidad: f.paraUnidad,
+            entregadoA: f.entregadoA,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al registrar la salida.");
+
+      const nuevasFaltantes = new Set<number>();
+      const restantes: FilaSalida[] = [];
+      const solicitudesCompletadas = new Set<number>();
+      const solicitudesConFaltante = new Set<number>();
+
+      validas.forEach((f, i) => {
+        const resultado = data.resultados[i];
+        if (resultado?.ok) {
+          if (f.solicitudId) solicitudesCompletadas.add(f.solicitudId);
+        } else {
+          restantes.push(f);
+          nuevasFaltantes.add(restantes.length - 1);
+          if (f.solicitudId) solicitudesConFaltante.add(f.solicitudId);
+        }
+      });
+
+      setFilasSalida(restantes);
+      setFilasFaltantes(nuevasFaltantes);
       await cargarItems();
       await cargarMovimientos();
-      alert(`Se registraron ${validas.length} salida(s) del inventario.`);
-      setTab("reportes");
+
+      for (const solId of solicitudesCompletadas) {
+        if (!solicitudesConFaltante.has(solId)) {
+          await fetch("/api/historial-mantenimientos/solicitudes/actualizar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: solId, estado: "atendida" }),
+          }).catch(() => {});
+        }
+      }
+
+      const exitosas = validas.length - restantes.length;
+      if (restantes.length > 0) {
+        alert(`Se registraron ${exitosas} salida(s). ${restantes.length} artículo(s) no se pudieron descontar (sin existencia suficiente) — quedaron marcados en naranja.`);
+      } else {
+        alert(`Se registraron ${exitosas} salida(s) del inventario.`);
+        setTab("reportes");
+      }
     } catch (err: any) {
       alert(err.message || "Ocurrió un error al registrar la salida.");
     } finally {
       setRegistrandoSalida(false);
+    }
+  };
+
+  const agregarACompras = async (idx: number) => {
+    const f = filasSalida[idx];
+    if (!f) return;
+    try {
+      await fetch("/api/inventario/compras-pendientes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descripcion: f.descripcion || f.numeroEtiqueta, cantidad: f.cantidad, origen: `Salida — folio ${f.folioServicio || "s/f"}` }),
+      });
+      setComprasAgregadas((prev) => new Set(prev).add(idx));
+      await cargarComprasPendientes();
+    } catch {
+      alert("No se pudo agregar a compras.");
     }
   };
 
@@ -724,6 +856,21 @@ export default function InventarioPage() {
             )}
 
             {tab === "entrada" && (
+              <div>
+                {comprasPendientes.length > 0 && (
+                  <div className="bg-[var(--amber)]/10 border border-[var(--amber)]/50 rounded-2xl p-4 sm:p-5 mb-5">
+                    <p className="text-[13px] font-bold text-[var(--navy)] m-0 mb-3">Pendientes por comprar ({comprasPendientes.length})</p>
+                    <div className="flex flex-col gap-1.5">
+                      {comprasPendientes.map((c) => (
+                        <div key={c.id} className="flex items-center justify-between gap-3 text-[12.5px]">
+                          <span className="text-[var(--navy)]">
+                            {c.descripcion} {c.cantidad ? `× ${c.cantidad}` : ""} <span className="text-[var(--gray-400)]">({c.origen})</span>
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
                 <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
                   <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Entrada de inventario</h3>
@@ -837,87 +984,130 @@ export default function InventarioPage() {
                   {filasEntrada.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Usa &quot;+ Agregar fila&quot; para capturar artículos de entrada.</div>}
                 </div>
               </div>
+              </div>
             )}
 
             {tab === "salida" && (
-              <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-                <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
-                  <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Salida de inventario</h3>
-                  <div className="flex flex-wrap gap-2.5">
-                    <button type="button" onClick={agregarFilaSalida} className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
-                      + Agregar fila
-                    </button>
-                    <button type="button" onClick={registrarSalida} disabled={registrandoSalida || filasSalida.length === 0} className="flex items-center gap-1.5 bg-[var(--red)] disabled:opacity-50 text-white rounded-lg px-3.5 py-1.5 text-[12px] font-bold">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-                      {registrandoSalida ? "Registrando..." : "Registrar salida del inventario"}
-                    </button>
+              <div>
+                {solicitudesPendientes.length > 0 && (
+                  <div className="bg-[var(--amber)]/10 border border-[var(--amber)]/50 rounded-2xl p-4 sm:p-5 mb-5">
+                    <p className="text-[13px] font-bold text-[var(--navy)] m-0 mb-3">
+                      Solicitudes de material pendientes de autorización ({solicitudesPendientes.length})
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      {solicitudesPendientes.map((sol) => (
+                        <div key={sol.id} className="bg-white rounded-lg border border-[var(--gray-200)] px-3.5 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+                          <div>
+                            <p className="text-[12.5px] font-semibold text-[var(--navy)] m-0">
+                              Folio {sol.folioServicio || "—"} · {sol.ecoUnidad || "—"} · {sol.items.length} artículo(s)
+                            </p>
+                          </div>
+                          <button type="button" onClick={() => revisarSolicitud(sol)} className="bg-[var(--navy)] text-white rounded-lg px-4 py-1.5 text-[11.5px] font-bold">
+                            Revisar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-                <datalist id="dl-inv-entregadoa">
-                  {operadores.map((o) => (
-                    <option key={o} value={o} />
-                  ))}
-                </datalist>
-                <div className="overflow-x-auto">
-                  <table className="border-collapse min-w-max w-full">
-                    <thead>
-                      <tr>
-                        {["Código", "Descripción", "Cantidad", "Folio de servicio", "Para qué unidad", "A quién se entrega", ""].map((c, i) => (
-                          <th key={i} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
-                            {c}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filasSalida.map((f, idx) => {
-                        const item = items.find((it) => it.codigo === f.codigo);
-                        return (
-                          <tr key={idx} className="border-b border-[var(--gray-200)]">
-                            <td className="px-2.5 py-1.5 whitespace-nowrap">
-                              <select value={f.codigo} onChange={(e) => actualizarFilaSalida(idx, "codigo", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[100px]">
-                                <option value=""></option>
-                                {items.map((it) => (
-                                  <option key={it.id} value={it.codigo}>
-                                    {it.codigo}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-2.5 py-1.5 text-[12.5px] whitespace-nowrap">
-                              {f.descripcion || "—"} {item && <span className="text-[10.5px] text-[var(--gray-400)]">(disp. {item.cantidad})</span>}
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap">
-                              <input type="number" value={f.cantidad} onChange={(e) => actualizarFilaSalida(idx, "cantidad", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[70px]" />
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap">
-                              <input value={f.folioServicio} onChange={(e) => actualizarFilaSalida(idx, "folioServicio", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[110px]" />
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap">
-                              <select value={f.paraUnidad} onChange={(e) => actualizarFilaSalida(idx, "paraUnidad", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[95px]">
-                                <option value=""></option>
-                                {ecosUnidad.map((eco) => (
-                                  <option key={eco} value={eco}>
-                                    {eco}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap">
-                              <input value={f.entregadoA} onChange={(e) => actualizarFilaSalida(idx, "entregadoA", e.target.value)} list="dl-inv-entregadoa" className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[130px]" />
-                            </td>
-                            <td className="px-2.5 py-1.5 whitespace-nowrap">
-                              <span onClick={() => quitarFilaSalida(idx)} className="text-[var(--red)] cursor-pointer" title="Quitar fila">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {filasSalida.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Usa &quot;+ Agregar fila&quot; para capturar salidas de inventario.</div>}
+                )}
+
+                <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+                  <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
+                    <h3 className="text-[14.5px] font-bold text-[var(--navy)] m-0">Salida de inventario</h3>
+                    <div className="flex flex-wrap gap-2.5">
+                      <button type="button" onClick={agregarFilaSalida} className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+                        + Agregar fila
+                      </button>
+                      <button type="button" onClick={registrarSalida} disabled={registrandoSalida || filasSalida.length === 0} className="flex items-center gap-1.5 bg-[var(--red)] disabled:opacity-50 text-white rounded-lg px-3.5 py-1.5 text-[12px] font-bold">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+                        {registrandoSalida ? "Registrando..." : "Registrar salida del inventario"}
+                      </button>
+                    </div>
+                  </div>
+                  <datalist id="dl-inv-entregadoa">
+                    {operadores.map((o) => (
+                      <option key={o} value={o} />
+                    ))}
+                  </datalist>
+                  <datalist id="dl-inv-etiquetas">
+                    {items.filter((it) => it.numeroEtiqueta).map((it) => (
+                      <option key={it.id} value={it.numeroEtiqueta} />
+                    ))}
+                  </datalist>
+                  <div className="overflow-x-auto">
+                    <table className="border-collapse min-w-max w-full">
+                      <thead>
+                        <tr>
+                          {["N° Etiqueta", "Descripción", "Cantidad", "Folio de servicio", "Para qué unidad", "A quién se entrega", ""].map((c, i) => (
+                            <th key={i} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
+                              {c}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filasSalida.map((f, idx) => {
+                          const item = items.find((it) => it.numeroEtiqueta === f.numeroEtiqueta || (it.codigo === f.codigo && f.codigo));
+                          const esFaltante = filasFaltantes.has(idx);
+                          return (
+                            <tr key={idx} className="border-b border-[var(--gray-200)]" style={esFaltante ? { backgroundColor: "rgba(242,177,52,0.18)" } : undefined}>
+                              <td className="px-2.5 py-1.5 whitespace-nowrap">
+                                <input
+                                  value={f.numeroEtiqueta}
+                                  onChange={(e) => actualizarFilaSalida(idx, "numeroEtiqueta", e.target.value)}
+                                  list="dl-inv-etiquetas"
+                                  placeholder="000123"
+                                  className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[95px]"
+                                />
+                              </td>
+                              <td className="px-2.5 py-1.5 text-[12.5px] whitespace-nowrap">
+                                {f.descripcion || "—"} {item && <span className="text-[10.5px] text-[var(--gray-400)]">(disp. {item.cantidad})</span>}
+                                {esFaltante && <span className="text-[10.5px] font-bold text-[var(--amber)] ml-1">· sin existencia suficiente</span>}
+                              </td>
+                              <td className="px-2.5 py-1.5 whitespace-nowrap">
+                                <input type="number" value={f.cantidad} onChange={(e) => actualizarFilaSalida(idx, "cantidad", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[70px]" />
+                              </td>
+                              <td className="px-2.5 py-1.5 whitespace-nowrap">
+                                <input value={f.folioServicio} onChange={(e) => actualizarFilaSalida(idx, "folioServicio", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[110px]" />
+                              </td>
+                              <td className="px-2.5 py-1.5 whitespace-nowrap">
+                                <select value={f.paraUnidad} onChange={(e) => actualizarFilaSalida(idx, "paraUnidad", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[95px]">
+                                  <option value=""></option>
+                                  {ecosUnidad.map((eco) => (
+                                    <option key={eco} value={eco}>
+                                      {eco}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td className="px-2.5 py-1.5 whitespace-nowrap">
+                                <input value={f.entregadoA} onChange={(e) => actualizarFilaSalida(idx, "entregadoA", e.target.value)} list="dl-inv-entregadoa" className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[130px]" />
+                              </td>
+                              <td className="px-2.5 py-1.5 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  {esFaltante && (
+                                    <button
+                                      type="button"
+                                      onClick={() => agregarACompras(idx)}
+                                      disabled={comprasAgregadas.has(idx)}
+                                      className="text-[10.5px] font-bold text-white bg-[var(--amber)] disabled:opacity-50 rounded px-2 py-1 whitespace-nowrap"
+                                    >
+                                      {comprasAgregadas.has(idx) ? "✓ Agregado" : "Agregar a compras"}
+                                    </button>
+                                  )}
+                                  <span onClick={() => quitarFilaSalida(idx)} className="text-[var(--red)] cursor-pointer" title="Quitar fila">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {filasSalida.length === 0 && <div className="text-center text-[var(--gray-400)] text-[13px] py-8">Usa &quot;+ Agregar fila&quot; para capturar salidas de inventario.</div>}
+                  </div>
                 </div>
               </div>
             )}

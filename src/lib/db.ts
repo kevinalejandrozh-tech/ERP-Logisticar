@@ -186,6 +186,7 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE inventario_items ADD COLUMN IF NOT EXISTS numero_etiqueta TEXT;`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS inventario_movimientos (

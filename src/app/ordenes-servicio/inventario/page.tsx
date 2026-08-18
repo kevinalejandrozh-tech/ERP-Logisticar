@@ -19,6 +19,7 @@ type ItemInventario = {
   ubicacion: string;
   fechaIngreso: string;
   unidad: string;
+  numeroEtiqueta: string;
 };
 type FilaEntrada = {
   codigo: string;
@@ -58,16 +59,36 @@ function formatearFechaCorta(f: string) {
   if (isNaN(d.getTime())) return f;
   return d.toLocaleDateString("es-MX");
 }
-function bloqueEtiquetaHtml(f: FilaEntrada) {
+function cargarJsBarcode(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).JsBarcode) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de código de barras."));
+    document.body.appendChild(script);
+  });
+}
+async function generarImagenBarcode(valor: string): Promise<string> {
+  await cargarJsBarcode();
+  const canvas = document.createElement("canvas");
+  (window as any).JsBarcode(canvas, valor || "000000", { format: "CODE128", displayValue: true, width: 2, height: 55, fontSize: 12 });
+  return canvas.toDataURL("image/png");
+}
+function bloqueEtiquetaHtml(f: FilaEntrada, imagenBarcode: string) {
   return `
 <div class="etiqueta">
   <p class="desc">${escaparHtml(f.descripcion) || "—"}</p>
-  <svg class="bc" data-valor="${escaparHtml(f.numeroEtiqueta)}"></svg>
+  <img class="bc" src="${imagenBarcode}" alt="${escaparHtml(f.numeroEtiqueta)}" />
   <p class="info">Costo unitario: $${parseFloat(f.costoUnitario || "0").toFixed(2)}</p>
   <p class="info">Fecha de entrada: ${formatearFechaCorta(f.fechaIngreso)}</p>
 </div>`;
 }
-function abrirVentanaEtiquetas(filas: FilaEntrada[]) {
+async function abrirVentanaEtiquetas(filas: FilaEntrada[]) {
+  const imagenes = await Promise.all(filas.map((f) => generarImagenBarcode(f.numeroEtiqueta)));
   const ventana = window.open("", "_blank", "width=420,height=560");
   if (!ventana) {
     alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
@@ -78,11 +99,11 @@ function abrirVentanaEtiquetas(filas: FilaEntrada[]) {
 <head>
 <meta charset="utf-8" />
 <title>Etiquetas de inventario</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js"></script>
 <style>
   body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 0; }
   .etiqueta { padding: 22px 16px; page-break-after: always; }
   .desc { font-size: 13px; font-weight: bold; color: #16215c; margin: 0 0 8px; }
+  .bc { max-width: 90%; height: auto; }
   .info { font-size: 11px; color: #16215c; margin: 2px 0; }
   .barras { position: fixed; bottom: 16px; left: 0; right: 0; }
   button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
@@ -90,14 +111,9 @@ function abrirVentanaEtiquetas(filas: FilaEntrada[]) {
 </style>
 </head>
 <body>
-${filas.map(bloqueEtiquetaHtml).join("\n")}
+${filas.map((f, i) => bloqueEtiquetaHtml(f, imagenes[i])).join("\n")}
 <div class="barras"><button id="btnImprimir">Imprimir</button></div>
 <script>
-  window.onload = function () {
-    document.querySelectorAll(".bc").forEach(function (el) {
-      JsBarcode(el, el.getAttribute("data-valor"), { format: "CODE128", displayValue: true, width: 2, height: 55, fontSize: 12 });
-    });
-  };
   document.getElementById("btnImprimir").addEventListener("click", function () {
     window.print();
     setTimeout(function () { window.close(); }, 300);
@@ -159,6 +175,30 @@ export default function InventarioPage() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    const cargarQRious = (): Promise<void> =>
+      new Promise((resolve, reject) => {
+        if ((window as any).QRious) {
+          resolve();
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
+        document.body.appendChild(script);
+      });
+    cargarQRious()
+      .then(async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        const canvas = document.getElementById("qr-inventario-movimientos") as HTMLCanvasElement | null;
+        if (canvas) {
+          new (window as any).QRious({ element: canvas, value: `${window.location.origin}/inventario-movimientos`, size: 64, level: "M" });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const descripcionesUnicas = useMemo(() => Array.from(new Set(items.map((i) => i.descripcion).filter(Boolean))).sort(), [items]);
   const categoriasUnicas = useMemo(() => Array.from(new Set(items.map((i) => i.categoria).filter(Boolean))).sort(), [items]);
   const unidadesUnicas = useMemo(() => Array.from(new Set(items.map((i) => i.unidad).filter(Boolean))).sort(), [items]);
@@ -214,8 +254,15 @@ export default function InventarioPage() {
     const totalArticulos = items.length;
     const totalPiezas = items.reduce((s, it) => s + (Number(it.cantidad) || 0), 0);
     const valorTotal = items.reduce((s, it) => s + (Number(it.cantidad) || 0) * (parseFloat(it.costoUnitario) || 0), 0);
-    return { totalArticulos, totalPiezas, valorTotal };
-  }, [items]);
+    const costoPorCodigo: Record<string, number> = {};
+    items.forEach((it) => {
+      costoPorCodigo[it.codigo] = parseFloat(it.costoUnitario) || 0;
+    });
+    const valorConsumos = movimientos
+      .filter((m) => m.tipo === "salida")
+      .reduce((s, m) => s + (Number(m.cantidad) || 0) * (costoPorCodigo[m.codigo] || 0), 0);
+    return { totalArticulos, totalPiezas, valorTotal, valorConsumos };
+  }, [items, movimientos]);
   const inventarioBajo = useMemo(() => items.filter((it) => (Number(it.cantidad) || 0) < UMBRAL_BAJO).sort((a, b) => a.cantidad - b.cantidad), [items]);
   const salidasRecientes = useMemo(() => movimientos.filter((m) => m.tipo === "salida").slice(0, 6), [movimientos]);
   const masObsoleto = useMemo(
@@ -333,6 +380,7 @@ export default function InventarioPage() {
             ubicacion: f.ubicacion,
             fechaIngreso: f.fechaIngreso,
             unidad: f.unidad,
+            numeroEtiqueta: f.numeroEtiqueta,
           }),
         });
       }
@@ -449,6 +497,10 @@ export default function InventarioPage() {
                         <p className="text-[22px] font-bold text-[var(--navy)] m-0 leading-none">${detalles.valorTotal.toFixed(2)}</p>
                         <p className="text-[10px] text-[var(--gray-400)] m-0">Valor total</p>
                       </div>
+                      <div>
+                        <p className="text-[15px] font-bold text-[var(--red)] m-0 leading-none">${detalles.valorConsumos.toFixed(2)}</p>
+                        <p className="text-[10px] text-[var(--gray-400)] m-0">Valor Consumos</p>
+                      </div>
                     </div>
                   </div>
                   <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
@@ -475,6 +527,10 @@ export default function InventarioPage() {
                           <span className="font-bold text-[var(--navy)]">-{m.cantidad}</span>
                         </div>
                       ))}
+                    </div>
+                    <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-[var(--gray-100)]">
+                      <canvas id="qr-inventario-movimientos" width={64} height={64} />
+                      <p className="text-[10.5px] text-[var(--gray-400)] m-0">Escanea para registrar una entrada o salida desde tu celular.</p>
                     </div>
                   </div>
                   <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4">
@@ -563,7 +619,7 @@ export default function InventarioPage() {
                     <table className="border-collapse min-w-max w-full">
                       <thead>
                         <tr>
-                          {["Código", "Descripción", "Categoría", "Referencia", "Costo unitario", "Cantidad", "Proveedor", "Ubicación", "Fecha de ingreso", "Unidad", "Acciones"].map((c) => (
+                          {["Código", "N° Etiqueta", "Descripción", "Categoría", "Referencia", "Costo unitario", "Cantidad", "Proveedor", "Ubicación", "Fecha de ingreso", "Unidad", "Acciones"].map((c) => (
                             <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
                               {c}
                             </th>
@@ -574,6 +630,7 @@ export default function InventarioPage() {
                         {itemsFiltrados.map((it) => (
                           <tr key={it.id} className="border-b border-[var(--gray-200)]" style={it.cantidad < UMBRAL_BAJO ? { backgroundColor: "rgba(226,65,44,0.08)" } : undefined}>
                             <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{it.codigo}</td>
+                            <td className="px-2.5 py-2 text-[12px] whitespace-nowrap font-mono text-[var(--navy)]">{it.numeroEtiqueta || "—"}</td>
                             <td className="px-2.5 py-2 whitespace-nowrap">
                               <input
                                 defaultValue={it.descripcion}
@@ -616,15 +673,7 @@ export default function InventarioPage() {
                               />
                             </td>
                             <td className="px-2.5 py-2 whitespace-nowrap">
-                              <input
-                                type="number"
-                                defaultValue={it.cantidad}
-                                onBlur={(e) => {
-                                  actualizarItemLocal(it.id, "cantidad", e.target.value);
-                                  guardarItemCampo(it.id, "cantidad", e.target.value);
-                                }}
-                                className={`border rounded px-1.5 py-1 text-[12px] w-[70px] font-semibold ${it.cantidad < UMBRAL_BAJO ? "border-[var(--red)] text-[var(--red)]" : "border-[var(--gray-200)]"}`}
-                              />
+                              <span className={`font-semibold text-[12.5px] ${it.cantidad < UMBRAL_BAJO ? "text-[var(--red)]" : "text-[var(--navy)]"}`}>{it.cantidad}</span>
                             </td>
                             <td className="px-2.5 py-2 whitespace-nowrap">
                               <input
@@ -880,7 +929,7 @@ export default function InventarioPage() {
                   <table className="border-collapse min-w-max w-full">
                     <thead>
                       <tr>
-                        {["Fecha", "Tipo", "Código", "Descripción", "Cantidad", "Detalle"].map((c) => (
+                        {["Fecha", "Tipo", "Código", "Descripción", "Cantidad", "Folio de servicio", "Comentario", "Detalle"].map((c) => (
                           <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2.5 py-2 whitespace-nowrap">
                             {c}
                           </th>
@@ -897,10 +946,12 @@ export default function InventarioPage() {
                           <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{m.codigo}</td>
                           <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{m.descripcion}</td>
                           <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{m.tipo === "salida" ? "-" : "+"}{m.cantidad}</td>
+                          <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap">{m.datos?.folioServicio || "—"}</td>
+                          <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap max-w-[180px] truncate" title={m.datos?.comentario || ""}>{m.datos?.comentario || "—"}</td>
                           <td className="px-2.5 py-2 text-[11.5px] whitespace-nowrap text-[var(--gray-400)]">
                             {m.tipo === "entrada"
                               ? [m.datos?.proveedor, m.datos?.ubicacion].filter(Boolean).join(" · ")
-                              : [m.datos?.folioServicio && `Folio ${m.datos.folioServicio}`, m.datos?.paraUnidad, m.datos?.entregadoA].filter(Boolean).join(" · ")}
+                              : [m.datos?.paraUnidad, m.datos?.entregadoA].filter(Boolean).join(" · ")}
                           </td>
                         </tr>
                       ))}

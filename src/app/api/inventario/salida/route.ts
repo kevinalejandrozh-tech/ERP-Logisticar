@@ -6,7 +6,7 @@ export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
-    const { codigo, cantidad, folioServicio, paraUnidad, entregadoA } = await req.json();
+    const { codigo, cantidad, folioServicio, paraUnidad, entregadoA, comentario } = await req.json();
     if (!codigo || !cantidad) {
       return NextResponse.json({ error: "Falta el código o la cantidad de la salida." }, { status: 400 });
     }
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     await pool.query(
       `INSERT INTO inventario_movimientos (tipo, codigo, descripcion, cantidad, datos) VALUES ('salida', $1, $2, $3, $4::jsonb)`,
-      [codigo, item.rows[0].descripcion, cantidad, JSON.stringify({ folioServicio, paraUnidad, entregadoA })]
+      [codigo, item.rows[0].descripcion, cantidad, JSON.stringify({ folioServicio, paraUnidad, entregadoA, comentario })]
     );
 
     return NextResponse.json({ ok: true });

@@ -31,6 +31,7 @@ type FilaEntrada = {
   ubicacion: string;
   fechaIngreso: string;
   unidad: string;
+  numeroEtiqueta: string;
 };
 type FilaSalida = { codigo: string; descripcion: string; cantidad: string; folioServicio: string; paraUnidad: string; entregadoA: string };
 type Movimiento = { id: number; tipo: string; codigo: string; descripcion: string; cantidad: number; datos: Record<string, string>; fecha: string };
@@ -43,10 +44,70 @@ function fechaHoraLocal() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 function filaEntradaVacia(): FilaEntrada {
-  return { codigo: "", descripcion: "", categoria: "", referencia: "", costoUnitario: "", cantidad: "", proveedor: "", ubicacion: "", fechaIngreso: fechaHoraLocal(), unidad: "" };
+  return { codigo: "", descripcion: "", categoria: "", referencia: "", costoUnitario: "", cantidad: "", proveedor: "", ubicacion: "", fechaIngreso: fechaHoraLocal(), unidad: "", numeroEtiqueta: "" };
 }
 function filaSalidaVacia(): FilaSalida {
   return { codigo: "", descripcion: "", cantidad: "", folioServicio: "", paraUnidad: "", entregadoA: "" };
+}
+function escaparHtml(texto: string) {
+  return String(texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function formatearFechaCorta(f: string) {
+  if (!f) return "—";
+  const d = new Date(f);
+  if (isNaN(d.getTime())) return f;
+  return d.toLocaleDateString("es-MX");
+}
+function bloqueEtiquetaHtml(f: FilaEntrada) {
+  return `
+<div class="etiqueta">
+  <p class="desc">${escaparHtml(f.descripcion) || "—"}</p>
+  <svg class="bc" data-valor="${escaparHtml(f.numeroEtiqueta)}"></svg>
+  <p class="info">Costo unitario: $${parseFloat(f.costoUnitario || "0").toFixed(2)}</p>
+  <p class="info">Fecha de entrada: ${formatearFechaCorta(f.fechaIngreso)}</p>
+</div>`;
+}
+function abrirVentanaEtiquetas(filas: FilaEntrada[]) {
+  const ventana = window.open("", "_blank", "width=420,height=560");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Etiquetas de inventario</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/JsBarcode/3.11.5/JsBarcode.all.min.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 0; }
+  .etiqueta { padding: 22px 16px; page-break-after: always; }
+  .desc { font-size: 13px; font-weight: bold; color: #16215c; margin: 0 0 8px; }
+  .info { font-size: 11px; color: #16215c; margin: 2px 0; }
+  .barras { position: fixed; bottom: 16px; left: 0; right: 0; }
+  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print { .barras { display: none; } }
+</style>
+</head>
+<body>
+${filas.map(bloqueEtiquetaHtml).join("\n")}
+<div class="barras"><button id="btnImprimir">Imprimir</button></div>
+<script>
+  window.onload = function () {
+    document.querySelectorAll(".bc").forEach(function (el) {
+      JsBarcode(el, el.getAttribute("data-valor"), { format: "CODE128", displayValue: true, width: 2, height: 55, fontSize: 12 });
+    });
+  };
+  document.getElementById("btnImprimir").addEventListener("click", function () {
+    window.print();
+    setTimeout(function () { window.close(); }, 300);
+  });
+</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
 }
 
 export default function InventarioPage() {
@@ -188,6 +249,67 @@ export default function InventarioPage() {
     setFilasEntrada((prev) => prev.filter((_, i) => i !== idx).map((f, i) => ({ ...f, codigo: String(maxCodigoActual + i + 1).padStart(4, "0") })));
   };
 
+  const [generandoEtiquetas, setGenerandoEtiquetas] = useState(false);
+  const generarEtiquetas = async () => {
+    const pendientes = filasEntrada.filter((f) => !f.numeroEtiqueta);
+    if (pendientes.length === 0) {
+      alert(filasEntrada.length === 0 ? "Agrega primero filas a la tabla de entrada." : "Todas las filas ya tienen número de etiqueta.");
+      return;
+    }
+    setGenerandoEtiquetas(true);
+    try {
+      const res = await fetch("/api/inventario/etiquetas/generar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cantidad: pendientes.length }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al generar etiquetas.");
+      let i = 0;
+      setFilasEntrada((prev) => prev.map((f) => (f.numeroEtiqueta ? f : { ...f, numeroEtiqueta: data.numeros[i++] })));
+    } catch (err: any) {
+      alert(err.message || "No se pudieron generar las etiquetas.");
+    } finally {
+      setGenerandoEtiquetas(false);
+    }
+  };
+  const imprimirEtiqueta = (f: FilaEntrada) => {
+    if (!f.numeroEtiqueta) {
+      alert("Primero genera el número de etiqueta.");
+      return;
+    }
+    abrirVentanaEtiquetas([f]);
+  };
+  const imprimirTodasEntradas = async () => {
+    if (filasEntrada.length === 0) {
+      alert("No hay filas en la tabla de entrada.");
+      return;
+    }
+    let filas = filasEntrada;
+    const pendientes = filas.filter((f) => !f.numeroEtiqueta);
+    if (pendientes.length > 0) {
+      setGenerandoEtiquetas(true);
+      try {
+        const res = await fetch("/api/inventario/etiquetas/generar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cantidad: pendientes.length }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error al generar etiquetas.");
+        let i = 0;
+        filas = filasEntrada.map((f) => (f.numeroEtiqueta ? f : { ...f, numeroEtiqueta: data.numeros[i++] }));
+        setFilasEntrada(filas);
+      } catch (err: any) {
+        alert(err.message || "No se pudieron generar las etiquetas.");
+        setGenerandoEtiquetas(false);
+        return;
+      }
+      setGenerandoEtiquetas(false);
+    }
+    abrirVentanaEtiquetas(filas);
+  };
+
   const recibirEntrada = async () => {
     const validas = filasEntrada.filter((f) => f.descripcion.trim());
     if (validas.length === 0) {
@@ -285,7 +407,7 @@ export default function InventarioPage() {
     <div className="min-h-screen bg-[#eef1f6]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
         <PageHeader
-          titulo="Almacén de insumos y refacciones"
+          titulo="Compras / Inventario y consumos"
           subtitulo="Controla el inventario de insumos y refacciones."
           backHref="/"
           backLabel="Menú principal"
@@ -565,6 +687,24 @@ export default function InventarioPage() {
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M20 6L9 17l-5-5" /></svg>
                       {recibiendo ? "Recibiendo..." : "Recibir entrada"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={generarEtiquetas}
+                      disabled={generandoEtiquetas || filasEntrada.length === 0}
+                      className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold disabled:opacity-50"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M20.59 13.41L11 3.83V3a1 1 0 00-1-1H4a1 1 0 00-1 1v6a1 1 0 001 1h.83l9.58 9.59a2 2 0 002.83 0l3.35-3.35a2 2 0 000-2.83z" /><circle cx="6.5" cy="6.5" r="1.5" /></svg>
+                      {generandoEtiquetas ? "Generando..." : "Generar etiquetas"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={imprimirTodasEntradas}
+                      disabled={generandoEtiquetas || filasEntrada.length === 0}
+                      className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold disabled:opacity-50"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+                      Imprimir todas las entradas
+                    </button>
                   </div>
                 </div>
                 <datalist id="dl-inv-descripcion">
@@ -586,7 +726,7 @@ export default function InventarioPage() {
                   <table className="border-collapse min-w-max w-full">
                     <thead>
                       <tr>
-                        {["Código", "Descripción", "Categoría", "Referencia", "Costo unitario", "Cantidad", "Proveedor", "Ubicación", "Fecha de ingreso", "Unidad", ""].map((c, i) => (
+                        {["Código", "Descripción", "Categoría", "Referencia", "Costo unitario", "Cantidad", "Proveedor", "Ubicación", "Fecha de ingreso", "Unidad", "N° Etiqueta", ""].map((c, i) => (
                           <th key={i} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-2 whitespace-nowrap">
                             {c}
                           </th>
@@ -623,6 +763,18 @@ export default function InventarioPage() {
                           </td>
                           <td className="px-2 py-1.5 whitespace-nowrap">
                             <input value={f.unidad} onChange={(e) => actualizarFilaEntrada(idx, "unidad", e.target.value)} list="dl-inv-unidad" className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[75px]" />
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            {f.numeroEtiqueta ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[11.5px] font-mono font-semibold text-[var(--navy)]">{f.numeroEtiqueta}</span>
+                                <button type="button" onClick={() => imprimirEtiqueta(f)} className="text-[10px] text-[var(--blue)] font-bold whitespace-nowrap">
+                                  Imprimir etiqueta
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-[var(--gray-400)]">—</span>
+                            )}
                           </td>
                           <td className="px-2 py-1.5 whitespace-nowrap">
                             <span onClick={() => quitarFilaEntrada(idx)} className="text-[var(--red)] cursor-pointer" title="Quitar fila">

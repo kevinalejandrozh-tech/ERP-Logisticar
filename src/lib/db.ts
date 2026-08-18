@@ -141,6 +141,13 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 `);
 
 await p.query(`
+CREATE TABLE IF NOT EXISTS etiquetas_contador (
+id SERIAL PRIMARY KEY,
+siguiente INTEGER NOT NULL DEFAULT 1
+);
+`);
+
+await p.query(`
 CREATE TABLE IF NOT EXISTS cambios_aceite (
 id SERIAL PRIMARY KEY,
 eco TEXT,

@@ -61,7 +61,7 @@ descripcion="Crea, asigna y da seguimiento a los planes de trabajo."
 <MenuCard
 href="/ordenes-servicio/inventario"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
-titulo="Almacén de insumos y refacciones"
+titulo="Compras / Inventario y consumos"
 descripcion="Controla el inventario de insumos y refacciones."
 />
 <MenuCard

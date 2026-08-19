@@ -183,24 +183,25 @@ function bloqueEtiquetaQRHtml(item: { descripcion: string; costoUnitario: string
 </div>`;
 }
 const ESTILOS_ETIQUETA_QR = `
-  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #eef1f6; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; background: #eef1f6; }
   .lienzo { padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
   .etiqueta {
     width: 5cm;
     height: 2.5cm;
     box-sizing: border-box;
-    padding: 1.5mm 2.5mm;
+    padding: 1.5mm 3mm;
     background: #fff;
     border: 1px solid #ccc;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
+    gap: 0.9mm;
     page-break-after: always;
   }
-  .titulo { font-size: 6.5pt; font-weight: bold; color: #16215c; text-align: center; margin: 0; line-height: 1.05; max-height: 0.45cm; overflow: hidden; width: 100%; }
-  .qr { width: 0.85cm; height: 0.85cm; flex-shrink: 0; }
-  .precio { font-size: 10pt; font-weight: bold; color: #16215c; margin: 0; }
+  .titulo { font-size: 6.5pt; font-weight: 700; color: #000; text-align: center; margin: 0; line-height: 1.15; max-height: 0.56cm; overflow: hidden; width: 100%; }
+  .qr { width: 1.05cm; height: 1.05cm; flex-shrink: 0; }
+  .precio { font-size: 10.5pt; font-weight: 800; color: #000; margin: 0; }
   .barras { position: sticky; bottom: 0; background: #eef1f6; padding: 10px 0; }
   button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
   @media print {

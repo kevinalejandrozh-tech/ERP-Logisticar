@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 
@@ -195,6 +195,20 @@ function FormularioEntrada({ onFinalizar }: { onFinalizar: () => void }) {
   );
 }
 
+function cargarJsQR(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).jsQR) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el lector de códigos QR."));
+    document.body.appendChild(script);
+  });
+}
+
 function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
   const [busqueda, setBusqueda] = useState("");
   const [folioServicio, setFolioServicio] = useState("");
@@ -205,8 +219,8 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
   const [consumiendo, setConsumiendo] = useState(false);
   const [consumido, setConsumido] = useState(false);
 
-  const consultarArticulo = async () => {
-    if (!busqueda.trim()) {
+  const buscar = async (valor: string) => {
+    if (!valor.trim()) {
       setError("Captura el número de etiqueta a buscar.");
       return;
     }
@@ -217,9 +231,9 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
       const res = await fetch("/api/inventario/items/list", { cache: "no-store" });
       const data = await res.json();
       const registros: ItemInventario[] = data.registros || [];
-      const encontrado = registros.find((it) => it.numeroEtiqueta === busqueda.trim());
+      const encontrado = registros.find((it) => it.numeroEtiqueta === valor.trim());
       if (!encontrado) {
-        setError(`No se encontró ningún artículo con la etiqueta "${busqueda.trim()}".`);
+        setError(`No se encontró ningún artículo con la etiqueta "${valor.trim()}".`);
         return;
       }
       setArticulo(encontrado);
@@ -229,6 +243,76 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
       setBuscando(false);
     }
   };
+  const consultarArticulo = () => buscar(busqueda);
+
+  // ---- Escáner de cámara en vivo (lee el QR impreso en la etiqueta) ----
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const [escaneando, setEscaneando] = useState(false);
+  const [errorCamara, setErrorCamara] = useState("");
+
+  const detenerEscaneo = () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setEscaneando(false);
+  };
+
+  const loopEscaneo = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
+      rafRef.current = requestAnimationFrame(loopEscaneo);
+      return;
+    }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      rafRef.current = requestAnimationFrame(loopEscaneo);
+      return;
+    }
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imagen = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const resultado = (window as any).jsQR(imagen.data, imagen.width, imagen.height);
+    if (resultado && resultado.data) {
+      const valor = String(resultado.data).trim();
+      detenerEscaneo();
+      setBusqueda(valor);
+      buscar(valor);
+      return;
+    }
+    rafRef.current = requestAnimationFrame(loopEscaneo);
+  };
+
+  const iniciarEscaneo = async () => {
+    setErrorCamara("");
+    try {
+      await cargarJsQR();
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+      setEscaneando(true);
+      rafRef.current = requestAnimationFrame(loopEscaneo);
+    } catch {
+      setErrorCamara("No se pudo acceder a la cámara. Revisa los permisos del navegador.");
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      detenerEscaneo();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const consumirInventario = async () => {
     if (!articulo) return;
@@ -291,12 +375,32 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
         <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Ej. Cambio de filtro de aceite" className="w-full bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md p-3 text-sm" />
       </div>
 
-      <div className="border-2 border-dashed border-[var(--gray-200)] rounded-xl py-6 flex flex-col items-center gap-2 text-[var(--navy)]">
-        <p className="text-[12.5px] font-bold text-center m-0">Scanner con cámara del dispositivo</p>
-        <div className="w-11 h-11 rounded-full bg-[var(--gray-100)] flex items-center justify-center">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-        </div>
-        <p className="text-[10px] text-[var(--gray-400)] text-center m-0">(Lectura automática próximamente — por ahora, captura el número a mano)</p>
+      <div className="border-2 border-dashed border-[var(--gray-200)] rounded-xl text-[var(--navy)] overflow-hidden">
+        {!escaneando ? (
+          <div className="py-6 flex flex-col items-center gap-2 px-4">
+            <p className="text-[12.5px] font-bold text-center m-0">Scanner con cámara del dispositivo</p>
+            <div className="w-11 h-11 rounded-full bg-[var(--gray-100)] flex items-center justify-center">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+            </div>
+            <button type="button" onClick={iniciarEscaneo} className="text-[12px] font-bold text-[var(--blue)] mt-1">
+              Activar cámara y escanear QR
+            </button>
+            {errorCamara && <p className="text-[11px] text-[var(--red)] text-center m-0 mt-1">{errorCamara}</p>}
+          </div>
+        ) : (
+          <div className="relative bg-black">
+            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+            <video ref={videoRef} playsInline muted className="w-full h-[220px] object-cover block" />
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="w-[62%] aspect-square border-[3px] border-[var(--blue)] rounded-xl" style={{ boxShadow: "0 0 0 999px rgba(0,0,0,0.35)" }} />
+            </div>
+            <p className="absolute bottom-2 left-0 right-0 text-center text-white text-[11px] font-bold">Apunta al código QR de la etiqueta</p>
+            <button type="button" onClick={detenerEscaneo} className="absolute top-2 right-2 bg-black/60 text-white text-[11px] font-bold rounded-full px-3 py-1.5">
+              Cancelar
+            </button>
+          </div>
+        )}
       </div>
 
       <button

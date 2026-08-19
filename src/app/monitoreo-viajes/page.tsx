@@ -4,6 +4,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { exportarExcel } from "@/lib/exportExcel";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import { UNIDADES } from "@/lib/unidadesData";
 import { construirCampos, DIAS_SEMANA, CampoViaje } from "@/lib/monitoreoData";
 import { mapearFilasExcel } from "@/lib/importarViajesExcel";
@@ -136,13 +137,12 @@ export default function MonitoreoViajesPage() {
   useEffect(() => {
     cargar();
     cargarOperadores();
-    const idPoll = setInterval(cargar, 20000);
     const idTick = setInterval(() => setTick(Date.now()), 60000);
     return () => {
-      clearInterval(idPoll);
       clearInterval(idTick);
     };
   }, []);
+  useRefrescarAlEnfocar(cargar);
 
   // ---- Edicion en linea ----
   const actualizarLocal = (id: number, key: string, valor: string) => {

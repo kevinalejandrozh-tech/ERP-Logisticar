@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { UNIDADES } from "@/lib/unidadesData";
 import { compressImage } from "@/lib/imageUtils";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const UMBRAL_BAJO = 5;
@@ -388,12 +389,11 @@ export default function InventarioPage() {
     cargarItems();
     cargarMovimientos();
     cargarOperadores();
-    const id = setInterval(() => {
-      cargarItems();
-      cargarMovimientos();
-    }, 20000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(() => {
+    cargarItems();
+    cargarMovimientos();
+  });
 
   useEffect(() => {
     const cargarQRious = (): Promise<void> =>
@@ -932,9 +932,8 @@ export default function InventarioPage() {
   };
   useEffect(() => {
     cargarSolicitudesPendientes();
-    const id = setInterval(cargarSolicitudesPendientes, 20000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargarSolicitudesPendientes);
 
   const [comprasPendientes, setComprasPendientes] = useState<CompraPendiente[]>([]);
   const cargarComprasPendientes = async () => {
@@ -943,14 +942,13 @@ export default function InventarioPage() {
       const data = await res.json();
       setComprasPendientes(data.registros || []);
     } catch {
-      // se reintenta con el sondeo periodico
+      // se reintenta al recuperar el foco
     }
   };
   useEffect(() => {
     cargarComprasPendientes();
-    const id = setInterval(cargarComprasPendientes, 20000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargarComprasPendientes);
 
   const revisarSolicitud = async (sol: SolicitudMaterial) => {
     const nuevasFilas: FilaSalida[] = sol.items.map((it) => {

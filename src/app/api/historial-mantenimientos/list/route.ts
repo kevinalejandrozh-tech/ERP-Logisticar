@@ -9,7 +9,11 @@ export async function GET() {
     await ensureSchema();
     const pool = getPool();
     const result = await pool.query(
-      `SELECT id, estado, folio, eco_unidad, unidad, tipo_mantenimiento, reporte_falla, fecha_ingreso_taller, costo, orden, evidencias, reportado_por, detalle_servicio, evidencia_reparacion, termino_servicio, factura_url
+      `SELECT id, estado, folio, eco_unidad, unidad, tipo_mantenimiento, reporte_falla, fecha_ingreso_taller, costo, orden,
+       jsonb_array_length(coalesce(evidencias, '[]'::jsonb)) AS evidencias_count,
+       reportado_por, detalle_servicio,
+       jsonb_array_length(coalesce(evidencia_reparacion, '[]'::jsonb)) AS evidencia_reparacion_count,
+       termino_servicio, factura_url
        FROM historial_mantenimientos ORDER BY orden ASC`
     );
     const registros = result.rows.map((r) => ({
@@ -22,10 +26,10 @@ export async function GET() {
       reporteFalla: r.reporte_falla || "",
       fechaIngresoTaller: r.fecha_ingreso_taller || "",
       costo: r.costo ?? "",
-      evidencias: r.evidencias || [],
+      evidenciasCount: Number(r.evidencias_count) || 0,
       reportadoPor: r.reportado_por || "",
       detalleServicio: r.detalle_servicio || "",
-      evidenciaReparacion: r.evidencia_reparacion || [],
+      evidenciaReparacionCount: Number(r.evidencia_reparacion_count) || 0,
       terminoServicio: r.termino_servicio || "",
       facturaUrl: r.factura_url || "",
     }));

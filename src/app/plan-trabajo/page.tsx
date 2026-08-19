@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { compressImage } from "@/lib/imageUtils";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
@@ -22,8 +23,8 @@ type Tarea = {
   orden: number;
   ancho: "full" | "mitad";
   archivada: boolean;
-  fotos: FotoDesc[];
-  documentos: DocumentoAdjunto[];
+  fotosCount: number;
+  documentosCount: number;
 };
 type SublistaItem = { id: number; tareaId: number; texto: string; marcado: boolean };
 type GastoTarea = {
@@ -151,9 +152,8 @@ export default function PlanTrabajoPage() {
 
   useEffect(() => {
     cargar();
-    const id = setInterval(cargar, 15000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargar);
 
   const abrirForm = () => {
     setEditandoId(null);
@@ -164,13 +164,22 @@ export default function PlanTrabajoPage() {
     setFormAbierto(true);
   };
 
-  const abrirEditarTarea = (t: Tarea) => {
+  const abrirEditarTarea = async (t: Tarea) => {
     setEditandoId(t.id);
     setFTarea(t.tarea);
     setFResponsable(t.responsable);
     setFFecha(t.fechaEntrega);
-    setFFotos(t.fotos || []);
+    setFFotos([]);
     setFormAbierto(true);
+    if (t.fotosCount > 0) {
+      try {
+        const res = await fetch(`/api/tareas/adjuntos?id=${t.id}`, { cache: "no-store" });
+        const data = await res.json();
+        setFFotos(data.fotos || []);
+      } catch {
+        // si falla, el formulario queda sin fotos precargadas
+      }
+    }
   };
 
   const guardar = async () => {
@@ -253,9 +262,8 @@ export default function PlanTrabajoPage() {
   };
   useEffect(() => {
     cargarSublistas();
-    const id = setInterval(cargarSublistas, 15000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargarSublistas);
 
   const [nuevoPuntoSublista, setNuevoPuntoSublista] = useState<Record<number, string>>({});
   const agregarPuntoSublista = async (tareaId: number) => {
@@ -306,9 +314,18 @@ export default function PlanTrabajoPage() {
   const [documentosAbiertos, setDocumentosAbiertos] = useState<Tarea | null>(null);
   const [docsLocal, setDocsLocal] = useState<DocumentoAdjunto[]>([]);
   const [guardandoDocs, setGuardandoDocs] = useState(false);
-  const abrirDocumentos = (t: Tarea) => {
-    setDocsLocal(t.documentos || []);
+  const abrirDocumentos = async (t: Tarea) => {
+    setDocsLocal([]);
     setDocumentosAbiertos(t);
+    if (t.documentosCount > 0) {
+      try {
+        const res = await fetch(`/api/tareas/adjuntos?id=${t.id}`, { cache: "no-store" });
+        const data = await res.json();
+        setDocsLocal(data.documentos || []);
+      } catch {
+        // si falla, el modal queda sin documentos precargados
+      }
+    }
   };
   const agregarDocumentos = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -336,7 +353,7 @@ export default function PlanTrabajoPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: documentosAbiertos.id, documentos: docsLocal }),
       });
-      setTareas((prev) => prev.map((t) => (t.id === documentosAbiertos.id ? { ...t, documentos: docsLocal } : t)));
+      setTareas((prev) => prev.map((t) => (t.id === documentosAbiertos.id ? { ...t, documentosCount: docsLocal.length } : t)));
       setDocumentosAbiertos(null);
     } catch {
       alert("No se pudieron guardar los documentos.");
@@ -359,9 +376,8 @@ export default function PlanTrabajoPage() {
   };
   useEffect(() => {
     cargarGastosTareas();
-    const id = setInterval(cargarGastosTareas, 20000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargarGastosTareas);
 
   const [gCantidad, setGCantidad] = useState("");
   const [gDescripcion, setGDescripcion] = useState("");
@@ -644,9 +660,8 @@ export default function PlanTrabajoPage() {
   };
   useEffect(() => {
     cargarGantt();
-    const id = setInterval(cargarGantt, 15000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargarGantt);
 
   const abrirNuevaActividad = () => {
     setGanttEditandoId(null);
@@ -737,9 +752,8 @@ export default function PlanTrabajoPage() {
   };
   useEffect(() => {
     cargarCostos();
-    const id = setInterval(cargarCostos, 15000);
-    return () => clearInterval(id);
   }, []);
+  useRefrescarAlEnfocar(cargarCostos);
 
   const totalPorActividad = useMemo(() => {
     const mapa: Record<number, number> = {};
@@ -1231,12 +1245,12 @@ export default function PlanTrabajoPage() {
                               <div className="flex items-center gap-3 mt-2.5 pt-2 border-t border-black/10">
                                 <span onClick={() => abrirDocumentos(t)} className="flex items-center gap-1 text-[10.5px] font-bold text-[var(--navy)] cursor-pointer" title="Documentos">
                                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" /></svg>
-                                  Documentos{t.documentos?.length > 0 ? ` (${t.documentos.length})` : ""}
+                                  Documentos{t.documentosCount > 0 ? ` (${t.documentosCount})` : ""}
                                 </span>
-                                {t.fotos?.length > 0 && (
+                                {t.fotosCount > 0 && (
                                   <span onClick={() => abrirEditarTarea(t)} className="flex items-center gap-1 text-[10.5px] font-bold text-[var(--navy)] cursor-pointer" title="Fotos">
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-                                    Fotos ({t.fotos.length})
+                                    Fotos ({t.fotosCount})
                                   </span>
                                 )}
                               </div>

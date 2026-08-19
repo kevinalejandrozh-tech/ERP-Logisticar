@@ -4,6 +4,7 @@ import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { OPCIONES_CONTENIDO_MOCHILA } from "@/lib/mochilasData";
 import { exportarExcel } from "@/lib/exportExcel";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import { compressImage, rotarImagen } from "@/lib/imageUtils";
 type Articulo = { cantidad: string; descripcion: string };
 type Mochila = { folio: string; operador: string; contenido: Articulo[]; foto: string | null; unidad?: string; responsable?: string };
@@ -98,12 +99,7 @@ useEffect(() => {
 cargar();
 cargarOperadores();
 }, []);
-useEffect(() => {
-const id = setInterval(() => {
-cargar();
-}, 15000);
-return () => clearInterval(id);
-}, []);
+useRefrescarAlEnfocar(cargar);
 const abrirAgregar = () => {
 setEditando(null);
 setFFolio("");

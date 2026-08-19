@@ -5,6 +5,7 @@ import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
 import { exportarExcel } from "@/lib/exportExcel";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 type RequisicionItem = {
 cantidad: string;
@@ -163,17 +164,14 @@ await Promise.all([cargarOrdenes(), cargarUnidades(), cargarCambiosAceite(), car
 setCargando(false);
 })();
 }, []);
-// Sondeo periódico para reflejar cambios hechos desde otros dispositivos
-useEffect(() => {
-const id = setInterval(() => {
+// Actualiza al volver a la pestaña (evita mantener la base de datos despierta con sondeo constante)
+useRefrescarAlEnfocar(() => {
 cargarOrdenes();
 cargarUnidades();
 cargarCambiosAceite();
 cargarUltimoChecklist();
 cargarComentariosRevision();
-}, 20000);
-return () => clearInterval(id);
-}, []);
+});
 // Reloj para el contador de horas dentro del taller
 useEffect(() => {
 const id = setInterval(() => setTick(Date.now()), 60000);

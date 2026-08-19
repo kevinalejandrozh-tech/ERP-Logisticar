@@ -39,10 +39,10 @@ type Fila = {
   reporteFalla: string;
   fechaIngresoTaller: string;
   costo: string;
-  evidencias: Evidencia[];
+  evidenciasCount: number;
   reportadoPor: string;
   detalleServicio: string;
-  evidenciaReparacion: Evidencia[];
+  evidenciaReparacionCount: number;
   terminoServicio: string;
   facturaUrl: string;
 };
@@ -58,6 +58,18 @@ export default function HistorialMantenimientosPage() {
   const [cargando, setCargando] = useState(true);
   const [bloqueado, setBloqueado] = useState(true);
   const [evidenciasAbiertas, setEvidenciasAbiertas] = useState<Fila | null>(null);
+  const [fotosEvidenciasVer, setFotosEvidenciasVer] = useState<Evidencia[]>([]);
+  const abrirVerEvidencias = async (f: Fila) => {
+    setFotosEvidenciasVer([]);
+    setEvidenciasAbiertas(f);
+    try {
+      const res = await fetch(`/api/historial-mantenimientos/evidencias?id=${f.id}`, { cache: "no-store" });
+      const data = await res.json();
+      setFotosEvidenciasVer(data.evidencias || []);
+    } catch {
+      // si falla, el visor queda sin evidencias
+    }
+  };
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [unidadesMaestras, setUnidadesMaestras] = useState<Record<string, string>[]>([]);
@@ -135,10 +147,10 @@ export default function HistorialMantenimientosPage() {
           reporteFalla: "",
           fechaIngresoTaller: hoy,
           costo: "",
-          evidencias: [],
+          evidenciasCount: 0,
           reportadoPor: "",
           detalleServicio: "",
-          evidenciaReparacion: [],
+          evidenciaReparacionCount: 0,
           terminoServicio: "",
           facturaUrl: "",
         },
@@ -232,9 +244,18 @@ export default function HistorialMantenimientosPage() {
   const [fotosEvidenciaRep, setFotosEvidenciaRep] = useState<Evidencia[]>([]);
   const [guardandoEvidenciaRep, setGuardandoEvidenciaRep] = useState(false);
 
-  const abrirEvidenciaRep = (f: Fila) => {
-    setFotosEvidenciaRep(f.evidenciaReparacion || []);
+  const abrirEvidenciaRep = async (f: Fila) => {
+    setFotosEvidenciaRep([]);
     setModalEvidenciaRep(f);
+    if (f.evidenciaReparacionCount > 0) {
+      try {
+        const res = await fetch(`/api/historial-mantenimientos/evidencias?id=${f.id}&campo=reparacion`, { cache: "no-store" });
+        const data = await res.json();
+        setFotosEvidenciaRep(data.evidencias || []);
+      } catch {
+        // si falla, el modal queda sin evidencias precargadas
+      }
+    }
   };
   const agregarFotosEvidenciaRep = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -266,7 +287,7 @@ export default function HistorialMantenimientosPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: modalEvidenciaRep.id, evidenciaReparacion: fotosEvidenciaRep }),
       });
-      setFilas((prev) => prev.map((f) => (f.id === modalEvidenciaRep.id ? { ...f, evidenciaReparacion: fotosEvidenciaRep } : f)));
+      setFilas((prev) => prev.map((f) => (f.id === modalEvidenciaRep.id ? { ...f, evidenciaReparacionCount: fotosEvidenciaRep.length } : f)));
       setModalEvidenciaRep(null);
     } catch {
       alert("No se pudo guardar la evidencia de reparación.");
@@ -486,10 +507,10 @@ export default function HistorialMantenimientosPage() {
                       />
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
-                      {f.evidencias && f.evidencias.length > 0 ? (
-                        <span onClick={() => setEvidenciasAbiertas(f)} className="text-[var(--blue)] cursor-pointer inline-flex items-center gap-1" title="Ver evidencias">
+                      {f.evidenciasCount > 0 ? (
+                        <span onClick={() => abrirVerEvidencias(f)} className="text-[var(--blue)] cursor-pointer inline-flex items-center gap-1" title="Ver evidencias">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="M21 15l-5-5L5 21" /></svg>
-                          <span className="text-[10.5px] font-bold">{f.evidencias.length}</span>
+                          <span className="text-[10.5px] font-bold">{f.evidenciasCount}</span>
                         </span>
                       ) : (
                         <span className="text-[var(--gray-200)]">—</span>
@@ -509,7 +530,7 @@ export default function HistorialMantenimientosPage() {
                     <td className="px-2 py-1.5 whitespace-nowrap text-center">
                       <span onClick={() => abrirEvidenciaRep(f)} className="text-[var(--blue)] cursor-pointer inline-flex items-center gap-1" title="Agregar / ver evidencia de reparación">
                         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-                        {f.evidenciaReparacion && f.evidenciaReparacion.length > 0 && <span className="text-[10.5px] font-bold">{f.evidenciaReparacion.length}</span>}
+                        {f.evidenciaReparacionCount > 0 && <span className="text-[10.5px] font-bold">{f.evidenciaReparacionCount}</span>}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
@@ -591,7 +612,7 @@ export default function HistorialMantenimientosPage() {
               {evidenciasAbiertas.ecoUnidad} {evidenciasAbiertas.reportadoPor ? `· Reportado por: ${evidenciasAbiertas.reportadoPor}` : ""}
             </p>
             <div className="flex flex-col gap-3">
-              {evidenciasAbiertas.evidencias.map((ev, i) => (
+              {fotosEvidenciasVer.map((ev, i) => (
                 <div key={i} className="flex gap-3 items-start border border-[var(--gray-200)] rounded-lg p-2.5">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -603,6 +624,7 @@ export default function HistorialMantenimientosPage() {
                   <p className="text-[13px] text-[var(--navy)] m-0">{ev.descripcion || <span className="text-[var(--gray-400)]">Sin descripción.</span>}</p>
                 </div>
               ))}
+              {fotosEvidenciasVer.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12.5px] py-4">Sin evidencias.</p>}
             </div>
           </div>
         </div>

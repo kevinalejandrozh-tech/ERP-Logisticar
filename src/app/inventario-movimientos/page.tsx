@@ -292,6 +292,10 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
 
   const iniciarEscaneo = async () => {
     setErrorCamara("");
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setErrorCamara("Este navegador no soporta acceso a la cámara, o el sitio no se abrió con conexión segura (https). Abre este enlace en Chrome o Safari desde tu celular.");
+      return;
+    }
     try {
       await cargarJsQR();
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
@@ -302,8 +306,16 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
       }
       setEscaneando(true);
       rafRef.current = requestAnimationFrame(loopEscaneo);
-    } catch {
-      setErrorCamara("No se pudo acceder a la cámara. Revisa los permisos del navegador.");
+    } catch (err: any) {
+      if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
+        setErrorCamara(
+          "Este sitio no tiene permiso para usar la cámara. Toca el ícono de candado (🔒) o el menú del navegador junto a la dirección, entra a Permisos del sitio y activa \"Cámara\". Después vuelve a intentar."
+        );
+      } else if (err?.name === "NotFoundError" || err?.name === "OverconstrainedError") {
+        setErrorCamara("No se encontró ninguna cámara disponible en este dispositivo.");
+      } else {
+        setErrorCamara("No se pudo acceder a la cámara. Revisa los permisos del navegador e intenta de nuevo.");
+      }
     }
   };
 
@@ -385,7 +397,14 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
             <button type="button" onClick={iniciarEscaneo} className="text-[12px] font-bold text-[var(--blue)] mt-1">
               Activar cámara y escanear QR
             </button>
-            {errorCamara && <p className="text-[11px] text-[var(--red)] text-center m-0 mt-1">{errorCamara}</p>}
+            {errorCamara && (
+              <div className="flex flex-col items-center gap-2 mt-1">
+                <p className="text-[11px] text-[var(--red)] text-center m-0 max-w-[280px]">{errorCamara}</p>
+                <button type="button" onClick={iniciarEscaneo} className="text-[11.5px] font-bold text-white bg-[var(--navy)] rounded-full px-4 py-1.5">
+                  Reintentar
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="relative bg-black">

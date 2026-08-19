@@ -284,6 +284,68 @@ async function abrirVentanaEtiquetasQRLote(items: { descripcion: string; costoUn
   ventana.document.close();
 }
 
+function abrirVentanaEtiquetaPersonalizada(texto: string) {
+  const contenido = (texto || "").trim();
+  if (!contenido) {
+    alert("Escribe el texto o número que quieras imprimir en la etiqueta.");
+    return;
+  }
+  const ventana = window.open("", "_blank", "width=380,height=380");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  // el tamaño de fuente se ajusta segun la longitud del texto para que siempre quepa en la etiqueta
+  const tamanoFuente = contenido.length <= 2 ? "34pt" : contenido.length <= 4 ? "24pt" : contenido.length <= 8 ? "16pt" : "10pt";
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Etiqueta personalizada</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; background: #eef1f6; }
+  .lienzo { padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .etiqueta {
+    width: 5cm;
+    height: 2.5cm;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .contenido { font-size: ${tamanoFuente}; font-weight: 900; color: #000; text-align: center; margin: 0; line-height: 1; white-space: nowrap; }
+  .barras { padding: 10px 0; }
+  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print {
+    body { background: #fff; }
+    .lienzo { padding: 0; gap: 0; }
+    .etiqueta { border: none; }
+    .barras { display: none; }
+    @page { size: 5cm 2.5cm; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="lienzo">
+  <div class="etiqueta"><p class="contenido">${escaparHtml(contenido)}</p></div>
+  <div class="barras"><button id="btnImprimir">Imprimir</button></div>
+</div>
+<script>
+  document.getElementById("btnImprimir").addEventListener("click", function () {
+    window.print();
+    setTimeout(function () { window.close(); }, 300);
+  });
+</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+}
+
 export default function InventarioPage() {
   const [tab, setTab] = useState<"reportes" | "entrada" | "salida" | "movimientos">("reportes");
   const [items, setItems] = useState<ItemInventario[]>([]);
@@ -478,6 +540,7 @@ export default function InventarioPage() {
 
   // ---- Existencias por artículo ----
   const [modalExistencias, setModalExistencias] = useState(false);
+  const [textoEtiquetaPersonalizada, setTextoEtiquetaPersonalizada] = useState("");
   const [buscarExistencias, setBuscarExistencias] = useState("");
   const itemsFiltradosExistencias = useMemo(() => {
     const q = buscarExistencias.trim().toLowerCase();
@@ -1162,6 +1225,27 @@ export default function InventarioPage() {
                       ))}
                     </div>
                   </div>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 mb-5 flex flex-wrap items-center gap-3">
+                  <div>
+                    <p className="text-[11.5px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0 mb-0.5">Etiqueta personalizada</p>
+                    <p className="text-[11px] text-[var(--gray-400)] m-0">Ej. números del 1 al 99 para marcar espacios, gavetas, etc.</p>
+                  </div>
+                  <input
+                    value={textoEtiquetaPersonalizada}
+                    onChange={(e) => setTextoEtiquetaPersonalizada(e.target.value)}
+                    placeholder="Ej. 42"
+                    className="border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] w-[120px]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => abrirVentanaEtiquetaPersonalizada(textoEtiquetaPersonalizada)}
+                    className="flex items-center gap-1.5 bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+                    Imprimir Etiqueta personalizada
+                  </button>
                 </div>
 
                 <div className="flex flex-wrap gap-2.5 mb-5">

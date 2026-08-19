@@ -245,6 +245,51 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
   };
   const consultarArticulo = () => buscar(busqueda);
 
+  // ---- Escanear tomando una foto con la cámara nativa (alternativa cuando el video en vivo no consigue permiso) ----
+  const [decodificandoFoto, setDecodificandoFoto] = useState(false);
+  const [errorFoto, setErrorFoto] = useState("");
+  const escanearDesdeFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setErrorFoto("");
+    setDecodificandoFoto(true);
+    try {
+      await cargarJsQR();
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("No se pudo leer la foto."));
+        reader.readAsDataURL(file);
+      });
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("No se pudo procesar la imagen."));
+        img.src = dataUrl;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("No se pudo procesar la imagen.");
+      ctx.drawImage(img, 0, 0);
+      const imagen = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const resultado = (window as any).jsQR(imagen.data, imagen.width, imagen.height);
+      if (resultado && resultado.data) {
+        const valor = String(resultado.data).trim();
+        setBusqueda(valor);
+        await buscar(valor);
+      } else {
+        setErrorFoto("No se detectó ningún código QR en la foto. Acércate más, procura buena luz y que el código se vea completo, luego intenta de nuevo.");
+      }
+    } catch (err: any) {
+      setErrorFoto(err.message || "No se pudo leer la foto. Intenta de nuevo.");
+    } finally {
+      setDecodificandoFoto(false);
+    }
+  };
+
   // ---- Escáner de cámara en vivo (lee el QR impreso en la etiqueta) ----
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -405,6 +450,22 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
                 </button>
               </div>
             )}
+
+            <div className="flex items-center gap-2 w-full max-w-[240px] my-1">
+              <div className="flex-1 h-px bg-[var(--gray-200)]" />
+              <span className="text-[10.5px] text-[var(--gray-400)] font-bold">O</span>
+              <div className="flex-1 h-px bg-[var(--gray-200)]" />
+            </div>
+
+            <label className="flex flex-col items-center gap-1.5 cursor-pointer">
+              <div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+              </div>
+              <span className="text-[12px] font-bold text-[var(--blue)] text-center">{decodificandoFoto ? "Leyendo la foto..." : "Tomar foto del QR y escanearla"}</span>
+              <span className="text-[10px] text-[var(--gray-400)] text-center max-w-[240px]">Si no consigues permiso de video, esta opción usa la app de cámara de tu celular directamente.</span>
+              <input type="file" accept="image/*" capture="environment" onChange={escanearDesdeFoto} disabled={decodificandoFoto} className="hidden" />
+            </label>
+            {errorFoto && <p className="text-[11px] text-[var(--red)] text-center m-0 mt-1 max-w-[280px]">{errorFoto}</p>}
           </div>
         ) : (
           <div className="relative bg-black">

@@ -154,6 +154,94 @@ ${filas.map((f, i) => bloqueEtiquetaHtml(f, imagenes[i])).join("\n")}
   ventana.document.close();
 }
 
+// ---- Etiqueta con código QR (diseño 5cm x 2.5cm) para la vista Reportes ----
+function cargarQRiousLib(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).QRious) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
+    document.body.appendChild(script);
+  });
+}
+async function generarImagenQR(valor: string): Promise<string> {
+  await cargarQRiousLib();
+  const canvas = document.createElement("canvas");
+  new (window as any).QRious({ element: canvas, value: valor || "000000", size: 300, level: "H" });
+  return canvas.toDataURL("image/png");
+}
+async function abrirVentanaEtiquetaQR(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }) {
+  if (!item.numeroEtiqueta) {
+    alert("Este artículo aún no tiene número de etiqueta.");
+    return;
+  }
+  const imagenQR = await generarImagenQR(item.numeroEtiqueta);
+  const ventana = window.open("", "_blank", "width=380,height=420");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Etiqueta ${escaparHtml(item.numeroEtiqueta)}</title>
+<style>
+  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #eef1f6; display: flex; flex-direction: column; align-items: center; }
+  .lienzo { padding: 28px 16px; display: flex; flex-direction: column; align-items: center; }
+  .etiqueta {
+    width: 5cm;
+    height: 2.5cm;
+    box-sizing: border-box;
+    padding: 2mm 2.5mm;
+    background: #fff;
+    border: 1px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .titulo { font-size: 7.5pt; font-weight: bold; color: #16215c; text-align: center; margin: 0; line-height: 1.15; max-height: 0.62cm; overflow: hidden; }
+  .qr { width: 1.35cm; height: 1.35cm; }
+  .precio { font-size: 12pt; font-weight: bold; color: #16215c; margin: 0; }
+  .num { font-size: 8pt; font-weight: bold; color: #16215c; margin: 6px 0 0; letter-spacing: 1px; }
+  .barras { margin-top: 20px; }
+  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print {
+    body { background: #fff; }
+    .etiqueta { border: none; }
+    .num, .barras { display: none; }
+    @page { size: 5cm 2.5cm; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div class="lienzo">
+  <div class="etiqueta">
+    <p class="titulo">${escaparHtml(item.descripcion) || "—"}</p>
+    <img class="qr" src="${imagenQR}" alt="${escaparHtml(item.numeroEtiqueta)}" />
+    <p class="precio">$${parseFloat(item.costoUnitario || "0").toFixed(2)}</p>
+  </div>
+  <p class="num">${escaparHtml(item.numeroEtiqueta)}</p>
+  <div class="barras"><button id="btnImprimir">Imprimir</button></div>
+</div>
+<script>
+  document.getElementById("btnImprimir").addEventListener("click", function () {
+    window.print();
+    setTimeout(function () { window.close(); }, 300);
+  });
+</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+}
+
 export default function InventarioPage() {
   const [tab, setTab] = useState<"reportes" | "entrada" | "salida" | "movimientos">("reportes");
   const [items, setItems] = useState<ItemInventario[]>([]);
@@ -631,25 +719,54 @@ export default function InventarioPage() {
     }
     setRecibiendo(true);
     try {
+      let totalRegistrosCreados = 0;
       for (const f of validas) {
-        await fetch("/api/inventario/items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            descripcion: f.descripcion.trim(),
-            categoria: f.categoria,
-            referencia: f.referencia,
-            costoUnitario: desformatoContable(f.costoUnitario),
-            cantidad: f.cantidad,
-            proveedor: f.proveedor,
-            ubicacion: f.ubicacion,
-            fechaIngreso: f.fechaIngreso,
-            unidad: f.unidad,
-            numeroEtiqueta: f.numeroEtiqueta,
-            refCompra: f.refCompra,
-            numeroRecepcion: f.numeroRecepcion,
-          }),
-        });
+        const cantidadTotal = Math.max(1, Math.round(parseFloat(f.cantidad) || 1));
+        if (cantidadTotal === 1) {
+          // una sola unidad: conserva la etiqueta ya generada para esta fila, si existe
+          await fetch("/api/inventario/items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              descripcion: f.descripcion.trim(),
+              categoria: f.categoria,
+              referencia: f.referencia,
+              costoUnitario: desformatoContable(f.costoUnitario),
+              cantidad: "1",
+              proveedor: f.proveedor,
+              ubicacion: f.ubicacion,
+              fechaIngreso: f.fechaIngreso,
+              unidad: f.unidad,
+              numeroEtiqueta: f.numeroEtiqueta,
+              refCompra: f.refCompra,
+              numeroRecepcion: f.numeroRecepcion,
+            }),
+          });
+          totalRegistrosCreados += 1;
+        } else {
+          // cantidad > 1: se separa en un registro individual por cada unidad, cada uno con
+          // su propio numero de etiqueta (autogenerado), para poder consumirlas por separado
+          for (let i = 0; i < cantidadTotal; i++) {
+            await fetch("/api/inventario/items", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                descripcion: f.descripcion.trim(),
+                categoria: f.categoria,
+                referencia: f.referencia,
+                costoUnitario: desformatoContable(f.costoUnitario),
+                cantidad: "1",
+                proveedor: f.proveedor,
+                ubicacion: f.ubicacion,
+                fechaIngreso: f.fechaIngreso,
+                unidad: f.unidad,
+                refCompra: f.refCompra,
+                numeroRecepcion: f.numeroRecepcion,
+              }),
+            });
+            totalRegistrosCreados += 1;
+          }
+        }
       }
       const numeroRecepcionLote = validas[0]?.numeroRecepcion;
       if (numeroRecepcionLote && evidenciaRecepcion.length > 0) {
@@ -663,7 +780,7 @@ export default function InventarioPage() {
       setEvidenciaRecepcion([]);
       await cargarItems();
       await cargarMovimientos();
-      alert(`Se recibieron ${validas.length} artículo(s) al inventario.`);
+      alert(`Se recibieron ${totalRegistrosCreados} artículo(s) unitario(s) al inventario.`);
       setTab("reportes");
     } catch (err: any) {
       alert("Ocurrió un error al recibir la entrada. Verifica e intenta de nuevo.");
@@ -1112,7 +1229,19 @@ export default function InventarioPage() {
                         {itemsFiltrados.map((it) => (
                           <tr key={it.id} className="border-b border-[var(--gray-200)]" style={it.cantidad < UMBRAL_BAJO ? { backgroundColor: "rgba(226,65,44,0.08)" } : undefined}>
                             <td className="px-2.5 py-2 text-[12.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{it.codigo}</td>
-                            <td className="px-2.5 py-2 text-[12px] whitespace-nowrap font-mono text-[var(--navy)]">{it.numeroEtiqueta || "—"}</td>
+                            <td className="px-2.5 py-2 text-[12px] whitespace-nowrap font-mono">
+                              {it.numeroEtiqueta ? (
+                                <span
+                                  onClick={() => abrirVentanaEtiquetaQR(it)}
+                                  className="text-[var(--blue)] font-bold cursor-pointer underline decoration-dotted"
+                                  title="Ver / imprimir etiqueta con código QR"
+                                >
+                                  {it.numeroEtiqueta}
+                                </span>
+                              ) : (
+                                <span className="text-[var(--navy)]">—</span>
+                              )}
+                            </td>
                             <td className="px-2.5 py-2 whitespace-nowrap">
                               <input
                                 defaultValue={it.descripcion}

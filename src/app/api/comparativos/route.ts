@@ -1,0 +1,25 @@
+import { NextRequest, NextResponse } from "next/server";
+import { ensureSchema, getPool } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+export async function POST(req: NextRequest) {
+  try {
+    const { titulo, descripcion, fotoAntes, fotoDespues } = await req.json();
+    if (!titulo || !String(titulo).trim()) {
+      return NextResponse.json({ error: "Falta el título del comparativo." }, { status: 400 });
+    }
+    await ensureSchema();
+    const pool = getPool();
+    const maxRes = await pool.query(`SELECT COALESCE(MAX(orden), -1) AS m FROM comparativos`);
+    const orden = Number(maxRes.rows[0].m) + 1;
+    const result = await pool.query(
+      `INSERT INTO comparativos (titulo, descripcion, foto_antes, foto_despues, orden) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [titulo.trim(), descripcion || "", fotoAntes || null, fotoDespues || null, orden]
+    );
+    return NextResponse.json({ ok: true, id: result.rows[0].id });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message || "Error al crear el comparativo." }, { status: 500 });
+  }
+}

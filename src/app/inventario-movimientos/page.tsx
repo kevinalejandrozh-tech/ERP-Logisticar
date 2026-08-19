@@ -205,22 +205,7 @@ function FormularioEntrada({ onFinalizar }: { onFinalizar: () => void }) {
   );
 }
 
-function cargarJsQR(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if ((window as any).jsQR) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("No se pudo cargar el lector de códigos QR."));
-    document.body.appendChild(script);
-  });
-}
-
 function FormularioSalida({ onFinalizar, etiquetaInicial }: { onFinalizar: () => void; etiquetaInicial?: string }) {
-  const [busqueda, setBusqueda] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState("");
   const [articulo, setArticulo] = useState<ItemInventario | null>(null);
@@ -247,10 +232,7 @@ function FormularioSalida({ onFinalizar, etiquetaInicial }: { onFinalizar: () =>
   };
 
   const buscar = async (valor: string) => {
-    if (!valor.trim()) {
-      setError("Captura el número de etiqueta a buscar.");
-      return;
-    }
+    if (!valor.trim()) return;
     setError("");
     setArticulo(null);
     setBuscando(true);
@@ -273,7 +255,6 @@ function FormularioSalida({ onFinalizar, etiquetaInicial }: { onFinalizar: () =>
       setBuscando(false);
     }
   };
-  const consultarArticulo = () => buscar(busqueda);
 
   const irASurtirOrden = () => {
     setAccion("surtir");
@@ -324,141 +305,12 @@ function FormularioSalida({ onFinalizar, etiquetaInicial }: { onFinalizar: () =>
     }
   };
 
-  // Si se llegó aquí desde un QR escaneado con la cámara del celular (enlace con ?etiqueta=),
-  // se busca automáticamente esa etiqueta al entrar, sin pasar por el buscador manual.
+  // Esta pantalla solo se usa llegando desde un QR escaneado con la cámara del celular
+  // (enlace con ?etiqueta=). Al entrar, se busca automáticamente esa etiqueta.
   useEffect(() => {
-    if (etiquetaInicial) {
-      setBusqueda(etiquetaInicial);
-      buscar(etiquetaInicial);
-    }
+    if (etiquetaInicial) buscar(etiquetaInicial);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [etiquetaInicial]);
-
-  // ---- Escanear tomando una foto con la cámara nativa (alternativa cuando el video en vivo no consigue permiso) ----
-  const [decodificandoFoto, setDecodificandoFoto] = useState(false);
-  const [errorFoto, setErrorFoto] = useState("");
-  const escanearDesdeFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setErrorFoto("");
-    setDecodificandoFoto(true);
-    try {
-      await cargarJsQR();
-      const dataUrl: string = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error("No se pudo leer la foto."));
-        reader.readAsDataURL(file);
-      });
-      const img = new Image();
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error("No se pudo procesar la imagen."));
-        img.src = dataUrl;
-      });
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("No se pudo procesar la imagen.");
-      ctx.drawImage(img, 0, 0);
-      const imagen = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const resultado = (window as any).jsQR(imagen.data, imagen.width, imagen.height);
-      if (resultado && resultado.data) {
-        const valor = String(resultado.data).trim();
-        setBusqueda(valor);
-        await buscar(valor);
-      } else {
-        setErrorFoto("No se detectó ningún código QR en la foto. Acércate más, procura buena luz y que el código se vea completo, luego intenta de nuevo.");
-      }
-    } catch (err: any) {
-      setErrorFoto(err.message || "No se pudo leer la foto. Intenta de nuevo.");
-    } finally {
-      setDecodificandoFoto(false);
-    }
-  };
-
-  // ---- Escáner de cámara en vivo (lee el QR impreso en la etiqueta) ----
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const [escaneando, setEscaneando] = useState(false);
-  const [errorCamara, setErrorCamara] = useState("");
-
-  const detenerEscaneo = () => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    rafRef.current = null;
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-    }
-    setEscaneando(false);
-  };
-
-  const loopEscaneo = () => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState !== video.HAVE_ENOUGH_DATA) {
-      rafRef.current = requestAnimationFrame(loopEscaneo);
-      return;
-    }
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) {
-      rafRef.current = requestAnimationFrame(loopEscaneo);
-      return;
-    }
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imagen = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const resultado = (window as any).jsQR(imagen.data, imagen.width, imagen.height);
-    if (resultado && resultado.data) {
-      const valor = String(resultado.data).trim();
-      detenerEscaneo();
-      setBusqueda(valor);
-      buscar(valor);
-      return;
-    }
-    rafRef.current = requestAnimationFrame(loopEscaneo);
-  };
-
-  const iniciarEscaneo = async () => {
-    setErrorCamara("");
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setErrorCamara("Este navegador no soporta acceso a la cámara, o el sitio no se abrió con conexión segura (https). Abre este enlace en Chrome o Safari desde tu celular.");
-      return;
-    }
-    try {
-      await cargarJsQR();
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setEscaneando(true);
-      rafRef.current = requestAnimationFrame(loopEscaneo);
-    } catch (err: any) {
-      if (err?.name === "NotAllowedError" || err?.name === "PermissionDeniedError") {
-        setErrorCamara(
-          "Este sitio no tiene permiso para usar la cámara. Toca el ícono de candado (🔒) o el menú del navegador junto a la dirección, entra a Permisos del sitio y activa \"Cámara\". Después vuelve a intentar."
-        );
-      } else if (err?.name === "NotFoundError" || err?.name === "OverconstrainedError") {
-        setErrorCamara("No se encontró ninguna cámara disponible en este dispositivo.");
-      } else {
-        setErrorCamara("No se pudo acceder a la cámara. Revisa los permisos del navegador e intenta de nuevo.");
-      }
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      detenerEscaneo();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   if (consumido) {
     return (
@@ -478,85 +330,18 @@ function FormularioSalida({ onFinalizar, etiquetaInicial }: { onFinalizar: () =>
 
   return (
     <div className="px-5 py-6 flex flex-col gap-3.5">
-      <h1 className="text-center font-display font-extrabold text-[var(--navy)] text-[14.5px] uppercase tracking-wide mb-1">
-        Escanea el artículo que se va a consumir
-      </h1>
+      {buscando && <p className="text-center text-[13px] text-[var(--gray-400)] py-8">Buscando artículo...</p>}
 
-      <div>
-        <label className="block text-[12px] font-bold text-[var(--navy)] mb-1">Buscar número de etiqueta</label>
-        <input
-          value={busqueda}
-          onChange={(e) => {
-            setBusqueda(e.target.value);
-            setArticulo(null);
-          }}
-          placeholder="Ej. 000123"
-          className="w-full h-10 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm"
-        />
-      </div>
-
-      <div className="border-2 border-dashed border-[var(--gray-200)] rounded-xl text-[var(--navy)] overflow-hidden">
-        {!escaneando ? (
-          <div className="py-6 flex flex-col items-center gap-2 px-4">
-            <p className="text-[12.5px] font-bold text-center m-0">Scanner con cámara del dispositivo</p>
-            <div className="w-11 h-11 rounded-full bg-[var(--gray-100)] flex items-center justify-center">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-            </div>
-            <button type="button" onClick={iniciarEscaneo} className="text-[12px] font-bold text-[var(--blue)] mt-1">
-              Activar cámara y escanear QR
-            </button>
-            {errorCamara && (
-              <div className="flex flex-col items-center gap-2 mt-1">
-                <p className="text-[11px] text-[var(--red)] text-center m-0 max-w-[280px]">{errorCamara}</p>
-                <button type="button" onClick={iniciarEscaneo} className="text-[11.5px] font-bold text-white bg-[var(--navy)] rounded-full px-4 py-1.5">
-                  Reintentar
-                </button>
-              </div>
-            )}
-
-            <div className="flex items-center gap-2 w-full max-w-[240px] my-1">
-              <div className="flex-1 h-px bg-[var(--gray-200)]" />
-              <span className="text-[10.5px] text-[var(--gray-400)] font-bold">O</span>
-              <div className="flex-1 h-px bg-[var(--gray-200)]" />
-            </div>
-
-            <label className="flex flex-col items-center gap-1.5 cursor-pointer">
-              <div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-              </div>
-              <span className="text-[12px] font-bold text-[var(--blue)] text-center">{decodificandoFoto ? "Leyendo la foto..." : "Tomar foto del QR y escanearla"}</span>
-              <span className="text-[10px] text-[var(--gray-400)] text-center max-w-[240px]">Si no consigues permiso de video, esta opción usa la app de cámara de tu celular directamente.</span>
-              <input type="file" accept="image/*" capture="environment" onChange={escanearDesdeFoto} disabled={decodificandoFoto} className="hidden" />
-            </label>
-            {errorFoto && <p className="text-[11px] text-[var(--red)] text-center m-0 mt-1 max-w-[280px]">{errorFoto}</p>}
+      {!buscando && !articulo && (
+        <div className="px-2 py-10 flex flex-col items-center gap-3 text-center">
+          <div className="w-14 h-14 rounded-full bg-[var(--blue-light)] flex items-center justify-center">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /><path d="M14 14h3v3h-3zM19 14h2v2h-2zM14 19h2v2h-2zM19 19h2v2h-2z" /></svg>
           </div>
-        ) : (
-          <div className="relative bg-black">
-            {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-            <video ref={videoRef} playsInline muted className="w-full h-[220px] object-cover block" />
-            <canvas ref={canvasRef} className="hidden" />
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-[62%] aspect-square border-[3px] border-[var(--blue)] rounded-xl" style={{ boxShadow: "0 0 0 999px rgba(0,0,0,0.35)" }} />
-            </div>
-            <p className="absolute bottom-2 left-0 right-0 text-center text-white text-[11px] font-bold">Apunta al código QR de la etiqueta</p>
-            <button type="button" onClick={detenerEscaneo} className="absolute top-2 right-2 bg-black/60 text-white text-[11px] font-bold rounded-full px-3 py-1.5">
-              Cancelar
-            </button>
-          </div>
-        )}
-      </div>
-
-      <button
-        type="button"
-        onClick={consultarArticulo}
-        disabled={buscando}
-        className="w-full flex items-center justify-center gap-2 bg-white text-[var(--navy)] border-2 border-[var(--navy)] font-display font-bold rounded-full py-3 text-[13px] disabled:opacity-60"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-        {buscando ? "Buscando..." : "Buscar artículo"}
-      </button>
-
-      {error && <p className="text-[12px] text-[var(--red)] m-0">{error}</p>}
+          <p className="text-[13.5px] text-[var(--navy)] font-bold m-0">Escanea el código QR de una etiqueta</p>
+          <p className="text-[12px] text-[var(--gray-400)] m-0 max-w-[260px]">Usa la cámara de tu celular para escanear la etiqueta impresa del artículo; se abrirá esta pantalla automáticamente.</p>
+          {error && <p className="text-[12px] text-[var(--red)] m-0 mt-1">{error}</p>}
+        </div>
+      )}
 
       {articulo && (
         <div className="bg-[var(--blue-light)] border border-[var(--blue)]/30 rounded-xl p-4">

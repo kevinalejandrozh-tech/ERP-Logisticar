@@ -69,6 +69,10 @@ PLAN DE CARGAS SEM. {semanaISO(new Date())}
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
 Plan de trabajo y seguimiento
 </Link>
+<Link href="/comparativo" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="4" width="9" height="9" rx="1.5" /><rect x="13" y="4" width="9" height="9" rx="1.5" /><path d="M2 17h9M13 17h9" /></svg>
+Generar comparativo
+</Link>
 </div>
 <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 md:gap-[18px]">

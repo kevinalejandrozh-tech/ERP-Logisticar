@@ -320,6 +320,19 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 `);
 
 await p.query(`
+CREATE TABLE IF NOT EXISTS comparativos (
+id SERIAL PRIMARY KEY,
+titulo TEXT,
+descripcion TEXT,
+foto_antes TEXT,
+foto_despues TEXT,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
+
+await p.query(`
 CREATE TABLE IF NOT EXISTS proveedores (
 id SERIAL PRIMARY KEY,
 nombre TEXT,

@@ -7,7 +7,7 @@ import { compressImage } from "@/lib/imageUtils";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const OPCIONES_TIPO = ["Preventivo", "Correctivo"];
-const OPCIONES_ESTADO = ["Por Revisar la falla", "En Proceso de mantto", "En espera de material"];
+const OPCIONES_ESTADO = ["Revisión Pendiente", "En proceso", "En espera de material", "Completo"];
 
 declare global {
   interface Window {
@@ -60,6 +60,7 @@ export default function HistorialMantenimientosPage() {
   const [evidenciasAbiertas, setEvidenciasAbiertas] = useState<Fila | null>(null);
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
+  const [unidadesMaestras, setUnidadesMaestras] = useState<Record<string, string>[]>([]);
 
   useEffect(() => {
     cargarQRious()
@@ -70,6 +71,10 @@ export default function HistorialMantenimientosPage() {
           new window.QRious({ element: canvas, value: `${window.location.origin}/reportar-falla`, size: 150, level: "M" });
         }
       })
+      .catch(() => {});
+    fetch("/api/unidades/list", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setUnidadesMaestras(d.registros || []))
       .catch(() => {});
   }, []);
 
@@ -117,17 +122,18 @@ export default function HistorialMantenimientosPage() {
     try {
       const res = await fetch("/api/historial-mantenimientos", { method: "POST" });
       const data = await res.json();
+      const hoy = new Date().toISOString().slice(0, 10);
       setFilas((prev) => [
         ...prev,
         {
           id: data.id,
           estado: "",
-          folio: "",
+          folio: data.folio || "",
           ecoUnidad: "",
           unidad: "",
           tipoMantenimiento: "Preventivo",
           reporteFalla: "",
-          fechaIngresoTaller: "",
+          fechaIngresoTaller: hoy,
           costo: "",
           evidencias: [],
           reportadoPor: "",
@@ -343,6 +349,7 @@ export default function HistorialMantenimientosPage() {
                     "Eco. Unidad",
                     "Unidad",
                     "Tipo de mantenimiento",
+                    "Quien reporta",
                     "Reporte de falla",
                     "Evidencias",
                     "Detalle de servicio",
@@ -362,7 +369,7 @@ export default function HistorialMantenimientosPage() {
                 {filasFiltradas.map((f) => {
                   const tieneSolicitud = solicitudes.some((s) => s.historialId === f.id);
                   return (
-                  <tr key={f.id} className="border-b border-[var(--gray-200)]">
+                  <tr key={f.id} className="border-b border-[var(--gray-200)]" style={f.estado === "Completo" ? { backgroundColor: "rgba(33,168,102,0.15)" } : undefined}>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       <select
                         disabled={bloqueado}
@@ -416,15 +423,28 @@ export default function HistorialMantenimientosPage() {
                       />
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
-                      <input
+                      <select
                         disabled={bloqueado}
-                        defaultValue={f.unidad}
-                        onBlur={(e) => {
-                          actualizarLocal(f.id, "unidad", e.target.value);
-                          guardarCampo(f.id, "unidad", e.target.value);
+                        value={f.ecoUnidad && unidadesMaestras.some((u) => u["ECO"] === f.ecoUnidad) ? f.ecoUnidad : ""}
+                        onChange={(e) => {
+                          const eco = e.target.value;
+                          const unidadEncontrada = unidadesMaestras.find((u) => u["ECO"] === eco);
+                          const modeloTipo = unidadEncontrada?.["Modelo/Tipo"] || "";
+                          actualizarLocal(f.id, "ecoUnidad", eco);
+                          guardarCampo(f.id, "ecoUnidad", eco);
+                          actualizarLocal(f.id, "unidad", modeloTipo);
+                          guardarCampo(f.id, "unidad", modeloTipo);
                         }}
+                        title="Selecciona el ECO de la unidad para autocompletar"
                         className="border border-[var(--gray-200)] disabled:bg-transparent disabled:border-transparent rounded px-1.5 py-1 text-[12px] w-[95px]"
-                      />
+                      >
+                        <option value="">{f.unidad || "Seleccionar..."}</option>
+                        {unidadesMaestras.map((u) => (
+                          <option key={u["ECO"]} value={u["ECO"]}>
+                            {u["ECO"]} — {u["Modelo/Tipo"]}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       <select
@@ -442,6 +462,17 @@ export default function HistorialMantenimientosPage() {
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      <input
+                        disabled={bloqueado}
+                        defaultValue={f.reportadoPor}
+                        onBlur={(e) => {
+                          actualizarLocal(f.id, "reportadoPor", e.target.value);
+                          guardarCampo(f.id, "reportadoPor", e.target.value);
+                        }}
+                        className="border border-[var(--gray-200)] disabled:bg-transparent disabled:border-transparent rounded px-1.5 py-1 text-[12px] w-[110px]"
+                      />
                     </td>
                     <td className="px-2 py-1.5">
                       <input

@@ -10,6 +10,7 @@ const MAPA_COLUMNAS: Record<string, string> = {
   ecoUnidad: "eco_unidad",
   unidad: "unidad",
   tipoMantenimiento: "tipo_mantenimiento",
+  reportadoPor: "reportado_por",
   reporteFalla: "reporte_falla",
   fechaIngresoTaller: "fecha_ingreso_taller",
   costo: "costo",

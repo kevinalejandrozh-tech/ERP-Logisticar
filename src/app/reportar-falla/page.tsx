@@ -1,11 +1,118 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Logo from "@/components/Logo";
 import { compressImage } from "@/lib/imageUtils";
 
 type FotoDesc = { foto: string; descripcion: string };
 type Unidad = { ECO: string; Unidad?: string; [k: string]: string | undefined };
 type Operador = { nombre: string };
+type Punto = { x: number; y: number };
+
+function ModalAnotarFoto({ imagenBase, onConfirmar, onCancelar }: { imagenBase: string; onConfirmar: (dataUrl: string) => void; onCancelar: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [imgCargada, setImgCargada] = useState<HTMLImageElement | null>(null);
+  const [dims, setDims] = useState({ w: 0, h: 0 });
+  const [trazos, setTrazos] = useState<Punto[][]>([]);
+  const [trazoActual, setTrazoActual] = useState<Punto[] | null>(null);
+
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      const maxAncho = Math.min(360, window.innerWidth - 48);
+      const escala = Math.min(1, maxAncho / img.width);
+      setDims({ w: Math.round(img.width * escala), h: Math.round(img.height * escala) });
+      setImgCargada(img);
+    };
+    img.src = imagenBase;
+  }, [imagenBase]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !imgCargada || dims.w === 0) return;
+    canvas.width = dims.w;
+    canvas.height = dims.h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, dims.w, dims.h);
+    ctx.drawImage(imgCargada, 0, 0, dims.w, dims.h);
+    ctx.strokeStyle = "#e2412c";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    [...trazos, ...(trazoActual ? [trazoActual] : [])].forEach((trazo) => {
+      if (trazo.length < 2) return;
+      ctx.beginPath();
+      ctx.moveTo(trazo[0].x, trazo[0].y);
+      trazo.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
+      ctx.stroke();
+    });
+  }, [trazos, trazoActual, imgCargada, dims]);
+
+  const obtenerPosicion = (e: React.MouseEvent | React.TouchEvent): Punto => {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
+    const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  };
+  const iniciarTrazo = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    setTrazoActual([obtenerPosicion(e)]);
+  };
+  const continuarTrazo = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!trazoActual) return;
+    e.preventDefault();
+    setTrazoActual((prev) => (prev ? [...prev, obtenerPosicion(e)] : prev));
+  };
+  const terminarTrazo = () => {
+    setTrazoActual((prev) => {
+      if (prev && prev.length > 1) setTrazos((t) => [...t, prev]);
+      return null;
+    });
+  };
+  const deshacer = () => setTrazos((prev) => prev.slice(0, -1));
+  const confirmar = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    onConfirmar(canvas.toDataURL("image/jpeg", 0.85));
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/85 z-[70] flex flex-col items-center justify-center p-4">
+      <p className="text-white text-[12.5px] font-bold mb-3 text-center">Marca con rojo lo que quieras resaltar de la foto</p>
+      <canvas
+        ref={canvasRef}
+        onMouseDown={iniciarTrazo}
+        onMouseMove={continuarTrazo}
+        onMouseUp={terminarTrazo}
+        onMouseLeave={terminarTrazo}
+        onTouchStart={iniciarTrazo}
+        onTouchMove={continuarTrazo}
+        onTouchEnd={terminarTrazo}
+        className="rounded-lg bg-white touch-none max-w-full"
+        style={{ touchAction: "none" }}
+      />
+      <div className="flex items-center gap-2.5 mt-4 flex-wrap justify-center">
+        <button
+          type="button"
+          onClick={deshacer}
+          disabled={trazos.length === 0}
+          className="flex items-center gap-1.5 bg-white/10 disabled:opacity-40 text-white border border-white/30 rounded-lg px-3.5 py-2 text-[12.5px] font-bold"
+          title="Deshacer último trazo"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a4 4 0 010 8h-1" /></svg>
+          Deshacer
+        </button>
+        <button type="button" onClick={onCancelar} className="bg-white/10 text-white border border-white/30 rounded-lg px-4 py-2 text-[12.5px] font-bold">
+          Cancelar
+        </button>
+        <button type="button" onClick={confirmar} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2 text-[12.5px] font-bold">
+          Usar foto
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function ReportarFallaPage() {
   const [unidades, setUnidades] = useState<Unidad[]>([]);
@@ -14,6 +121,7 @@ export default function ReportarFallaPage() {
   const [nombre, setNombre] = useState("");
   const [reporteFalla, setReporteFalla] = useState("");
   const [fotos, setFotos] = useState<FotoDesc[]>([]);
+  const [fotoPendiente, setFotoPendiente] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ folio: string } | null>(null);
   const [error, setError] = useState("");
@@ -29,20 +137,20 @@ export default function ReportarFallaPage() {
       .catch(() => {});
   }, []);
 
-  const agregarFotos = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length === 0) return;
-    const nuevas: FotoDesc[] = [];
-    for (const file of files) {
-      try {
-        const dataUrl = await compressImage(file);
-        nuevas.push({ foto: dataUrl, descripcion: "" });
-      } catch {
-        // se omite si falla la compresion
-      }
-    }
-    setFotos((prev) => [...prev, ...nuevas]);
+  const seleccionarFoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     e.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await compressImage(file);
+      setFotoPendiente(dataUrl);
+    } catch {
+      // se omite si falla la compresion
+    }
+  };
+  const confirmarFotoAnotada = (dataUrl: string) => {
+    setFotos((prev) => [...prev, { foto: dataUrl, descripcion: "" }]);
+    setFotoPendiente(null);
   };
   const actualizarDescripcion = (idx: number, descripcion: string) => {
     setFotos((prev) => prev.map((f, i) => (i === idx ? { ...f, descripcion } : f)));
@@ -50,7 +158,7 @@ export default function ReportarFallaPage() {
   const eliminarFoto = (idx: number) => setFotos((prev) => prev.filter((_, i) => i !== idx));
 
   const enviar = async () => {
-    if (!ecoUnidad || !nombre || !reporteFalla.trim()) {
+    if (!ecoUnidad || !nombre.trim() || !reporteFalla.trim()) {
       setError("Completa el ECO, tu nombre y el reporte de falla.");
       return;
     }
@@ -64,7 +172,7 @@ export default function ReportarFallaPage() {
         body: JSON.stringify({
           ecoUnidad,
           unidad: unidad?.Unidad || "",
-          reportadoPor: nombre,
+          reportadoPor: nombre.trim(),
           reporteFalla: reporteFalla.trim(),
           evidencias: fotos,
         }),
@@ -134,14 +242,18 @@ export default function ReportarFallaPage() {
           </div>
           <div>
             <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Nombre</label>
-            <select value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full h-10 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm">
-              <option value="">Selecciona...</option>
+            <input
+              value={nombre}
+              onChange={(e) => setNombre(e.target.value)}
+              list="dl-reportar-falla-nombre"
+              placeholder="Escribe o selecciona tu nombre..."
+              className="w-full h-10 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm"
+            />
+            <datalist id="dl-reportar-falla-nombre">
               {operadores.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
+                <option key={o} value={o} />
               ))}
-            </select>
+            </datalist>
           </div>
           <div>
             <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Reporte de falla</label>
@@ -177,7 +289,7 @@ export default function ReportarFallaPage() {
                   <circle cx="12" cy="13" r="4" />
                 </svg>
                 <span className="text-[12.5px] font-bold">Tomar / agregar foto</span>
-                <input type="file" accept="image/*" capture="environment" multiple onChange={agregarFotos} className="hidden" />
+                <input type="file" accept="image/*" capture="environment" onChange={seleccionarFoto} className="hidden" />
               </label>
             </div>
           </div>
@@ -192,6 +304,8 @@ export default function ReportarFallaPage() {
           </button>
         </div>
       </div>
+
+      {fotoPendiente && <ModalAnotarFoto imagenBase={fotoPendiente} onConfirmar={confirmarFotoAnotada} onCancelar={() => setFotoPendiente(null)} />}
     </div>
   );
 }

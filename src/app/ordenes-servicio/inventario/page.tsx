@@ -174,6 +174,43 @@ async function generarImagenQR(valor: string): Promise<string> {
   new (window as any).QRious({ element: canvas, value: valor || "000000", size: 300, level: "H" });
   return canvas.toDataURL("image/png");
 }
+function bloqueEtiquetaQRHtml(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }, imagenQR: string) {
+  return `
+<div class="etiqueta">
+  <p class="titulo">${escaparHtml(item.descripcion) || "—"}</p>
+  <img class="qr" src="${imagenQR}" alt="${escaparHtml(item.numeroEtiqueta)}" />
+  <p class="precio">$${parseFloat(item.costoUnitario || "0").toFixed(2)}</p>
+</div>`;
+}
+const ESTILOS_ETIQUETA_QR = `
+  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #eef1f6; }
+  .lienzo { padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .etiqueta {
+    width: 5cm;
+    height: 2.5cm;
+    box-sizing: border-box;
+    padding: 1.5mm 2.5mm;
+    background: #fff;
+    border: 1px solid #ccc;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    page-break-after: always;
+  }
+  .titulo { font-size: 6.5pt; font-weight: bold; color: #16215c; text-align: center; margin: 0; line-height: 1.05; max-height: 0.45cm; overflow: hidden; width: 100%; }
+  .qr { width: 0.85cm; height: 0.85cm; flex-shrink: 0; }
+  .precio { font-size: 10pt; font-weight: bold; color: #16215c; margin: 0; }
+  .barras { position: sticky; bottom: 0; background: #eef1f6; padding: 10px 0; }
+  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print {
+    body { background: #fff; }
+    .lienzo { padding: 0; gap: 0; }
+    .etiqueta { border: none; }
+    .barras { display: none; }
+    @page { size: 5cm 2.5cm; margin: 0; }
+  }
+`;
 async function abrirVentanaEtiquetaQR(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }) {
   if (!item.numeroEtiqueta) {
     alert("Este artículo aún no tiene número de etiqueta.");
@@ -190,44 +227,48 @@ async function abrirVentanaEtiquetaQR(item: { descripcion: string; costoUnitario
 <head>
 <meta charset="utf-8" />
 <title>Etiqueta ${escaparHtml(item.numeroEtiqueta)}</title>
-<style>
-  body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #eef1f6; display: flex; flex-direction: column; align-items: center; }
-  .lienzo { padding: 28px 16px; display: flex; flex-direction: column; align-items: center; }
-  .etiqueta {
-    width: 5cm;
-    height: 2.5cm;
-    box-sizing: border-box;
-    padding: 2mm 2.5mm;
-    background: #fff;
-    border: 1px solid #ccc;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .titulo { font-size: 7.5pt; font-weight: bold; color: #16215c; text-align: center; margin: 0; line-height: 1.15; max-height: 0.62cm; overflow: hidden; }
-  .qr { width: 1.35cm; height: 1.35cm; }
-  .precio { font-size: 12pt; font-weight: bold; color: #16215c; margin: 0; }
-  .num { font-size: 8pt; font-weight: bold; color: #16215c; margin: 6px 0 0; letter-spacing: 1px; }
-  .barras { margin-top: 20px; }
-  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
-  @media print {
-    body { background: #fff; }
-    .etiqueta { border: none; }
-    .num, .barras { display: none; }
-    @page { size: 5cm 2.5cm; margin: 0; }
-  }
-</style>
+<style>${ESTILOS_ETIQUETA_QR}</style>
 </head>
 <body>
 <div class="lienzo">
-  <div class="etiqueta">
-    <p class="titulo">${escaparHtml(item.descripcion) || "—"}</p>
-    <img class="qr" src="${imagenQR}" alt="${escaparHtml(item.numeroEtiqueta)}" />
-    <p class="precio">$${parseFloat(item.costoUnitario || "0").toFixed(2)}</p>
-  </div>
-  <p class="num">${escaparHtml(item.numeroEtiqueta)}</p>
+  ${bloqueEtiquetaQRHtml(item, imagenQR)}
   <div class="barras"><button id="btnImprimir">Imprimir</button></div>
+</div>
+<script>
+  document.getElementById("btnImprimir").addEventListener("click", function () {
+    window.print();
+    setTimeout(function () { window.close(); }, 300);
+  });
+</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+}
+async function abrirVentanaEtiquetasQRLote(items: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }[]) {
+  const validos = items.filter((it) => it.numeroEtiqueta);
+  if (validos.length === 0) {
+    alert("No hay etiquetas para imprimir.");
+    return;
+  }
+  const imagenes = await Promise.all(validos.map((it) => generarImagenQR(it.numeroEtiqueta)));
+  const ventana = window.open("", "_blank", "width=420,height=560");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Etiquetas de inventario</title>
+<style>${ESTILOS_ETIQUETA_QR}</style>
+</head>
+<body>
+<div class="lienzo">
+  ${validos.map((it, i) => bloqueEtiquetaQRHtml(it, imagenes[i])).join("\n")}
+  <div class="barras"><button id="btnImprimir">Imprimir (${validos.length})</button></div>
 </div>
 <script>
   document.getElementById("btnImprimir").addEventListener("click", function () {
@@ -666,35 +707,6 @@ export default function InventarioPage() {
     }
     abrirVentanaEtiquetas([f]);
   };
-  const imprimirTodasEntradas = async () => {
-    if (filasEntrada.length === 0) {
-      alert("No hay filas en la tabla de entrada.");
-      return;
-    }
-    let filas = filasEntrada;
-    const pendientes = filas.filter((f) => !f.numeroEtiqueta);
-    if (pendientes.length > 0) {
-      setGenerandoEtiquetas(true);
-      try {
-        const res = await fetch("/api/inventario/etiquetas/generar", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cantidad: pendientes.length }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Error al generar etiquetas.");
-        let i = 0;
-        filas = filasEntrada.map((f) => (f.numeroEtiqueta ? f : { ...f, numeroEtiqueta: data.numeros[i++] }));
-        setFilasEntrada(filas);
-      } catch (err: any) {
-        alert(err.message || "No se pudieron generar las etiquetas.");
-        setGenerandoEtiquetas(false);
-        return;
-      }
-      setGenerandoEtiquetas(false);
-    }
-    abrirVentanaEtiquetas(filas);
-  };
 
   const agregarEvidenciaRecepcion = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -711,20 +723,45 @@ export default function InventarioPage() {
     e.target.value = "";
   };
 
-  const recibirEntrada = async () => {
+  // Crea los articulos en la tabla principal a partir de las filas capturadas en Entrada.
+  // Si una fila tiene cantidad > 1, se separa en un registro unitario por cada pieza,
+  // cada uno con su propio numero de etiqueta, y devuelve los datos listos para imprimir.
+  const procesarRecepcion = async (): Promise<{ descripcion: string; costoUnitario: string; numeroEtiqueta: string }[] | null> => {
     const validas = filasEntrada.filter((f) => f.descripcion.trim());
     if (validas.length === 0) {
       alert("Agrega al menos un artículo con descripción.");
-      return;
+      return null;
     }
-    setRecibiendo(true);
-    try {
-      let totalRegistrosCreados = 0;
-      for (const f of validas) {
-        const cantidadTotal = Math.max(1, Math.round(parseFloat(f.cantidad) || 1));
-        if (cantidadTotal === 1) {
-          // una sola unidad: conserva la etiqueta ya generada para esta fila, si existe
-          await fetch("/api/inventario/items", {
+    const etiquetasCreadas: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }[] = [];
+    for (const f of validas) {
+      const cantidadTotal = Math.max(1, Math.round(parseFloat(f.cantidad) || 1));
+      if (cantidadTotal === 1) {
+        // una sola unidad: conserva la etiqueta ya generada para esta fila, si existe
+        const res = await fetch("/api/inventario/items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            descripcion: f.descripcion.trim(),
+            categoria: f.categoria,
+            referencia: f.referencia,
+            costoUnitario: desformatoContable(f.costoUnitario),
+            cantidad: "1",
+            proveedor: f.proveedor,
+            ubicacion: f.ubicacion,
+            fechaIngreso: f.fechaIngreso,
+            unidad: f.unidad,
+            numeroEtiqueta: f.numeroEtiqueta,
+            refCompra: f.refCompra,
+            numeroRecepcion: f.numeroRecepcion,
+          }),
+        });
+        const data = await res.json();
+        etiquetasCreadas.push({ descripcion: f.descripcion.trim(), costoUnitario: desformatoContable(f.costoUnitario), numeroEtiqueta: data.numeroEtiqueta || f.numeroEtiqueta });
+      } else {
+        // cantidad > 1: se separa en un registro individual por cada unidad, cada uno con
+        // su propio numero de etiqueta (autogenerado), para poder consumirlas por separado
+        for (let i = 0; i < cantidadTotal; i++) {
+          const res = await fetch("/api/inventario/items", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -737,50 +774,54 @@ export default function InventarioPage() {
               ubicacion: f.ubicacion,
               fechaIngreso: f.fechaIngreso,
               unidad: f.unidad,
-              numeroEtiqueta: f.numeroEtiqueta,
               refCompra: f.refCompra,
               numeroRecepcion: f.numeroRecepcion,
             }),
           });
-          totalRegistrosCreados += 1;
-        } else {
-          // cantidad > 1: se separa en un registro individual por cada unidad, cada uno con
-          // su propio numero de etiqueta (autogenerado), para poder consumirlas por separado
-          for (let i = 0; i < cantidadTotal; i++) {
-            await fetch("/api/inventario/items", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                descripcion: f.descripcion.trim(),
-                categoria: f.categoria,
-                referencia: f.referencia,
-                costoUnitario: desformatoContable(f.costoUnitario),
-                cantidad: "1",
-                proveedor: f.proveedor,
-                ubicacion: f.ubicacion,
-                fechaIngreso: f.fechaIngreso,
-                unidad: f.unidad,
-                refCompra: f.refCompra,
-                numeroRecepcion: f.numeroRecepcion,
-              }),
-            });
-            totalRegistrosCreados += 1;
-          }
+          const data = await res.json();
+          etiquetasCreadas.push({ descripcion: f.descripcion.trim(), costoUnitario: desformatoContable(f.costoUnitario), numeroEtiqueta: data.numeroEtiqueta || "" });
         }
       }
-      const numeroRecepcionLote = validas[0]?.numeroRecepcion;
-      if (numeroRecepcionLote && evidenciaRecepcion.length > 0) {
-        await fetch("/api/inventario/recepciones/evidencia", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ numeroRecepcion: numeroRecepcionLote, evidencias: evidenciaRecepcion }),
-        });
-      }
-      setFilasEntrada([]);
-      setEvidenciaRecepcion([]);
-      await cargarItems();
-      await cargarMovimientos();
-      alert(`Se recibieron ${totalRegistrosCreados} artículo(s) unitario(s) al inventario.`);
+    }
+    const numeroRecepcionLote = validas[0]?.numeroRecepcion;
+    if (numeroRecepcionLote && evidenciaRecepcion.length > 0) {
+      await fetch("/api/inventario/recepciones/evidencia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeroRecepcion: numeroRecepcionLote, evidencias: evidenciaRecepcion }),
+      });
+    }
+    setFilasEntrada([]);
+    setEvidenciaRecepcion([]);
+    await cargarItems();
+    await cargarMovimientos();
+    return etiquetasCreadas;
+  };
+
+  const imprimirTodasEntradas = async () => {
+    if (filasEntrada.length === 0) {
+      alert("No hay filas en la tabla de entrada.");
+      return;
+    }
+    setRecibiendo(true);
+    try {
+      const etiquetasCreadas = await procesarRecepcion();
+      if (!etiquetasCreadas) return;
+      await abrirVentanaEtiquetasQRLote(etiquetasCreadas);
+      setTab("reportes");
+    } catch {
+      alert("Ocurrió un error al recibir la entrada. Verifica e intenta de nuevo.");
+    } finally {
+      setRecibiendo(false);
+    }
+  };
+
+  const recibirEntrada = async () => {
+    setRecibiendo(true);
+    try {
+      const etiquetasCreadas = await procesarRecepcion();
+      if (!etiquetasCreadas) return;
+      alert(`Se recibieron ${etiquetasCreadas.length} artículo(s) unitario(s) al inventario.`);
       setTab("reportes");
     } catch (err: any) {
       alert("Ocurrió un error al recibir la entrada. Verifica e intenta de nuevo.");
@@ -1374,11 +1415,11 @@ export default function InventarioPage() {
                     <button
                       type="button"
                       onClick={imprimirTodasEntradas}
-                      disabled={generandoEtiquetas || filasEntrada.length === 0}
+                      disabled={recibiendo || filasEntrada.length === 0}
                       className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold disabled:opacity-50"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
-                      Imprimir todas las entradas
+                      {recibiendo ? "Procesando..." : "Recibir e imprimir todas"}
                     </button>
                   </div>
                 </div>

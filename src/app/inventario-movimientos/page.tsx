@@ -17,6 +17,7 @@ type ItemInventario = {
   unidad: string;
   numeroEtiqueta: string;
 };
+type FolioHistorial = { id: number; folio: string; ecoUnidad: string; unidad: string; estado: string };
 
 const OPCIONES_UNIDAD_MEDIDA = ["PZA", "LITRO", "CAJA", "KIT", "JUEGO", "PAR", "ROLLO", "GALON"];
 
@@ -211,13 +212,30 @@ function cargarJsQR(): Promise<void> {
 
 function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
   const [busqueda, setBusqueda] = useState("");
-  const [folioServicio, setFolioServicio] = useState("");
-  const [comentario, setComentario] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState("");
   const [articulo, setArticulo] = useState<ItemInventario | null>(null);
+  const [accion, setAccion] = useState<"elegir" | "consultar" | "consumir" | "surtir">("elegir");
+  const [comentario, setComentario] = useState("");
   const [consumiendo, setConsumiendo] = useState(false);
-  const [consumido, setConsumido] = useState(false);
+  const [consumido, setConsumido] = useState<{ folio?: string } | null>(null);
+
+  // ---- Surtir orden: selección de folio del Historial de mantenimientos ----
+  const [folios, setFolios] = useState<FolioHistorial[]>([]);
+  const [cargandoFolios, setCargandoFolios] = useState(false);
+  const [folioSeleccionado, setFolioSeleccionado] = useState("");
+  const cargarFolios = async () => {
+    setCargandoFolios(true);
+    try {
+      const res = await fetch("/api/historial-mantenimientos/list", { cache: "no-store" });
+      const data = await res.json();
+      setFolios((data.registros || []).slice().reverse());
+    } catch {
+      // el selector queda vacio si falla
+    } finally {
+      setCargandoFolios(false);
+    }
+  };
 
   const buscar = async (valor: string) => {
     if (!valor.trim()) {
@@ -237,6 +255,9 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
         return;
       }
       setArticulo(encontrado);
+      setAccion("elegir");
+      setComentario("");
+      setFolioSeleccionado("");
     } catch {
       setError("No se pudo consultar el artículo.");
     } finally {
@@ -244,6 +265,55 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
     }
   };
   const consultarArticulo = () => buscar(busqueda);
+
+  const irASurtirOrden = () => {
+    setAccion("surtir");
+    if (folios.length === 0) cargarFolios();
+  };
+
+  const confirmarConsumo = async () => {
+    if (!articulo) return;
+    setConsumiendo(true);
+    setError("");
+    try {
+      const res = await fetch("/api/inventario/consumir-etiqueta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeroEtiqueta: articulo.numeroEtiqueta, comentario }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al consumir el inventario.");
+      setConsumido({});
+    } catch (err: any) {
+      setError(err.message || "Error al consumir el inventario.");
+    } finally {
+      setConsumiendo(false);
+    }
+  };
+
+  const confirmarSurtirOrden = async () => {
+    if (!articulo) return;
+    if (!folioSeleccionado) {
+      setError("Selecciona el folio de la orden a surtir.");
+      return;
+    }
+    setConsumiendo(true);
+    setError("");
+    try {
+      const res = await fetch("/api/inventario/consumir-etiqueta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeroEtiqueta: articulo.numeroEtiqueta, comentario, historialId: Number(folioSeleccionado) }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al surtir la orden.");
+      setConsumido({ folio: data.folio });
+    } catch (err: any) {
+      setError(err.message || "Error al surtir la orden.");
+    } finally {
+      setConsumiendo(false);
+    }
+  };
 
   // ---- Escanear tomando una foto con la cámara nativa (alternativa cuando el video en vivo no consigue permiso) ----
   const [decodificandoFoto, setDecodificandoFoto] = useState(false);
@@ -371,33 +441,15 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const consumirInventario = async () => {
-    if (!articulo) return;
-    setConsumiendo(true);
-    setError("");
-    try {
-      const res = await fetch("/api/inventario/salida", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ codigo: articulo.codigo, cantidad: articulo.cantidad, folioServicio, comentario }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al consumir el inventario.");
-      setConsumido(true);
-    } catch (err: any) {
-      setError(err.message || "Error al consumir el inventario.");
-    } finally {
-      setConsumiendo(false);
-    }
-  };
-
   if (consumido) {
     return (
       <div className="px-5 py-8 flex flex-col gap-4">
         <div className="w-14 h-14 rounded-full bg-[var(--green)]/15 flex items-center justify-center mx-auto">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--green)" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
         </div>
-        <p className="text-center text-[13.5px] text-[var(--navy)] font-bold m-0">Inventario consumido correctamente</p>
+        <p className="text-center text-[13.5px] text-[var(--navy)] font-bold m-0">
+          {consumido.folio ? `Se surtió a la orden ${consumido.folio} correctamente` : "Inventario consumido correctamente"}
+        </p>
         <button type="button" onClick={onFinalizar} className="w-full bg-[var(--navy)] text-white font-display font-bold rounded-lg py-3 text-[13px]">
           Cerrar y regresar al menú
         </button>
@@ -422,14 +474,6 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
           placeholder="Ej. 000123"
           className="w-full h-10 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm"
         />
-      </div>
-      <div>
-        <label className="block text-[12px] font-bold text-[var(--navy)] mb-1">Folio de servicio ligado</label>
-        <input value={folioServicio} onChange={(e) => setFolioServicio(e.target.value)} placeholder="Ej. FOL-000456" className="w-full h-10 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm" />
-      </div>
-      <div>
-        <label className="block text-[12px] font-bold text-[var(--navy)] mb-1">Para qué se usó</label>
-        <textarea value={comentario} onChange={(e) => setComentario(e.target.value)} rows={2} placeholder="Ej. Cambio de filtro de aceite" className="w-full bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md p-3 text-sm" />
       </div>
 
       <div className="border-2 border-dashed border-[var(--gray-200)] rounded-xl text-[var(--navy)] overflow-hidden">
@@ -490,42 +534,121 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
         className="w-full flex items-center justify-center gap-2 bg-white text-[var(--navy)] border-2 border-[var(--navy)] font-display font-bold rounded-full py-3 text-[13px] disabled:opacity-60"
       >
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-        {buscando ? "Buscando..." : "Consultar artículo"}
+        {buscando ? "Buscando..." : "Buscar artículo"}
       </button>
 
       {error && <p className="text-[12px] text-[var(--red)] m-0">{error}</p>}
 
       {articulo && (
-        <div className="bg-[var(--green)]/8 border border-[var(--green)]/40 rounded-xl p-4">
-          <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--green)] m-0 mb-2.5">
+        <div className="bg-[var(--blue-light)] border border-[var(--blue)]/30 rounded-xl p-4">
+          <p className="flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--navy)] m-0 mb-3">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
-            Información del artículo
+            Etiqueta {articulo.numeroEtiqueta} — {articulo.descripcion || "Sin descripción"}
           </p>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11.5px] text-[var(--navy)]">
-            <p className="m-0"><b>Código:</b> {articulo.codigo}</p>
-            <p className="m-0"><b>Categoría:</b> {articulo.categoria || "—"}</p>
-            <p className="m-0"><b>Descripción:</b> {articulo.descripcion || "—"}</p>
-            <p className="m-0"><b>Referencia:</b> {articulo.referencia || "—"}</p>
-            <p className="m-0"><b>Unidad de medida:</b> {articulo.unidad || "—"}</p>
-            <p className="m-0"><b>Ubicación:</b> {articulo.ubicacion || "—"}</p>
-            <p className="m-0"><b>Existencias disponibles:</b> {articulo.cantidad}</p>
-            <p className="m-0"><b>Proveedor:</b> {articulo.proveedor || "—"}</p>
-          </div>
+
+          {accion === "elegir" && (
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={() => setAccion("consultar")} className="w-full flex items-center justify-center gap-2 bg-white text-[var(--navy)] border-2 border-[var(--navy)] font-display font-bold rounded-lg py-3 text-[13px]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+                Consultar
+              </button>
+              <button type="button" onClick={() => setAccion("consumir")} className="w-full flex items-center justify-center gap-2 bg-[var(--navy)] text-white font-display font-bold rounded-lg py-3 text-[13px]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
+                Consumir
+              </button>
+              <button type="button" onClick={irASurtirOrden} className="w-full flex items-center justify-center gap-2 bg-[var(--red)] text-white font-display font-bold rounded-lg py-3 text-[13px]">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+                Surtir Orden
+              </button>
+            </div>
+          )}
+
+          {accion === "consultar" && (
+            <div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11.5px] text-[var(--navy)] mb-3.5">
+                <p className="m-0"><b>Código:</b> {articulo.codigo}</p>
+                <p className="m-0"><b>Categoría:</b> {articulo.categoria || "—"}</p>
+                <p className="m-0"><b>Referencia:</b> {articulo.referencia || "—"}</p>
+                <p className="m-0"><b>Unidad de medida:</b> {articulo.unidad || "—"}</p>
+                <p className="m-0"><b>Ubicación:</b> {articulo.ubicacion || "—"}</p>
+                <p className="m-0"><b>Existencias:</b> {articulo.cantidad}</p>
+                <p className="m-0"><b>Costo unitario:</b> ${parseFloat(articulo.costoUnitario || "0").toFixed(2)}</p>
+                <p className="m-0"><b>Proveedor:</b> {articulo.proveedor || "—"}</p>
+              </div>
+              <button type="button" onClick={() => setAccion("elegir")} className="w-full text-center text-[12px] text-[var(--navy)] font-bold">
+                ← Volver
+              </button>
+            </div>
+          )}
+
+          {accion === "consumir" && (
+            <div>
+              <label className="block text-[12px] font-bold text-[var(--navy)] mb-1">Referencia de uso (opcional)</label>
+              <textarea
+                value={comentario}
+                onChange={(e) => setComentario(e.target.value)}
+                rows={2}
+                placeholder="Ej. Folio de servicio o motivo"
+                className="w-full bg-white border border-[var(--gray-200)] rounded-md p-3 text-sm mb-3"
+              />
+              <button
+                type="button"
+                onClick={confirmarConsumo}
+                disabled={consumiendo}
+                className="w-full flex items-center justify-center gap-2 bg-[var(--navy)] disabled:opacity-60 text-white font-display font-bold rounded-lg py-3 text-[13px] mb-2"
+              >
+                {consumiendo ? "Consumiendo..." : "Confirmar consumo"}
+              </button>
+              <button type="button" onClick={() => setAccion("elegir")} disabled={consumiendo} className="w-full text-center text-[12px] text-[var(--navy)] font-bold">
+                ← Volver
+              </button>
+            </div>
+          )}
+
+          {accion === "surtir" && (
+            <div>
+              <label className="block text-[12px] font-bold text-[var(--navy)] mb-1">Folio del Historial de mantenimientos</label>
+              <select
+                value={folioSeleccionado}
+                onChange={(e) => setFolioSeleccionado(e.target.value)}
+                disabled={cargandoFolios}
+                className="w-full h-10 bg-white border border-[var(--gray-200)] rounded-md px-3 text-sm mb-3"
+              >
+                <option value="">{cargandoFolios ? "Cargando folios..." : "Selecciona un folio..."}</option>
+                {folios.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.folio} — {f.ecoUnidad} ({f.estado || "Sin estado"})
+                  </option>
+                ))}
+              </select>
+              <label className="block text-[12px] font-bold text-[var(--navy)] mb-1">Nota (opcional)</label>
+              <textarea
+                value={comentario}
+                onChange={(e) => setComentario(e.target.value)}
+                rows={2}
+                placeholder="Ej. Se usó para reparación de motor"
+                className="w-full bg-white border border-[var(--gray-200)] rounded-md p-3 text-sm mb-3"
+              />
+              <button
+                type="button"
+                onClick={confirmarSurtirOrden}
+                disabled={consumiendo || !folioSeleccionado}
+                className="w-full flex items-center justify-center gap-2 bg-[var(--red)] disabled:opacity-60 text-white font-display font-bold rounded-lg py-3 text-[13px] mb-2"
+              >
+                {consumiendo ? "Surtiendo..." : "Confirmar Surtir Orden"}
+              </button>
+              <button type="button" onClick={() => setAccion("elegir")} disabled={consumiendo} className="w-full text-center text-[12px] text-[var(--navy)] font-bold">
+                ← Volver
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={consumirInventario}
-        disabled={!articulo || consumiendo}
-        className="w-full flex items-center justify-center gap-2 bg-[var(--navy)] disabled:opacity-40 text-white font-display font-bold rounded-lg py-3.5 text-[13.5px]"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
-        {consumiendo ? "Consumiendo..." : "Consumir Inventario"}
-      </button>
       <button type="button" onClick={onFinalizar} className="text-center text-[12px] text-[var(--gray-400)] font-semibold">
         Cancelar
       </button>
     </div>
   );
 }
+

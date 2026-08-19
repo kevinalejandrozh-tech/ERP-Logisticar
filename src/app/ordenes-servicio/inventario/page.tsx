@@ -178,9 +178,11 @@ async function generarImagenQR(valor: string): Promise<string> {
 function bloqueEtiquetaQRHtml(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }, imagenQR: string) {
   return `
 <div class="etiqueta">
-  <p class="titulo">${escaparHtml(item.descripcion) || "—"}</p>
   <img class="qr" src="${imagenQR}" alt="${escaparHtml(item.numeroEtiqueta)}" />
-  <p class="precio">$${parseFloat(item.costoUnitario || "0").toFixed(2)}</p>
+  <div class="col-texto">
+    <p class="titulo">${escaparHtml(item.descripcion) || "—"}</p>
+    <p class="precio">$${parseFloat(item.costoUnitario || "0").toFixed(2)}</p>
+  </div>
 </div>`;
 }
 const ESTILOS_ETIQUETA_QR = `
@@ -190,19 +192,19 @@ const ESTILOS_ETIQUETA_QR = `
     width: 5cm;
     height: 2.5cm;
     box-sizing: border-box;
-    padding: 1.5mm 3mm;
+    padding: 2mm;
     background: #fff;
     border: 1px solid #ccc;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    justify-content: center;
-    gap: 0.9mm;
+    gap: 2mm;
     page-break-after: always;
   }
-  .titulo { font-size: 6.5pt; font-weight: 700; color: #000; text-align: center; margin: 0; line-height: 1.15; max-height: 0.56cm; overflow: hidden; width: 100%; }
-  .qr { width: 1.05cm; height: 1.05cm; flex-shrink: 0; }
-  .precio { font-size: 10.5pt; font-weight: 800; color: #000; margin: 0; }
+  .qr { width: 1.9cm; height: 1.9cm; flex-shrink: 0; }
+  .col-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.5mm; }
+  .titulo { font-size: 7pt; font-weight: 700; color: #000; text-align: left; margin: 0; line-height: 1.2; max-height: 0.85cm; overflow: hidden; width: 100%; }
+  .precio { font-size: 16pt; font-weight: 900; color: #000; margin: 0; white-space: nowrap; }
   .barras { position: sticky; bottom: 0; background: #eef1f6; padding: 10px 0; }
   button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
   @media print {

@@ -455,32 +455,31 @@ const cardW = 8;
 const cardH = 10;
 const doc = new jsPDF({ unit: "cm", format: "a4" });
 const pageW = 21;
-const pageH = 29.7;
 const fechaTexto = new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase();
 
-// Frente y reverso van cada uno en su propia hoja, exactamente en la misma posición,
-// para que al imprimir a doble cara (dúplex) ambas caras queden al ras sin desfase.
-const offX = (pageW - cardW) / 2;
-const offY = (pageH - cardH) / 2 - 1.2;
+// Frente y reverso van en la misma hoja, pegados uno junto al otro (sin espacio entre ambos).
+const totalW = cardW * 2;
+const offY = 4.2;
+const offXFrente = (pageW - totalW) / 2;
+const offXReverso = offXFrente + cardW;
 
-const encabezadoHoja = () => {
+// Título de la hoja
 doc.setTextColor(22, 33, 92);
 doc.setFont("helvetica", "bold");
 doc.setFontSize(13);
-doc.text(`Gafete — Mochila ${m.folio}`, pageW / 2, offY - 1.9, { align: "center" });
+doc.text(`Gafete — Mochila ${m.folio}`, pageW / 2, 2.2, { align: "center" });
 doc.setFont("helvetica", "normal");
 doc.setFontSize(9);
 doc.setTextColor(120, 120, 120);
-doc.text("Imprime a doble cara (volteo por el lado largo) y recorta por la línea punteada.", pageW / 2, offY - 1.3, { align: "center" });
-};
+doc.text("Recorta por la línea punteada y pega ambas caras espalda con espalda para laminar.", pageW / 2, 2.9, { align: "center" });
 
-const guiaCorte = (x: number, y: number) => {
+// Un solo contorno de corte alrededor de ambas caras juntas, más la línea central donde se unen
 doc.setDrawColor(150, 150, 150);
 doc.setLineWidth(0.015);
 doc.setLineDashPattern([0.15, 0.1], 0);
-doc.rect(x - 0.08, y - 0.08, cardW + 0.16, cardH + 0.16);
+doc.rect(offXFrente - 0.08, offY - 0.08, totalW + 0.16, cardH + 0.16);
+doc.line(offXReverso, offY - 0.08, offXReverso, offY + cardH + 0.08);
 doc.setLineDashPattern([], 0);
-};
 
 const etiquetaCara = (x: number, texto: string) => {
 doc.setFont("helvetica", "bold");
@@ -489,12 +488,10 @@ doc.setTextColor(22, 33, 92);
 doc.text(texto, x + cardW / 2, offY - 0.35, { align: "center" });
 };
 
-// ---------- FRENTE (página 1) ----------
-encabezadoHoja();
-guiaCorte(offX, offY);
-etiquetaCara(offX, "FRENTE");
+// ---------- FRENTE ----------
+etiquetaCara(offXFrente, "FRENTE");
 {
-const x = offX;
+const x = offXFrente;
 const y = offY;
 doc.setFillColor(22, 33, 92);
 doc.rect(x, y, cardW, 1.0, "F");
@@ -545,13 +542,10 @@ doc.setFontSize(8);
 doc.text(`ACTUALIZACIÓN ${fechaTexto}`, x + cardW / 2, y + 9.68, { align: "center" });
 }
 
-// ---------- REVERSO (página 2, misma posición que el frente) ----------
-doc.addPage();
-encabezadoHoja();
-guiaCorte(offX, offY);
-etiquetaCara(offX, "REVERSO");
+// ---------- REVERSO (pegado justo a la derecha del frente, sin espacio) ----------
+etiquetaCara(offXReverso, "REVERSO");
 {
-const x = offX;
+const x = offXReverso;
 const y = offY;
 doc.setFillColor(22, 33, 92);
 doc.rect(x, y, cardW, 1.0, "F");

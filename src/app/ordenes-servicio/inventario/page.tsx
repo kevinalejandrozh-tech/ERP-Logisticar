@@ -215,12 +215,15 @@ const ESTILOS_ETIQUETA_QR = `
     @page { size: 5cm 2.5cm; margin: 0; }
   }
 `;
+function urlEscaneoEtiqueta(numeroEtiqueta: string) {
+  return `${window.location.origin}/inventario-movimientos?etiqueta=${encodeURIComponent(numeroEtiqueta)}`;
+}
 async function abrirVentanaEtiquetaQR(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }) {
   if (!item.numeroEtiqueta) {
     alert("Este artículo aún no tiene número de etiqueta.");
     return;
   }
-  const imagenQR = await generarImagenQR(item.numeroEtiqueta);
+  const imagenQR = await generarImagenQR(urlEscaneoEtiqueta(item.numeroEtiqueta));
   const ventana = window.open("", "_blank", "width=380,height=420");
   if (!ventana) {
     alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
@@ -256,7 +259,7 @@ async function abrirVentanaEtiquetasQRLote(items: { descripcion: string; costoUn
     alert("No hay etiquetas para imprimir.");
     return;
   }
-  const imagenes = await Promise.all(validos.map((it) => generarImagenQR(it.numeroEtiqueta)));
+  const imagenes = await Promise.all(validos.map((it) => generarImagenQR(urlEscaneoEtiqueta(it.numeroEtiqueta))));
   const ventana = window.open("", "_blank", "width=420,height=560");
   if (!ventana) {
     alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");

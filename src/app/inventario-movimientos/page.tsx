@@ -23,6 +23,15 @@ const OPCIONES_UNIDAD_MEDIDA = ["PZA", "LITRO", "CAJA", "KIT", "JUEGO", "PAR", "
 
 export default function InventarioMovimientosPage() {
   const [vista, setVista] = useState<"menu" | "entrada" | "salida">("menu");
+  const [etiquetaInicial, setEtiquetaInicial] = useState("");
+
+  useEffect(() => {
+    const etiqueta = new URLSearchParams(window.location.search).get("etiqueta");
+    if (etiqueta) {
+      setEtiquetaInicial(etiqueta);
+      setVista("salida");
+    }
+  }, []);
 
   return (
     <div className="min-h-screen flex justify-center bg-[#dcdfe6] py-6 px-4">
@@ -38,7 +47,7 @@ export default function InventarioMovimientosPage() {
 
         {vista === "menu" && <MenuInicial onEntrada={() => setVista("entrada")} onSalida={() => setVista("salida")} />}
         {vista === "entrada" && <FormularioEntrada onFinalizar={() => setVista("menu")} />}
-        {vista === "salida" && <FormularioSalida onFinalizar={() => setVista("menu")} />}
+        {vista === "salida" && <FormularioSalida onFinalizar={() => setVista("menu")} etiquetaInicial={etiquetaInicial} />}
       </div>
     </div>
   );
@@ -210,7 +219,7 @@ function cargarJsQR(): Promise<void> {
   });
 }
 
-function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
+function FormularioSalida({ onFinalizar, etiquetaInicial }: { onFinalizar: () => void; etiquetaInicial?: string }) {
   const [busqueda, setBusqueda] = useState("");
   const [buscando, setBuscando] = useState(false);
   const [error, setError] = useState("");
@@ -314,6 +323,16 @@ function FormularioSalida({ onFinalizar }: { onFinalizar: () => void }) {
       setConsumiendo(false);
     }
   };
+
+  // Si se llegó aquí desde un QR escaneado con la cámara del celular (enlace con ?etiqueta=),
+  // se busca automáticamente esa etiqueta al entrar, sin pasar por el buscador manual.
+  useEffect(() => {
+    if (etiquetaInicial) {
+      setBusqueda(etiquetaInicial);
+      buscar(etiquetaInicial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [etiquetaInicial]);
 
   // ---- Escanear tomando una foto con la cámara nativa (alternativa cuando el video en vivo no consigue permiso) ----
   const [decodificandoFoto, setDecodificandoFoto] = useState(false);

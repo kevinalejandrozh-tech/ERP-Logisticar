@@ -452,16 +452,16 @@ export default function ComparativoPage() {
                     </span>
                   </div>
                 </div>
-                <div className="grid gap-px bg-[var(--gray-200)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, c.columnas.length)}, minmax(200px, 1fr))` }}>
+                <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${Math.max(1, c.columnas.length)}, minmax(200px, 1fr))` }}>
                   {c.columnas.map((col, i) => (
-                    <div key={i} className="bg-white flex flex-col">
+                    <div key={i} className="bg-white border border-[var(--gray-200)] rounded-xl overflow-hidden flex flex-col">
                       <div className="py-2.5 px-3 text-center" style={{ backgroundColor: COLORES_COLUMNA[i % COLORES_COLUMNA.length] }}>
                         <span className="text-white text-[12.5px] font-bold uppercase tracking-wide">{col.etiqueta || `Columna ${i + 1}`}</span>
                       </div>
-                      <div className="aspect-[4/3] bg-[#dfe3ea]">
+                      <div className="h-[190px] bg-[#dfe3ea] shrink-0">
                         {col.foto ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover" />
+                          <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover block" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-[var(--gray-400)] text-[11px]">Sin foto</div>
                         )}
@@ -509,7 +509,7 @@ export default function ComparativoPage() {
                         className="w-full bg-transparent text-white placeholder-white/70 text-center text-[12.5px] font-bold uppercase outline-none"
                       />
                     </div>
-                    <label className="aspect-[4/3] bg-[var(--gray-100)] flex flex-col items-center justify-center gap-1 cursor-pointer overflow-hidden border-b border-[var(--gray-200)]">
+                    <label className="h-[190px] shrink-0 bg-[var(--gray-100)] flex flex-col items-center justify-center gap-1 cursor-pointer overflow-hidden border-b border-[var(--gray-200)]">
                       {col.foto ? (
                         /* eslint-disable-next-line @next/next/no-img-element */
                         <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover" />

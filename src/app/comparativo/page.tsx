@@ -10,18 +10,29 @@ type Comparativo = { id: number; titulo: string; descripcion: string; columnas: 
 type Forma = { tipo: "circulo" | "flecha"; x1: number; y1: number; x2: number; y2: number };
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
-const COLORES_COLUMNA = ["#16215c", "#2f6fed", "#e2412c", "#21a866", "#f2b134"];
+const COLORES_COLUMNA = ["#2c3a54", "#3e5170", "#51698e", "#6f89ac", "#93aac6"];
 const ROJO_ANOTACION = "#ff2626";
 
 function columnaVacia(etiqueta: string): Columna {
   return { etiqueta, foto: "", texto: "" };
 }
 
-// ---- Editor de imagen: permite dibujar círculos y flechas en rojo para resaltar ----
+type Recorte = { x: number; y: number; w: number; h: number };
+
+// ---- Editor de imagen: girar, recortar y resaltar con círculos/flechas en rojo ----
 function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase: string; onConfirmar: (dataUrl: string) => void; onCancelar: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [imgCargada, setImgCargada] = useState<HTMLImageElement | null>(null);
   const [dims, setDims] = useState({ w: 0, h: 0 });
+  const [pestana, setPestana] = useState<"ajustar" | "resaltar">("ajustar");
+
+  // ajustar: girar / recortar
+  const [rotacion, setRotacion] = useState(0);
+  const [recorte, setRecorte] = useState<Recorte | null>(null);
+  const [recorteArrastre, setRecorteArrastre] = useState<Recorte | null>(null);
+  const [puntoInicioRecorte, setPuntoInicioRecorte] = useState<{ x: number; y: number } | null>(null);
+
+  // resaltar: círculos / flechas
   const [formas, setFormas] = useState<Forma[]>([]);
   const [formaActual, setFormaActual] = useState<Forma | null>(null);
   const [herramienta, setHerramienta] = useState<"circulo" | "flecha">("circulo");
@@ -65,18 +76,49 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
     }
   };
 
+  const dimsCanvas = () => (rotacion % 180 === 0 ? { w: dims.w, h: dims.h } : { w: dims.h, h: dims.w });
+
+  const dibujarImagenRotada = (ctx: CanvasRenderingContext2D, ancho: number, alto: number) => {
+    if (!imgCargada) return;
+    ctx.save();
+    ctx.translate(ancho / 2, alto / 2);
+    ctx.rotate((rotacion * Math.PI) / 180);
+    ctx.drawImage(imgCargada, -dims.w / 2, -dims.h / 2, dims.w, dims.h);
+    ctx.restore();
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !imgCargada || dims.w === 0) return;
-    canvas.width = dims.w;
-    canvas.height = dims.h;
+    const { w: anchoCanvas, h: altoCanvas } = dimsCanvas();
+    canvas.width = anchoCanvas;
+    canvas.height = altoCanvas;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    ctx.clearRect(0, 0, dims.w, dims.h);
-    ctx.drawImage(imgCargada, 0, 0, dims.w, dims.h);
-    formas.forEach((f) => dibujarForma(ctx, f));
-    if (formaActual) dibujarForma(ctx, formaActual);
-  }, [formas, formaActual, imgCargada, dims]);
+    ctx.clearRect(0, 0, anchoCanvas, altoCanvas);
+    dibujarImagenRotada(ctx, anchoCanvas, altoCanvas);
+
+    if (pestana === "ajustar") {
+      const r = recorteArrastre || recorte;
+      if (r) {
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(0, 0, anchoCanvas, altoCanvas);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(r.x, r.y, r.w, r.h);
+        ctx.clip();
+        dibujarImagenRotada(ctx, anchoCanvas, altoCanvas);
+        ctx.restore();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+      }
+    } else {
+      formas.forEach((f) => dibujarForma(ctx, f));
+      if (formaActual) dibujarForma(ctx, formaActual);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [imgCargada, dims, rotacion, recorte, recorteArrastre, pestana, formas, formaActual]);
 
   const obtenerPosicion = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
@@ -88,22 +130,81 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
   const iniciar = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     const p = obtenerPosicion(e);
-    setFormaActual({ tipo: herramienta, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+    if (pestana === "ajustar") {
+      setPuntoInicioRecorte(p);
+      setRecorteArrastre({ x: p.x, y: p.y, w: 0, h: 0 });
+    } else {
+      setFormaActual({ tipo: herramienta, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
+    }
   };
   const mover = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!formaActual) return;
     e.preventDefault();
     const p = obtenerPosicion(e);
-    setFormaActual((prev) => (prev ? { ...prev, x2: p.x, y2: p.y } : prev));
+    if (pestana === "ajustar") {
+      if (!puntoInicioRecorte) return;
+      setRecorteArrastre({
+        x: Math.min(puntoInicioRecorte.x, p.x),
+        y: Math.min(puntoInicioRecorte.y, p.y),
+        w: Math.abs(p.x - puntoInicioRecorte.x),
+        h: Math.abs(p.y - puntoInicioRecorte.y),
+      });
+    } else {
+      if (!formaActual) return;
+      setFormaActual((prev) => (prev ? { ...prev, x2: p.x, y2: p.y } : prev));
+    }
   };
   const terminar = () => {
-    setFormaActual((prev) => {
-      if (prev && (Math.abs(prev.x2 - prev.x1) > 4 || Math.abs(prev.y2 - prev.y1) > 4)) {
-        setFormas((f) => [...f, prev]);
-      }
-      return null;
-    });
+    if (pestana === "ajustar") {
+      setRecorteArrastre((prev) => {
+        if (prev && prev.w > 8 && prev.h > 8) setRecorte(prev);
+        return null;
+      });
+      setPuntoInicioRecorte(null);
+    } else {
+      setFormaActual((prev) => {
+        if (prev && (Math.abs(prev.x2 - prev.x1) > 4 || Math.abs(prev.y2 - prev.y1) > 4)) {
+          setFormas((f) => [...f, prev]);
+        }
+        return null;
+      });
+    }
   };
+
+  const girar = () => {
+    setRotacion((prev) => (prev + 90) % 360);
+    setRecorte(null);
+    setFormas([]);
+  };
+
+  const aplicarRecorte = () => {
+    if (!recorte || !imgCargada) return;
+    const { w: anchoCanvas, h: altoCanvas } = dimsCanvas();
+    const limpio = document.createElement("canvas");
+    limpio.width = anchoCanvas;
+    limpio.height = altoCanvas;
+    const ctxLimpio = limpio.getContext("2d");
+    if (!ctxLimpio) return;
+    dibujarImagenRotada(ctxLimpio, anchoCanvas, altoCanvas);
+
+    const recortado = document.createElement("canvas");
+    recortado.width = recorte.w;
+    recortado.height = recorte.h;
+    const ctxRecorte = recortado.getContext("2d");
+    if (!ctxRecorte) return;
+    ctxRecorte.drawImage(limpio, recorte.x, recorte.y, recorte.w, recorte.h, 0, 0, recorte.w, recorte.h);
+
+    const nuevaUrl = recortado.toDataURL("image/jpeg", 0.9);
+    const img = new Image();
+    img.onload = () => {
+      setDims({ w: recorte.w, h: recorte.h });
+      setImgCargada(img);
+      setRotacion(0);
+      setRecorte(null);
+      setFormas([]);
+    };
+    img.src = nuevaUrl;
+  };
+
   const deshacer = () => setFormas((prev) => prev.slice(0, -1));
   const confirmar = () => {
     const canvas = canvasRef.current;
@@ -113,25 +214,62 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
 
   return (
     <div className="fixed inset-0 bg-black/85 z-[70] flex flex-col items-center justify-center p-4">
-      <p className="text-white text-[12.5px] font-bold mb-3 text-center">Resalta con círculos o flechas en rojo</p>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-3 bg-white/10 rounded-full p-1">
         <button
           type="button"
-          onClick={() => setHerramienta("circulo")}
-          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold ${herramienta === "circulo" ? "bg-[var(--red)] text-white" : "bg-white/10 text-white border border-white/30"}`}
+          onClick={() => setPestana("ajustar")}
+          className={`rounded-full px-4 py-1.5 text-[12px] font-bold ${pestana === "ajustar" ? "bg-white text-[var(--navy)]" : "text-white"}`}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /></svg>
-          Círculo
+          Ajustar
         </button>
         <button
           type="button"
-          onClick={() => setHerramienta("flecha")}
-          className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold ${herramienta === "flecha" ? "bg-[var(--red)] text-white" : "bg-white/10 text-white border border-white/30"}`}
+          onClick={() => setPestana("resaltar")}
+          className={`rounded-full px-4 py-1.5 text-[12px] font-bold ${pestana === "resaltar" ? "bg-white text-[var(--navy)]" : "text-white"}`}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 19L19 5" /><path d="M9 5h10v10" /></svg>
-          Flecha
+          Resaltar
         </button>
       </div>
+
+      {pestana === "ajustar" ? (
+        <div className="flex items-center gap-2 mb-3 flex-wrap justify-center">
+          <button type="button" onClick={girar} className="flex items-center gap-1.5 bg-white/10 text-white border border-white/30 rounded-full px-3.5 py-1.5 text-[12px] font-bold">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21 12a9 9 0 11-9-9c2.5 0 4.7 1 6.3 2.7" /><path d="M21 3v6h-6" /></svg>
+            Girar 90°
+          </button>
+          <p className="text-white/70 text-[11px] m-0">Arrastra sobre la imagen para recortar</p>
+          {recorte && (
+            <>
+              <button type="button" onClick={aplicarRecorte} className="bg-[var(--green)] text-white rounded-full px-3.5 py-1.5 text-[12px] font-bold">
+                Aplicar recorte
+              </button>
+              <button type="button" onClick={() => setRecorte(null)} className="bg-white/10 text-white border border-white/30 rounded-full px-3.5 py-1.5 text-[12px] font-bold">
+                Quitar selección
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setHerramienta("circulo")}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold ${herramienta === "circulo" ? "bg-[var(--red)] text-white" : "bg-white/10 text-white border border-white/30"}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /></svg>
+            Círculo
+          </button>
+          <button
+            type="button"
+            onClick={() => setHerramienta("flecha")}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold ${herramienta === "flecha" ? "bg-[var(--red)] text-white" : "bg-white/10 text-white border border-white/30"}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 19L19 5" /><path d="M9 5h10v10" /></svg>
+            Flecha
+          </button>
+        </div>
+      )}
+
       <canvas
         ref={canvasRef}
         onMouseDown={iniciar}
@@ -145,15 +283,17 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
         style={{ touchAction: "none" }}
       />
       <div className="flex items-center gap-2.5 mt-4 flex-wrap justify-center">
-        <button
-          type="button"
-          onClick={deshacer}
-          disabled={formas.length === 0}
-          className="flex items-center gap-1.5 bg-white/10 disabled:opacity-40 text-white border border-white/30 rounded-lg px-3.5 py-2 text-[12.5px] font-bold"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a4 4 0 010 8h-1" /></svg>
-          Deshacer
-        </button>
+        {pestana === "resaltar" && (
+          <button
+            type="button"
+            onClick={deshacer}
+            disabled={formas.length === 0}
+            className="flex items-center gap-1.5 bg-white/10 disabled:opacity-40 text-white border border-white/30 rounded-lg px-3.5 py-2 text-[12.5px] font-bold"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M9 14L4 9l5-5" /><path d="M4 9h11a4 4 0 010 8h-1" /></svg>
+            Deshacer
+          </button>
+        )}
         <button type="button" onClick={onCancelar} className="bg-white/10 text-white border border-white/30 rounded-lg px-4 py-2 text-[12.5px] font-bold">
           Cancelar
         </button>
@@ -192,11 +332,20 @@ export default function ComparativoPage() {
   const [columnas, setColumnas] = useState<Columna[]>([]);
   const [guardando, setGuardando] = useState(false);
   const [fotoPendiente, setFotoPendiente] = useState<{ idx: number; dataUrl: string } | null>(null);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
 
-  const abrirModal = () => {
-    setTitulo("");
-    setDescripcion("");
-    setColumnas([columnaVacia("Antes"), columnaVacia("Durante"), columnaVacia("Después")]);
+  const abrirModal = (comparativo?: Comparativo) => {
+    if (comparativo) {
+      setEditandoId(comparativo.id);
+      setTitulo(comparativo.titulo);
+      setDescripcion(comparativo.descripcion);
+      setColumnas(comparativo.columnas.length > 0 ? comparativo.columnas.map((c) => ({ ...c })) : [columnaVacia("Antes"), columnaVacia("Durante"), columnaVacia("Después")]);
+    } else {
+      setEditandoId(null);
+      setTitulo("");
+      setDescripcion("");
+      setColumnas([columnaVacia("Antes"), columnaVacia("Durante"), columnaVacia("Después")]);
+    }
     setModalAbierto(true);
   };
 
@@ -229,10 +378,10 @@ export default function ComparativoPage() {
     }
     setGuardando(true);
     try {
-      const res = await fetch("/api/comparativos", {
+      const res = await fetch(editandoId ? "/api/comparativos/update" : "/api/comparativos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ titulo: titulo.trim(), descripcion: descripcion.trim(), columnas }),
+        body: JSON.stringify({ id: editandoId || undefined, titulo: titulo.trim(), descripcion: descripcion.trim(), columnas }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar el comparativo.");
@@ -274,7 +423,7 @@ export default function ComparativoPage() {
 
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="flex flex-wrap gap-2.5 md:gap-3 mb-5">
-            <button type="button" onClick={abrirModal} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+            <button type="button" onClick={() => abrirModal()} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
               Nuevo comparativo
             </button>
@@ -294,9 +443,14 @@ export default function ComparativoPage() {
                     <h3 className="font-display font-bold text-[var(--navy)] text-[16px] m-0">{c.titulo}</h3>
                     {c.descripcion && <p className="text-[12.5px] text-[var(--gray-400)] mt-1 mb-0">{c.descripcion}</p>}
                   </div>
-                  <span onClick={() => eliminarComparativo(c.id)} className="text-[var(--red)] cursor-pointer shrink-0 mt-1" title="Eliminar comparativo">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
-                  </span>
+                  <div className="flex items-center gap-3 shrink-0 mt-1">
+                    <span onClick={() => abrirModal(c)} className="text-[var(--blue)] cursor-pointer" title="Editar comparativo">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                    </span>
+                    <span onClick={() => eliminarComparativo(c.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar comparativo">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+                    </span>
+                  </div>
                 </div>
                 <div className="grid gap-px bg-[var(--gray-200)]" style={{ gridTemplateColumns: `repeat(${Math.max(1, c.columnas.length)}, minmax(200px, 1fr))` }}>
                   {c.columnas.map((col, i) => (
@@ -328,7 +482,7 @@ export default function ComparativoPage() {
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
           <div className="bg-white rounded-2xl w-[820px] max-w-[96%] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">Nuevo comparativo</h3>
+              <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">{editandoId ? "Editar comparativo" : "Nuevo comparativo"}</h3>
               <span onClick={() => setModalAbierto(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">
                 ✕
               </span>

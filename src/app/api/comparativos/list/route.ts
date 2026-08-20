@@ -8,13 +8,12 @@ export async function GET() {
   try {
     await ensureSchema();
     const pool = getPool();
-    const result = await pool.query(`SELECT id, titulo, descripcion, foto_antes, foto_despues FROM comparativos ORDER BY orden DESC`);
+    const result = await pool.query(`SELECT id, titulo, descripcion, columnas FROM comparativos ORDER BY orden DESC`);
     const registros = result.rows.map((r) => ({
       id: r.id,
       titulo: r.titulo || "",
       descripcion: r.descripcion || "",
-      fotoAntes: r.foto_antes || "",
-      fotoDespues: r.foto_despues || "",
+      columnas: r.columnas || [],
     }));
     return NextResponse.json({ ok: true, registros });
   } catch (err: any) {

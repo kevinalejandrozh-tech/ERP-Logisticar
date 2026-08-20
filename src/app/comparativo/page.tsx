@@ -7,7 +7,7 @@ import { compressImage } from "@/lib/imageUtils";
 
 type Columna = { etiqueta: string; foto: string; texto: string };
 type Comparativo = { id: number; titulo: string; descripcion: string; columnas: Columna[] };
-type Forma = { tipo: "circulo" | "flecha"; x1: number; y1: number; x2: number; y2: number };
+type Forma = { tipo: "circulo" | "flecha" | "tache" | "texto"; x1: number; y1: number; x2: number; y2: number; texto?: string };
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const COLORES_COLUMNA = ["#2c3a54", "#3e5170", "#51698e", "#6f89ac", "#93aac6"];
@@ -35,7 +35,7 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
   // resaltar: círculos / flechas
   const [formas, setFormas] = useState<Forma[]>([]);
   const [formaActual, setFormaActual] = useState<Forma | null>(null);
-  const [herramienta, setHerramienta] = useState<"circulo" | "flecha">("circulo");
+  const [herramienta, setHerramienta] = useState<"circulo" | "flecha" | "tache" | "texto">("circulo");
 
   useEffect(() => {
     const img = new Image();
@@ -60,7 +60,7 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
       ctx.beginPath();
       ctx.ellipse(cx, cy, Math.max(rx, 3), Math.max(ry, 3), 0, 0, Math.PI * 2);
       ctx.stroke();
-    } else {
+    } else if (forma.tipo === "flecha") {
       ctx.beginPath();
       ctx.moveTo(forma.x1, forma.y1);
       ctx.lineTo(forma.x2, forma.y2);
@@ -73,6 +73,22 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
       ctx.moveTo(forma.x2, forma.y2);
       ctx.lineTo(forma.x2 - largo * Math.cos(angulo + Math.PI / 6), forma.y2 - largo * Math.sin(angulo + Math.PI / 6));
       ctx.stroke();
+    } else if (forma.tipo === "tache") {
+      const x1 = Math.min(forma.x1, forma.x2);
+      const x2 = Math.max(forma.x1, forma.x2);
+      const y1 = Math.min(forma.y1, forma.y2);
+      const y2 = Math.max(forma.y1, forma.y2);
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.moveTo(x2, y1);
+      ctx.lineTo(x1, y2);
+      ctx.stroke();
+    } else if (forma.tipo === "texto" && forma.texto) {
+      ctx.fillStyle = ROJO_ANOTACION;
+      ctx.font = "bold 20px Arial";
+      ctx.textBaseline = "top";
+      ctx.fillText(forma.texto, forma.x1, forma.y1);
     }
   };
 
@@ -133,6 +149,11 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
     if (pestana === "ajustar") {
       setPuntoInicioRecorte(p);
       setRecorteArrastre({ x: p.x, y: p.y, w: 0, h: 0 });
+    } else if (herramienta === "texto") {
+      const texto = window.prompt("Escribe el texto a agregar:");
+      if (texto && texto.trim()) {
+        setFormas((prev) => [...prev, { tipo: "texto", x1: p.x, y1: p.y, x2: p.x, y2: p.y, texto: texto.trim() }]);
+      }
     } else {
       setFormaActual({ tipo: herramienta, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
     }
@@ -267,6 +288,22 @@ function ModalAnotarImagen({ imagenBase, onConfirmar, onCancelar }: { imagenBase
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M5 19L19 5" /><path d="M9 5h10v10" /></svg>
             Flecha
           </button>
+          <button
+            type="button"
+            onClick={() => setHerramienta("tache")}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold ${herramienta === "tache" ? "bg-[var(--red)] text-white" : "bg-white/10 text-white border border-white/30"}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+            Tache
+          </button>
+          <button
+            type="button"
+            onClick={() => setHerramienta("texto")}
+            className={`flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold ${herramienta === "texto" ? "bg-[var(--red)] text-white" : "bg-white/10 text-white border border-white/30"}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7V4h16v3M9 20h6M12 4v16" /></svg>
+            Texto
+          </button>
         </div>
       )}
 
@@ -352,7 +389,14 @@ export default function ComparativoPage() {
   const actualizarColumna = (idx: number, campo: keyof Columna, valor: string) => {
     setColumnas((prev) => prev.map((c, i) => (i === idx ? { ...c, [campo]: valor } : c)));
   };
-  const agregarColumna = () => setColumnas((prev) => [...prev, columnaVacia(`Columna ${prev.length + 1}`)]);
+  const agregarColumna = () =>
+    setColumnas((prev) => {
+      if (prev.length >= 6) {
+        alert("Puedes agregar hasta 6 imágenes por comparativo.");
+        return prev;
+      }
+      return [...prev, columnaVacia(`Columna ${prev.length + 1}`)];
+    });
   const quitarColumna = (idx: number) => setColumnas((prev) => prev.filter((_, i) => i !== idx));
 
   const seleccionarFoto = async (e: React.ChangeEvent<HTMLInputElement>, idx: number) => {
@@ -452,13 +496,13 @@ export default function ComparativoPage() {
                     </span>
                   </div>
                 </div>
-                <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${Math.max(1, c.columnas.length)}, minmax(200px, 1fr))` }}>
+                <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, c.columnas.length))}, minmax(200px, 1fr))` }}>
                   {c.columnas.map((col, i) => (
                     <div key={i} className="bg-white border border-[var(--gray-200)] rounded-xl overflow-hidden flex flex-col">
                       <div className="py-2.5 px-3 text-center" style={{ backgroundColor: COLORES_COLUMNA[i % COLORES_COLUMNA.length] }}>
                         <span className="text-white text-[12.5px] font-bold uppercase tracking-wide">{col.etiqueta || `Columna ${i + 1}`}</span>
                       </div>
-                      <div className="h-[190px] bg-[#dfe3ea] shrink-0">
+                      <div className="h-[247px] bg-[#dfe3ea] shrink-0">
                         {col.foto ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
                           <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover block" />
@@ -466,7 +510,19 @@ export default function ComparativoPage() {
                           <div className="w-full h-full flex items-center justify-center text-[var(--gray-400)] text-[11px]">Sin foto</div>
                         )}
                       </div>
-                      {col.texto && <p className="text-[12px] text-[var(--navy)] p-3 m-0 whitespace-pre-line flex-1">{col.texto}</p>}
+                      {col.texto && (
+                        <ul className="p-3 m-0 flex-1 flex flex-col gap-1.5 list-none">
+                          {col.texto
+                            .split("\n")
+                            .filter((linea) => linea.trim())
+                            .map((linea, li) => (
+                              <li key={li} className="flex items-start gap-2 text-[12px] text-[var(--navy)] leading-snug">
+                                <span className="w-2 h-2 rounded-full bg-[var(--blue)] mt-[3px] shrink-0" />
+                                <span className="font-semibold">{linea}</span>
+                              </li>
+                            ))}
+                        </ul>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -532,7 +588,7 @@ export default function ComparativoPage() {
                     <textarea
                       value={col.texto}
                       onChange={(e) => actualizarColumna(idx, "texto", e.target.value)}
-                      placeholder="Texto para esta columna..."
+                      placeholder="Un punto por línea (se muestran como viñetas)"
                       rows={4}
                       className="flex-1 text-[12px] p-2 outline-none resize-none"
                     />
@@ -543,14 +599,16 @@ export default function ComparativoPage() {
                     )}
                   </div>
                 ))}
-                <button
-                  type="button"
-                  onClick={agregarColumna}
-                  className="w-[70px] shrink-0 border-2 border-dashed border-[var(--gray-200)] rounded-xl flex flex-col items-center justify-center gap-1 text-[var(--navy)]"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
-                  <span className="text-[10.5px] font-bold">Columna</span>
-                </button>
+                {columnas.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={agregarColumna}
+                    className="w-[70px] shrink-0 border-2 border-dashed border-[var(--gray-200)] rounded-xl flex flex-col items-center justify-center gap-1 text-[var(--navy)]"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+                    <span className="text-[10.5px] font-bold">Columna</span>
+                  </button>
+                )}
               </div>
             </div>
 

@@ -331,6 +331,7 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`ALTER TABLE comparativos ADD COLUMN IF NOT EXISTS columnas JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE comparativos ADD COLUMN IF NOT EXISTS modo TEXT NOT NULL DEFAULT 'reporte';`);
 
 
 await p.query(`

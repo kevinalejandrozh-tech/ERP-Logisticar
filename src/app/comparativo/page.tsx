@@ -6,7 +6,7 @@ import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import { compressImage } from "@/lib/imageUtils";
 
 type Columna = { etiqueta: string; foto: string; texto: string };
-type Comparativo = { id: number; titulo: string; descripcion: string; columnas: Columna[] };
+type Comparativo = { id: number; titulo: string; descripcion: string; columnas: Columna[]; modo: "reporte" | "antesDespues" };
 type Forma = { tipo: "circulo" | "flecha" | "tache" | "texto"; x1: number; y1: number; x2: number; y2: number; texto?: string };
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
@@ -364,6 +364,7 @@ export default function ComparativoPage() {
 
   // ---- Formulario Nuevo comparativo ----
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [modoFormulario, setModoFormulario] = useState<"reporte" | "antesDespues">("reporte");
   const [titulo, setTitulo] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [columnas, setColumnas] = useState<Columna[]>([]);
@@ -374,15 +375,32 @@ export default function ComparativoPage() {
   const abrirModal = (comparativo?: Comparativo) => {
     if (comparativo) {
       setEditandoId(comparativo.id);
+      setModoFormulario(comparativo.modo);
       setTitulo(comparativo.titulo);
       setDescripcion(comparativo.descripcion);
-      setColumnas(comparativo.columnas.length > 0 ? comparativo.columnas.map((c) => ({ ...c })) : [columnaVacia("Antes"), columnaVacia("Durante"), columnaVacia("Después")]);
+      setColumnas(
+        comparativo.columnas.length > 0
+          ? comparativo.columnas.map((c) => ({ ...c }))
+          : comparativo.modo === "antesDespues"
+          ? [columnaVacia("Antes"), columnaVacia("Después")]
+          : [columnaVacia("Antes"), columnaVacia("Durante"), columnaVacia("Después")]
+      );
     } else {
       setEditandoId(null);
+      setModoFormulario("reporte");
       setTitulo("");
       setDescripcion("");
       setColumnas([columnaVacia("Antes"), columnaVacia("Durante"), columnaVacia("Después")]);
     }
+    setModalAbierto(true);
+  };
+
+  const abrirModalAntesDespues = () => {
+    setEditandoId(null);
+    setModoFormulario("antesDespues");
+    setTitulo("");
+    setDescripcion("");
+    setColumnas([columnaVacia("Antes"), columnaVacia("Después")]);
     setModalAbierto(true);
   };
 
@@ -425,7 +443,7 @@ export default function ComparativoPage() {
       const res = await fetch(editandoId ? "/api/comparativos/update" : "/api/comparativos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: editandoId || undefined, titulo: titulo.trim(), descripcion: descripcion.trim(), columnas }),
+        body: JSON.stringify({ id: editandoId || undefined, titulo: titulo.trim(), descripcion: descripcion.trim(), columnas, modo: modoFormulario }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar el comparativo.");
@@ -471,6 +489,10 @@ export default function ComparativoPage() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
               Nuevo comparativo
             </button>
+            <button type="button" onClick={abrirModalAntesDespues} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="2" y="4" width="9" height="9" rx="1.5" /><rect x="13" y="4" width="9" height="9" rx="1.5" /><path d="M2 17h9M13 17h9" /></svg>
+              Mostrar antes y después
+            </button>
           </div>
 
           {cargando && <p className="text-center text-[var(--gray-400)] text-[13px] py-10">Cargando...</p>}
@@ -482,50 +504,91 @@ export default function ComparativoPage() {
           <div className="flex flex-col gap-6">
             {comparativos.map((c) => (
               <div key={c.id} className="border border-[var(--gray-200)] rounded-2xl overflow-hidden">
-                <div className="p-4 sm:p-5 border-b border-[var(--gray-200)] flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-display font-bold text-[var(--navy)] text-[16px] m-0">{c.titulo}</h3>
-                    {c.descripcion && <p className="text-[12.5px] text-[var(--gray-400)] mt-1 mb-0">{c.descripcion}</p>}
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0 mt-1">
-                    <span onClick={() => abrirModal(c)} className="text-[var(--blue)] cursor-pointer" title="Editar comparativo">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
-                    </span>
-                    <span onClick={() => eliminarComparativo(c.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar comparativo">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
-                    </span>
-                  </div>
-                </div>
-                <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, c.columnas.length))}, minmax(200px, 1fr))` }}>
-                  {c.columnas.map((col, i) => (
-                    <div key={i} className="bg-white border border-[var(--gray-200)] rounded-xl overflow-hidden flex flex-col">
-                      <div className="py-2.5 px-3 text-center" style={{ backgroundColor: COLORES_COLUMNA[i % COLORES_COLUMNA.length] }}>
-                        <span className="text-white text-[12.5px] font-bold uppercase tracking-wide">{col.etiqueta || `Columna ${i + 1}`}</span>
-                      </div>
-                      <div className="h-[247px] bg-[#dfe3ea] shrink-0">
-                        {col.foto ? (
+                {c.modo === "antesDespues" ? (
+                  <>
+                    <div className="relative grid grid-cols-2 gap-[3px] bg-white">
+                      <div className="relative h-[300px] bg-[#dfe3ea]">
+                        {c.columnas[0]?.foto ? (
                           /* eslint-disable-next-line @next/next/no-img-element */
-                          <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover block" />
+                          <img src={c.columnas[0].foto} alt="Antes" className="w-full h-full object-cover block" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-[var(--gray-400)] text-[11px]">Sin foto</div>
                         )}
+                        <span className="absolute top-3 left-3 bg-[var(--red)] text-white text-[11px] font-bold uppercase tracking-wide px-3 py-1 rounded-full shadow">Antes</span>
                       </div>
-                      {col.texto && (
-                        <ul className="p-3 m-0 flex-1 flex flex-col gap-1.5 list-none">
-                          {col.texto
-                            .split("\n")
-                            .filter((linea) => linea.trim())
-                            .map((linea, li) => (
-                              <li key={li} className="flex items-start gap-2 text-[12px] text-[var(--navy)] leading-snug">
-                                <span className="w-2 h-2 rounded-full bg-[var(--blue)] mt-[3px] shrink-0" />
-                                <span className="font-semibold">{linea}</span>
-                              </li>
-                            ))}
-                        </ul>
-                      )}
+                      <div className="relative h-[300px] bg-[#dfe3ea]">
+                        {c.columnas[1]?.foto ? (
+                          /* eslint-disable-next-line @next/next/no-img-element */
+                          <img src={c.columnas[1].foto} alt="Después" className="w-full h-full object-cover block" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-[var(--gray-400)] text-[11px]">Sin foto</div>
+                        )}
+                        <span className="absolute top-3 right-3 bg-[var(--blue)] text-white text-[11px] font-bold uppercase tracking-wide px-3 py-1 rounded-full shadow">Después</span>
+                      </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="p-4 sm:p-5 flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-display font-bold text-[var(--navy)] text-[16px] m-0">{c.titulo}</h3>
+                        {c.descripcion && <p className="text-[12.5px] text-[var(--gray-400)] mt-1 mb-0">{c.descripcion}</p>}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 mt-1">
+                        <span onClick={() => abrirModal(c)} className="text-[var(--blue)] cursor-pointer" title="Editar comparativo">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                        </span>
+                        <span onClick={() => eliminarComparativo(c.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar comparativo">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                        </span>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="p-4 sm:p-5 border-b border-[var(--gray-200)] flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="font-display font-bold text-[var(--navy)] text-[16px] m-0">{c.titulo}</h3>
+                        {c.descripcion && <p className="text-[12.5px] text-[var(--gray-400)] mt-1 mb-0">{c.descripcion}</p>}
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 mt-1">
+                        <span onClick={() => abrirModal(c)} className="text-[var(--blue)] cursor-pointer" title="Editar comparativo">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                        </span>
+                        <span onClick={() => eliminarComparativo(c.id)} className="text-[var(--red)] cursor-pointer" title="Eliminar comparativo">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, c.columnas.length))}, minmax(200px, 1fr))` }}>
+                      {c.columnas.map((col, i) => (
+                        <div key={i} className="bg-white border border-[var(--gray-200)] rounded-xl overflow-hidden flex flex-col">
+                          <div className="py-2.5 px-3 text-center" style={{ backgroundColor: COLORES_COLUMNA[i % COLORES_COLUMNA.length] }}>
+                            <span className="text-white text-[12.5px] font-bold uppercase tracking-wide">{col.etiqueta || `Columna ${i + 1}`}</span>
+                          </div>
+                          <div className="h-[247px] bg-[#dfe3ea] shrink-0">
+                            {col.foto ? (
+                              /* eslint-disable-next-line @next/next/no-img-element */
+                              <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover block" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-[var(--gray-400)] text-[11px]">Sin foto</div>
+                            )}
+                          </div>
+                          {col.texto && (
+                            <ul className="p-3 m-0 flex-1 flex flex-col gap-1.5 list-none">
+                              {col.texto
+                                .split("\n")
+                                .filter((linea) => linea.trim())
+                                .map((linea, li) => (
+                                  <li key={li} className="flex items-start gap-2 text-[12px] text-[var(--navy)] leading-snug">
+                                    <span className="w-2 h-2 rounded-full bg-[var(--blue)] mt-[3px] shrink-0" />
+                                    <span className="font-semibold">{linea}</span>
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -538,7 +601,9 @@ export default function ComparativoPage() {
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
           <div className="bg-white rounded-2xl w-[820px] max-w-[96%] p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">{editandoId ? "Editar comparativo" : "Nuevo comparativo"}</h3>
+              <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">
+                {editandoId ? "Editar comparativo" : modoFormulario === "antesDespues" ? "Mostrar antes y después" : "Nuevo comparativo"}
+              </h3>
               <span onClick={() => setModalAbierto(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">
                 ✕
               </span>
@@ -553,6 +618,37 @@ export default function ComparativoPage() {
               <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} rows={2} className="w-full border border-[var(--gray-200)] rounded-lg p-3 text-[13px]" />
             </div>
 
+            {modoFormulario === "antesDespues" ? (
+              <div className="grid grid-cols-2 gap-4">
+                {columnas.map((col, idx) => (
+                  <div key={idx} className="border border-[var(--gray-200)] rounded-xl overflow-hidden flex flex-col">
+                    <div className="py-2 text-center" style={{ backgroundColor: idx === 0 ? "var(--red)" : "var(--blue)" }}>
+                      <span className="text-white text-[12.5px] font-bold uppercase tracking-wide">{idx === 0 ? "Antes" : "Después"}</span>
+                    </div>
+                    <label className="h-[220px] shrink-0 bg-[var(--gray-100)] flex flex-col items-center justify-center gap-1 cursor-pointer overflow-hidden">
+                      {col.foto ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img src={col.foto} alt={col.etiqueta} className="w-full h-full object-cover" />
+                      ) : (
+                        <>
+                          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#9aa1b0" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
+                          <span className="text-[11px] font-bold text-[var(--gray-400)]">Agregar foto</span>
+                        </>
+                      )}
+                      <input type="file" accept="image/*" capture="environment" onChange={(e) => seleccionarFoto(e, idx)} className="hidden" />
+                    </label>
+                    {col.foto && (
+                      <span
+                        onClick={() => setFotoPendiente({ idx, dataUrl: col.foto })}
+                        className="text-[11px] font-bold text-[var(--red)] text-center py-1.5 cursor-pointer border-t border-[var(--gray-200)]"
+                      >
+                        ○→ Editar / resaltar en la foto
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
             <div className="overflow-x-auto pb-1">
               <div className="flex gap-3.5" style={{ minWidth: columnas.length * 210 }}>
                 {columnas.map((col, idx) => (
@@ -611,6 +707,7 @@ export default function ComparativoPage() {
                 )}
               </div>
             </div>
+            )}
 
             <div className="flex gap-2.5 justify-end mt-6">
               <button type="button" onClick={() => setModalAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">

@@ -11,6 +11,112 @@ type Forma = { tipo: "circulo" | "flecha" | "tache" | "texto"; x1: number; y1: n
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const COLORES_COLUMNA = ["#2c3a54", "#3e5170", "#51698e", "#6f89ac", "#93aac6"];
+
+function escaparHtml(texto: string) {
+  return String(texto || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function imprimirComparativo(c: Comparativo) {
+  const ventana = window.open("", "_blank", "width=900,height=700");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  const columnasHtml =
+    c.modo === "antesDespues"
+      ? `<div class="fila-antes-despues">
+          ${["Antes", "Después"]
+            .map((etq, i) => {
+              const col = c.columnas[i];
+              const color = i === 0 ? "#e2412c" : "#2f6fed";
+              return `<div class="celda-ad">
+                <div class="foto-ad">
+                  ${col?.foto ? `<img src="${col.foto}" alt="${etq}" />` : `<div class="sin-foto">Sin foto</div>`}
+                  <span class="pill" style="background:${color}">${etq}</span>
+                </div>
+              </div>`;
+            })
+            .join("")}
+        </div>`
+      : `<div class="grid-reporte">
+          ${c.columnas
+            .map((col, i) => {
+              const color = COLORES_COLUMNA[i % COLORES_COLUMNA.length];
+              const puntos = (col.texto || "")
+                .split("\n")
+                .filter((l) => l.trim())
+                .map((l) => `<li>${escaparHtml(l)}</li>`)
+                .join("");
+              return `<div class="celda-reporte">
+                <div class="encabezado-col" style="background:${color}">${escaparHtml(col.etiqueta || `Columna ${i + 1}`)}</div>
+                <div class="foto-col">${col.foto ? `<img src="${col.foto}" alt="${escaparHtml(col.etiqueta)}" />` : `<div class="sin-foto">Sin foto</div>`}</div>
+                ${puntos ? `<ul class="lista-col">${puntos}</ul>` : ""}
+              </div>`;
+            })
+            .join("")}
+        </div>`;
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>${escaparHtml(c.titulo)}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; background: #eef1f6; color: #16215c; }
+  .hoja { max-width: 900px; margin: 24px auto; background: #fff; border-radius: 12px; overflow: hidden; }
+  .cab { padding: 20px 24px; border-bottom: 1px solid #e5e8ee; }
+  .cab h1 { font-size: 19px; margin: 0 0 4px; }
+  .cab p { font-size: 13px; color: #9aa1b0; margin: 0; }
+  .cuerpo { padding: 20px 24px; }
+  .fila-antes-despues { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .celda-ad { position: relative; }
+  .foto-ad { position: relative; height: 320px; background: #dfe3ea; }
+  .foto-ad img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pill { position: absolute; top: 12px; color: #fff; font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: .3px; padding: 5px 12px; border-radius: 999px; }
+  .celda-ad:first-child .pill { left: 12px; }
+  .celda-ad:last-child .pill { right: 12px; }
+  .grid-reporte { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .celda-reporte { border: 1px solid #e5e8ee; border-radius: 10px; overflow: hidden; break-inside: avoid; }
+  .encabezado-col { color: #fff; font-size: 11.5px; font-weight: bold; text-transform: uppercase; letter-spacing: .3px; text-align: center; padding: 8px; }
+  .foto-col { height: 200px; background: #dfe3ea; }
+  .foto-col img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .sin-foto { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #9aa1b0; font-size: 11px; }
+  .lista-col { list-style: none; margin: 0; padding: 10px 12px; font-size: 11.5px; font-weight: 600; }
+  .lista-col li { position: relative; padding-left: 14px; margin-bottom: 5px; }
+  .lista-col li::before { content: ""; position: absolute; left: 0; top: 5px; width: 6px; height: 6px; border-radius: 50%; background: #2f6fed; }
+  .barra { padding: 12px 24px; text-align: center; }
+  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print {
+    body { background: #fff; }
+    .hoja { margin: 0; max-width: none; }
+    .barra { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="hoja">
+  <div class="cab">
+    <h1>${escaparHtml(c.titulo)}</h1>
+    ${c.descripcion ? `<p>${escaparHtml(c.descripcion)}</p>` : ""}
+  </div>
+  <div class="cuerpo">${columnasHtml}</div>
+</div>
+<div class="barra"><button id="btnImprimir">Imprimir</button></div>
+<script>
+  document.getElementById("btnImprimir").addEventListener("click", function () {
+    window.print();
+  });
+</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+}
 const ROJO_ANOTACION = "#ff2626";
 
 function columnaVacia(etiqueta: string): Columna {
@@ -532,6 +638,9 @@ export default function ComparativoPage() {
                         {c.descripcion && <p className="text-[12.5px] text-[var(--gray-400)] mt-1 mb-0">{c.descripcion}</p>}
                       </div>
                       <div className="flex items-center gap-3 shrink-0 mt-1">
+                        <span onClick={() => imprimirComparativo(c)} className="text-[var(--navy)] cursor-pointer" title="Imprimir comparativo">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+                        </span>
                         <span onClick={() => abrirModal(c)} className="text-[var(--blue)] cursor-pointer" title="Editar comparativo">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
                         </span>
@@ -549,6 +658,9 @@ export default function ComparativoPage() {
                         {c.descripcion && <p className="text-[12.5px] text-[var(--gray-400)] mt-1 mb-0">{c.descripcion}</p>}
                       </div>
                       <div className="flex items-center gap-3 shrink-0 mt-1">
+                        <span onClick={() => imprimirComparativo(c)} className="text-[var(--navy)] cursor-pointer" title="Imprimir comparativo">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+                        </span>
                         <span onClick={() => abrirModal(c)} className="text-[var(--blue)] cursor-pointer" title="Editar comparativo">
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
                         </span>
@@ -557,7 +669,7 @@ export default function ComparativoPage() {
                         </span>
                       </div>
                     </div>
-                    <div className="grid gap-3.5" style={{ gridTemplateColumns: `repeat(${Math.min(3, Math.max(1, c.columnas.length))}, minmax(200px, 1fr))` }}>
+                    <div className="grid gap-3.5" style={{ gridTemplateColumns: "repeat(3, minmax(200px, 1fr))" }}>
                       {c.columnas.map((col, i) => (
                         <div key={i} className="bg-white border border-[var(--gray-200)] rounded-xl overflow-hidden flex flex-col">
                           <div className="py-2.5 px-3 text-center" style={{ backgroundColor: COLORES_COLUMNA[i % COLORES_COLUMNA.length] }}>

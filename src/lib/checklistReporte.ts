@@ -114,38 +114,40 @@ async function generarImagenQR(valor: string): Promise<string> {
   return canvas.toDataURL("image/png");
 }
 
-export async function dibujarInformeChecklist(doc: any, registro: RegistroChecklist) {
+export async function dibujarInformeChecklist(doc: any, registro: RegistroChecklist, yBase: number) {
   const pageW = 21.59;
-  const marginX = 1.3;
+  const pageH = 27.94;
+  const altoMitad = pageH / 2;
+  const marginX = 1.0;
   const contentW = pageW - marginX * 2;
 
   // ---------- Encabezado ----------
   doc.setFillColor(...NAVY);
-  doc.rect(0, 0, pageW, 2.2, "F");
+  doc.rect(0, yBase, pageW, 1.15, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text("INFORME TÉCNICO", marginX, 1.0);
+  doc.setFontSize(10.5);
+  doc.text("INFORME TÉCNICO", marginX, yBase + 0.5);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(7);
   doc.setTextColor(169, 194, 238);
-  doc.text("Check List Diario de Unidades", marginX, 1.55);
+  doc.text("Check List Diario de Unidades", marginX, yBase + 0.86);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
+  doc.setFontSize(8.5);
   doc.setTextColor(255, 255, 255);
-  doc.text(registro.folio, pageW - marginX, 1.0, { align: "right" });
+  doc.text(registro.folio, pageW - marginX, yBase + 0.5, { align: "right" });
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(7);
   doc.setTextColor(169, 194, 238);
   const fecha = new Date(registro.fecha_hora).toLocaleString("es-MX", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  doc.text(fecha, pageW - marginX, 1.55, { align: "right" });
+  doc.text(fecha, pageW - marginX, yBase + 0.86, { align: "right" });
 
   // ---------- Datos generales + QR ----------
-  let y = 2.7;
-  const qrSize = 2.5;
-  const datosW = contentW - qrSize - 0.4;
+  let y = yBase + 1.35;
+  const qrSize = 1.5;
+  const datosW = contentW - qrSize - 0.3;
   doc.setFillColor(244, 245, 248);
-  doc.roundedRect(marginX, y, datosW, 2.55, 0.15, 0.15, "F");
+  doc.roundedRect(marginX, y, datosW, 1.55, 0.1, 0.1, "F");
   const campos: [string, string][] = [
     ["Unidad", registro.eco_unidad || "—"],
     ["Descripción", registro.descripcion_unidad || "—"],
@@ -158,100 +160,99 @@ export async function dibujarInformeChecklist(doc: any, registro: RegistroCheckl
   campos.forEach(([label, valor], i) => {
     const col = i % 3;
     const fila = Math.floor(i / 3);
-    const x = marginX + 0.3 + col * colW;
-    const yy = y + 0.55 + fila * 1.15;
+    const x = marginX + 0.2 + col * colW;
+    const yy = y + 0.32 + fila * 0.7;
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7);
+    doc.setFontSize(5.5);
     doc.setTextColor(...GRAY_400);
     doc.text(label.toUpperCase(), x, yy);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
+    doc.setFontSize(7.5);
     doc.setTextColor(...NAVY);
-    doc.text(String(valor), x, yy + 0.42, { maxWidth: colW - 0.3 });
+    doc.text(String(valor), x, yy + 0.28, { maxWidth: colW - 0.25 });
   });
 
-  // QR hacia la página pública de evidencias
-  const qrX = marginX + datosW + 0.4;
+  const qrX = marginX + datosW + 0.3;
   try {
     const qrUrl = `${window.location.origin}/checklist-evidencias?id=${registro.id}`;
     const imagenQR = await generarImagenQR(qrUrl);
     doc.addImage(imagenQR, "PNG", qrX, y, qrSize, qrSize);
   } catch {
-    // si falla la generación del QR, se omite sin interrumpir el reporte
+    // si falla la generacion del QR, se omite sin interrumpir el reporte
   }
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(6.5);
+  doc.setFontSize(5);
   doc.setTextColor(...GRAY_400);
-  doc.text("Escanea para ver fotos", qrX + qrSize / 2, y + qrSize + 0.28, { align: "center" });
+  doc.text("Ver fotos", qrX + qrSize / 2, y + qrSize + 0.16, { align: "center" });
 
   // ---------- Niveles de fluidos (con barras) ----------
-  y += 2.55 + 0.5;
+  y += 1.55 + 0.28;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(7);
   doc.setTextColor(...NAVY);
   doc.text("NIVELES DE FLUIDOS", marginX, y);
-  y += 0.35;
+  y += 0.22;
   const niveles = registro.niveles || {};
   NIVELES_LABELS.forEach((n) => {
     const dato = niveles[n.key];
     const nivelIdx = dato ? NIVEL_OPCIONES.indexOf(dato.nivel) + 1 : 0;
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(6.5);
     doc.setTextColor(40, 40, 40);
-    doc.text(n.label, marginX, y + 0.32);
+    doc.text(n.label, marginX, y + 0.22, { maxWidth: 5.6 });
 
-    // barra de 4 segmentos
-    const barX = marginX + 6.2;
-    const segW = 0.85;
-    const segH = 0.34;
+    const barX = marginX + 5.9;
+    const segW = 0.55;
+    const segH = 0.24;
     for (let s = 0; s < 4; s++) {
       const relleno = s < nivelIdx;
       doc.setFillColor(...(relleno ? BLUE : GRAY_200));
-      doc.rect(barX + s * (segW + 0.08), y, segW, segH, "F");
+      doc.rect(barX + s * (segW + 0.05), y, segW, segH, "F");
     }
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(7.5);
+    doc.setFontSize(6);
     doc.setTextColor(...NAVY);
-    doc.text(dato?.nivel || "Sin dato", barX + 4 * (segW + 0.08) + 0.15, y + 0.26);
-
+    doc.text(dato?.nivel || "Sin dato", barX + 4 * (segW + 0.05) + 0.12, y + 0.18);
+    let obsX = barX + 2.3;
     if (dato?.litros) {
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8);
+      doc.setFontSize(6);
       doc.setTextColor(90, 90, 90);
-      doc.text(`${dato.litros} L`, barX + 5.4, y + 0.26);
+      doc.text(`${dato.litros} L`, obsX, y + 0.18);
+      obsX += 0.7;
     }
     if (dato?.observaciones) {
-      doc.setFontSize(7.5);
+      doc.setFontSize(6);
       doc.setTextColor(...GRAY_400);
-      doc.text(dato.observaciones, barX + 6.2, y + 0.26, { maxWidth: contentW - (barX + 6.2 - marginX) });
+      doc.text(dato.observaciones, obsX, y + 0.18, { maxWidth: marginX + contentW - obsX });
     }
-    y += 0.55;
+    y += 0.32;
   });
 
   // ---------- Checklist de inspección (3 columnas) ----------
-  y += 0.25;
+  y += 0.18;
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(7);
   doc.setTextColor(...NAVY);
   const totalPuntos = SECCIONES.reduce((a, s) => a + s.puntos.length, 0);
   doc.text(`CHECKLIST DE INSPECCIÓN (${totalPuntos} PUNTOS)`, marginX, y);
-  y += 0.4;
+  y += 0.24;
 
   const checklist = registro.checklist || {};
-  const colGap = 0.4;
+  const colGap = 0.3;
   const checkColW = (contentW - colGap * 2) / 3;
   const yInicioChecklist = y;
   let colActual = 0;
-  let yCol = [yInicioChecklist, yInicioChecklist, yInicioChecklist];
+  const yCol = [yInicioChecklist, yInicioChecklist, yInicioChecklist];
   const observaciones: { punto: string; comentario: string }[] = [];
 
   SECCIONES.forEach((sec) => {
     const xCol = marginX + colActual * (checkColW + colGap);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(8.5);
+    doc.setFontSize(6.3);
     doc.setTextColor(...BLUE);
     doc.text(sec.titulo, xCol, yCol[colActual]);
-    yCol[colActual] += 0.32;
+    yCol[colActual] += 0.19;
 
     sec.puntos.forEach((punto) => {
       const key = `${sec.key}__${punto}`;
@@ -259,79 +260,91 @@ export async function dibujarInformeChecklist(doc: any, registro: RegistroCheckl
       const valor = dato?.valor ?? null;
       const esNo = valor === "no";
       doc.setFont("helvetica", esNo ? "bold" : "normal");
-      doc.setFontSize(9);
+      doc.setFontSize(6.3);
       doc.setTextColor(...(esNo ? RED : valor === "si" ? [40, 40, 40] : GRAY_400));
-      const marca = esNo ? "✕" : valor === "si" ? "✓" : "—";
-      doc.text(`${marca} ${punto}`, xCol, yCol[colActual], { maxWidth: checkColW - 0.1 });
-      yCol[colActual] += 0.3;
+      const marca = esNo ? "x" : valor === "si" ? "\u2713" : "-";
+      doc.text(`${marca} ${punto}`, xCol, yCol[colActual], { maxWidth: checkColW - 0.08 });
+      yCol[colActual] += 0.185;
 
       if (esNo || (dato?.comentario && dato.comentario.trim())) {
         observaciones.push({ punto, comentario: dato?.comentario?.trim() || (esNo ? "Marcado como No" : "") });
       }
     });
-    yCol[colActual] += 0.15;
+    yCol[colActual] += 0.1;
     colActual = (colActual + 1) % 3;
   });
 
-  y = Math.max(...yCol) + 0.2;
+  y = Math.max(...yCol) + 0.12;
 
   // ---------- Observaciones registradas ----------
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
+  doc.setFontSize(7);
   doc.setTextColor(...RED);
-  doc.text("OBSERVACIONES REGISTRADAS", marginX, y);
-  y += 0.35;
+  doc.text("OBSERVACIONES", marginX, y);
+  y += 0.2;
   if (observaciones.length === 0) {
     doc.setFont("helvetica", "normal");
-    doc.setFontSize(9);
+    doc.setFontSize(6.3);
     doc.setTextColor(...GRAY_400);
     doc.text("Sin observaciones. Todos los puntos revisados en orden.", marginX, y);
-    y += 0.35;
+    y += 0.2;
   } else {
     observaciones.forEach((o) => {
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(6.3);
       doc.setTextColor(...NAVY);
       const anchoPunto = doc.getTextWidth(`${o.punto}: `);
       doc.text(`${o.punto}:`, marginX, y);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(90, 90, 90);
-      doc.text(o.comentario, marginX + anchoPunto + 0.1, y, { maxWidth: contentW - anchoPunto - 0.1 });
-      y += 0.32;
+      doc.text(o.comentario, marginX + anchoPunto + 0.08, y, { maxWidth: contentW - anchoPunto - 0.08 });
+      y += 0.185;
     });
   }
 
-  // ---------- Cuadro de comentarios + firma (fijo al fondo de la hoja) ----------
-  const yComentarios = 23.4;
+  // ---------- Cuadro de comentarios + firma ----------
+  const espacioDisponible = yBase + altoMitad - 0.35 - y;
+  const alturaComentarios = Math.max(0.85, Math.min(1.15, espacioDisponible - 0.55));
+  const yComentarios = y + 0.12;
   doc.setDrawColor(...GRAY_200);
-  doc.setLineWidth(0.02);
-  doc.rect(marginX, yComentarios, contentW, 2.3);
+  doc.setLineWidth(0.015);
+  doc.rect(marginX, yComentarios, contentW, alturaComentarios);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(8);
+  doc.setFontSize(5.5);
   doc.setTextColor(...GRAY_400);
-  doc.text("COMENTARIOS (una vez impresa la hoja)", marginX + 0.2, yComentarios + 0.35);
+  doc.text("COMENTARIOS (una vez impresa la hoja)", marginX + 0.15, yComentarios + 0.22);
   doc.setDrawColor(...GRAY_200);
-  for (let i = 1; i <= 3; i++) {
-    const yl = yComentarios + 0.35 + i * 0.55;
-    doc.line(marginX + 0.2, yl, marginX + contentW - 0.2, yl);
+  const lineasComentario = alturaComentarios > 1.0 ? 2 : 1;
+  for (let i = 1; i <= lineasComentario; i++) {
+    const yl = yComentarios + 0.22 + i * ((alturaComentarios - 0.22) / (lineasComentario + 0.4));
+    doc.line(marginX + 0.15, yl, marginX + contentW - 0.15, yl);
   }
 
-  const yFirma = yComentarios + 2.3 + 0.55;
+  const yFirma = yComentarios + alturaComentarios + 0.32;
   const mitad = contentW / 2;
   doc.setDrawColor(90, 90, 90);
-  doc.line(marginX, yFirma, marginX + mitad - 0.4, yFirma);
-  doc.line(marginX + mitad + 0.4, yFirma, marginX + contentW, yFirma);
+  doc.line(marginX, yFirma, marginX + mitad - 0.3, yFirma);
+  doc.line(marginX + mitad + 0.3, yFirma, marginX + contentW, yFirma);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
+  doc.setFontSize(5.8);
   doc.setTextColor(...GRAY_400);
-  doc.text("Nombre de quien realizó la inspección", marginX, yFirma + 0.32);
-  doc.text("Firma", marginX + mitad + 0.4, yFirma + 0.32);
+  doc.text("Nombre de quien realizó la inspección", marginX, yFirma + 0.2);
+  doc.text("Firma", marginX + mitad + 0.3, yFirma + 0.2);
 
-  // ---------- Pie de página ----------
-  doc.setFillColor(...NAVY);
-  doc.rect(0, 27.94 - 0.9, pageW, 0.9, "F");
+  // ---------- Pie de esta mitad ----------
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(7.5);
-  doc.setTextColor(169, 194, 238);
-  doc.text(`Generado el ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" })} · Sistema interno - Transportes Logisticar`, marginX, 27.94 - 0.4);
+  doc.setFontSize(5.5);
+  doc.setTextColor(...GRAY_400);
+  doc.text(`Generado el ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" })} · Transportes Logisticar`, marginX, yBase + altoMitad - 0.15);
+}
+
+// Dibuja la línea guía de corte al centro de la hoja, entre los dos informes
+export function dibujarDivisor(doc: any) {
+  const pageW = 21.59;
+  const pageH = 27.94;
+  doc.setDrawColor(180, 180, 180);
+  doc.setLineWidth(0.01);
+  doc.setLineDashPattern([0.15, 0.1], 0);
+  doc.line(0.5, pageH / 2, pageW - 0.5, pageH / 2);
+  doc.setLineDashPattern([], 0);
 }

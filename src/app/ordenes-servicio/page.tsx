@@ -6,7 +6,7 @@ import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
 import { exportarExcel } from "@/lib/exportExcel";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
-import { dibujarInformeChecklist, type RegistroChecklist } from "@/lib/checklistReporte";
+import { dibujarInformeChecklist, dibujarDivisor, type RegistroChecklist } from "@/lib/checklistReporte";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 type RequisicionItem = {
 cantidad: string;
@@ -615,15 +615,21 @@ return;
 await cargarJsPDF();
 const { jsPDF } = window.jspdf;
 const doc = new jsPDF({ unit: "cm", format: "letter" });
+const altoMitad = 27.94 / 2;
+let posicionEnHoja = 0; // 0 = mitad superior, 1 = mitad inferior
 let primero = true;
 for (const r of registrosLigeros) {
 const resDetalle = await fetch(`/api/checklist/get?id=${r.id}`, { cache: "no-store" });
 const dataDetalle = await resDetalle.json();
 if (!dataDetalle.ok) continue;
 const registro: RegistroChecklist = dataDetalle.registro;
+if (posicionEnHoja === 0) {
 if (!primero) doc.addPage();
 primero = false;
-await dibujarInformeChecklist(doc, registro);
+}
+await dibujarInformeChecklist(doc, registro, posicionEnHoja === 0 ? 0 : altoMitad);
+if (posicionEnHoja === 0) dibujarDivisor(doc);
+posicionEnHoja = posicionEnHoja === 0 ? 1 : 0;
 }
 doc.save(`Informes_CheckList_${new Date().toISOString().slice(0, 10)}.pdf`);
 } catch (err: any) {

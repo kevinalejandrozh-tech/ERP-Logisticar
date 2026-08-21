@@ -9,7 +9,7 @@ await ensureSchema();
 const pool = getPool();
 const result = await pool.query(
 `SELECT id, folio, eco_unidad, descripcion_unidad, placas, fecha_hora, porcentaje_llenado
-FROM checklist_unidades ORDER BY fecha_hora DESC LIMIT 50`
+FROM checklist_unidades ORDER BY fecha_hora DESC LIMIT 500`
 );
 return NextResponse.json({ ok: true, registros: result.rows });
 } catch (err: any) {

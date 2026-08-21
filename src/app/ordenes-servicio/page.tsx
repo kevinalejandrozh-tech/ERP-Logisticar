@@ -6,6 +6,7 @@ import PageFooter from "@/components/PageFooter";
 import FotoCard from "@/components/FotoCard";
 import { exportarExcel } from "@/lib/exportExcel";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
+import { dibujarInformeChecklist, type RegistroChecklist } from "@/lib/checklistReporte";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 type RequisicionItem = {
 cantidad: string;
@@ -599,6 +600,38 @@ document.body.appendChild(a);
 a.click();
 a.remove();
 };
+// ---- Imprimir informes de Check List Diario de Unidades (uno por registro) ----
+const [generandoInformesChecklist, setGenerandoInformesChecklist] = useState(false);
+const imprimirInformesChecklist = async () => {
+setGenerandoInformesChecklist(true);
+try {
+const resLista = await fetch("/api/checklist/list", { cache: "no-store" });
+const dataLista = await resLista.json();
+const registrosLigeros: { id: number }[] = dataLista.registros || [];
+if (registrosLigeros.length === 0) {
+alert("No hay registros de Check List Diario de Unidades.");
+return;
+}
+await cargarJsPDF();
+const { jsPDF } = window.jspdf;
+const doc = new jsPDF({ unit: "cm", format: "letter" });
+let primero = true;
+for (const r of registrosLigeros) {
+const resDetalle = await fetch(`/api/checklist/get?id=${r.id}`, { cache: "no-store" });
+const dataDetalle = await resDetalle.json();
+if (!dataDetalle.ok) continue;
+const registro: RegistroChecklist = dataDetalle.registro;
+if (!primero) doc.addPage();
+primero = false;
+await dibujarInformeChecklist(doc, registro);
+}
+doc.save(`Informes_CheckList_${new Date().toISOString().slice(0, 10)}.pdf`);
+} catch (err: any) {
+alert(err.message || "No se pudieron generar los informes.");
+} finally {
+setGenerandoInformesChecklist(false);
+}
+};
 // ---- Imprimir / descargar orden por folio (cualquier estatus) ----
 const [imprimirModalAbierto, setImprimirModalAbierto] = useState(false);
 const [folioAImprimir, setFolioAImprimir] = useState("");
@@ -1059,6 +1092,15 @@ Inventario
 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
 Historial de mantenimientos
 </Link>
+<button
+type="button"
+onClick={imprimirInformesChecklist}
+disabled={generandoInformesChecklist}
+className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-3 text-[13px] font-bold disabled:opacity-60"
+>
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+{generandoInformesChecklist ? "Generando..." : "Informes de Check List"}
+</button>
 <button
 type="button"
 onClick={abrirImprimir}

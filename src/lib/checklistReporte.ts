@@ -59,7 +59,7 @@ function badge(doc: any, cx: number, cy: number, r: number, color: [number, numb
 
 function iconoCamion(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.028);
+  doc.setLineWidth(0.045);
   const x = cx - s / 2;
   const y = cy - s * 0.32;
   doc.rect(x, y, s * 0.6, s * 0.4);
@@ -70,7 +70,7 @@ function iconoCamion(doc: any, cx: number, cy: number, s: number, color: [number
 }
 function iconoAuto(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.028);
+  doc.setLineWidth(0.045);
   const x = cx - s / 2;
   const y = cy - s * 0.22;
   doc.roundedRect(x, y, s, s * 0.34, s * 0.08, s * 0.08, "S");
@@ -80,13 +80,13 @@ function iconoAuto(doc: any, cx: number, cy: number, s: number, color: [number, 
 }
 function iconoPlaca(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   doc.roundedRect(cx - s / 2, cy - s * 0.32, s, s * 0.64, s * 0.08, s * 0.08, "S");
   doc.line(cx - s * 0.15, cy - s * 0.32, cx - s * 0.15, cy + s * 0.32);
 }
 function iconoVelocimetro(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   doc.circle(cx, cy, s * 0.42, "S");
   doc.line(cx, cy, cx + s * 0.24, cy - s * 0.2);
   doc.setFillColor(...color);
@@ -94,7 +94,7 @@ function iconoVelocimetro(doc: any, cx: number, cy: number, s: number, color: [n
 }
 function iconoCombustible(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   const x = cx - s * 0.32;
   const y = cy - s * 0.4;
   doc.roundedRect(x, y, s * 0.5, s * 0.8, s * 0.06, s * 0.06, "S");
@@ -104,7 +104,7 @@ function iconoCombustible(doc: any, cx: number, cy: number, s: number, color: [n
 }
 function iconoCalendario(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   const x = cx - s / 2;
   const y = cy - s * 0.4;
   doc.roundedRect(x, y, s, s * 0.8, s * 0.06, s * 0.06, "S");
@@ -119,20 +119,20 @@ function iconoGota(doc: any, cx: number, cy: number, s: number, color: [number, 
 }
 function iconoLupa(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.03);
+  doc.setLineWidth(0.05);
   doc.circle(cx - s * 0.06, cy - s * 0.06, s * 0.3, "S");
   doc.line(cx + s * 0.14, cy + s * 0.14, cx + s * 0.36, cy + s * 0.36);
 }
 function iconoMas(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.03);
+  doc.setLineWidth(0.05);
   doc.roundedRect(cx - s / 2, cy - s / 2, s, s, s * 0.14, s * 0.14, "S");
   doc.line(cx - s * 0.22, cy, cx + s * 0.22, cy);
   doc.line(cx, cy - s * 0.22, cx, cy + s * 0.22);
 }
 function iconoDocumento(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   const x = cx - s * 0.32;
   const y = cy - s * 0.4;
   doc.rect(x, y, s * 0.64, s * 0.8, "S");
@@ -142,14 +142,14 @@ function iconoDocumento(doc: any, cx: number, cy: number, s: number, color: [num
 }
 function iconoCheckCirculo(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.03);
+  doc.setLineWidth(0.05);
   doc.circle(cx, cy, s * 0.42, "S");
   doc.line(cx - s * 0.18, cy, cx - s * 0.04, cy + s * 0.16);
   doc.line(cx - s * 0.04, cy + s * 0.16, cx + s * 0.2, cy - s * 0.16);
 }
 function iconoAlerta(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.03);
+  doc.setLineWidth(0.05);
   doc.triangle(cx, cy - s * 0.42, cx - s * 0.42, cy + s * 0.3, cx + s * 0.42, cy + s * 0.3, "S");
   doc.setFillColor(...color);
   doc.rect(cx - s * 0.035, cy - s * 0.16, s * 0.07, s * 0.26, "F");
@@ -157,7 +157,7 @@ function iconoAlerta(doc: any, cx: number, cy: number, s: number, color: [number
 }
 function iconoPersona(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   doc.circle(cx, cy - s * 0.2, s * 0.18, "S");
   doc.roundedRect(cx - s * 0.28, cy + s * 0.02, s * 0.56, s * 0.4, s * 0.14, s * 0.14, "S");
 }
@@ -170,14 +170,14 @@ function iconoLapiz(doc: any, cx: number, cy: number, s: number, color: [number,
 }
 function iconoComentario(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   doc.roundedRect(cx - s / 2, cy - s * 0.34, s, s * 0.6, s * 0.1, s * 0.1, "S");
   doc.setFillColor(...color);
   doc.triangle(cx - s * 0.28, cy + s * 0.2, cx - s * 0.1, cy + s * 0.2, cx - s * 0.24, cy + s * 0.4, "F");
 }
 function iconoTijeras(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.026);
+  doc.setLineWidth(0.045);
   doc.line(cx - s * 0.3, cy - s * 0.28, cx + s * 0.3, cy + s * 0.28);
   doc.line(cx - s * 0.3, cy + s * 0.28, cx + s * 0.3, cy - s * 0.28);
   doc.circle(cx - s * 0.32, cy - s * 0.3, s * 0.09, "S");
@@ -185,7 +185,7 @@ function iconoTijeras(doc: any, cx: number, cy: number, s: number, color: [numbe
 }
 function iconoEngrane(doc: any, cx: number, cy: number, s: number, color: [number, number, number]) {
   doc.setDrawColor(...color);
-  doc.setLineWidth(0.024);
+  doc.setLineWidth(0.04);
   doc.circle(cx, cy, s * 0.28, "S");
   doc.setFillColor(...color);
   for (let i = 0; i < 8; i++) {
@@ -272,37 +272,38 @@ export async function dibujarInformeChecklist(doc: any, registro: RegistroCheckl
     const fila = Math.floor(i / 3);
     const x = marginX + col * colW;
     const yy = y + 0.28 + fila * 0.95;
-    icono(doc, x + 0.22, yy, 0.34, BLUE);
+    icono(doc, x + 0.26, yy, 0.46, BLUE);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(6.3);
     doc.setTextColor(...GRAY_400);
-    doc.text(label.toUpperCase(), x + 0.5, yy - 0.12);
+    doc.text(label.toUpperCase(), x + 0.6, yy - 0.12);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(9.5);
     doc.setTextColor(...NAVY);
-    doc.text(String(valor), x + 0.5, yy + 0.24, { maxWidth: colW - 0.55 });
+    doc.text(String(valor), x + 0.6, yy + 0.24, { maxWidth: colW - 0.65 });
   });
 
   const qrX = marginX + datosW + 0.35;
+  const altoQrImagen = qrSize - 0.4;
   doc.setDrawColor(...GRAY_300);
   doc.setLineWidth(0.015);
-  doc.roundedRect(qrX, y, qrSize, qrSize - 0.42, 0.08, 0.08, "S");
+  doc.roundedRect(qrX, y, qrSize, altoQrImagen, 0.08, 0.08, "S");
   try {
     const qrUrl = `${window.location.origin}/checklist-evidencias?id=${registro.id}`;
     const imagenQR = await generarImagenQR(qrUrl);
-    doc.addImage(imagenQR, "PNG", qrX + 0.12, y + 0.12, qrSize - 0.24, qrSize - 0.24 - 0.42);
+    doc.addImage(imagenQR, "PNG", qrX + 0.12, y + 0.12, qrSize - 0.24, altoQrImagen - 0.24);
   } catch {
     // si falla la generacion del QR, se omite sin interrumpir el reporte
   }
   doc.setFillColor(...NAVY);
-  doc.roundedRect(qrX, y + qrSize - 0.38, qrSize, 0.38, 0.08, 0.08, "F");
+  doc.roundedRect(qrX, y + altoQrImagen, qrSize, 0.4, 0.08, 0.08, "F");
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(6.3);
+  doc.setFontSize(6.5);
   doc.setTextColor(...WHITE);
-  doc.text("VER FOTOS", qrX + qrSize / 2, y + qrSize - 0.16, { align: "center" });
+  doc.text("VER FOTOS", qrX + qrSize / 2, y + altoQrImagen + 0.24, { align: "center" });
 
   // ---------- Niveles de fluidos ----------
-  y += 1.55;
+  y += qrSize + 0.3;
   doc.setFillColor(...NAVY);
   doc.roundedRect(marginX, y, contentW, 0.42, 0.08, 0.08, "F");
   iconoGota(doc, marginX + 0.26, y + 0.21, 0.24, WHITE);
@@ -325,18 +326,19 @@ export async function dibujarInformeChecklist(doc: any, registro: RegistroCheckl
     const barX = marginX + 5.6;
     const segTotal = 5;
     const segW = 0.42;
-    const segH = 0.26;
+    const segH = 0.28;
+    const segLlenos = nivelIdx > 0 ? Math.round((nivelIdx / NIVEL_OPCIONES.length) * segTotal) : 0;
     for (let s = 0; s < segTotal; s++) {
-      const relleno = s < nivelIdx;
+      const relleno = s < segLlenos;
       doc.setFillColor(...(relleno ? BLUE : GRAY_200));
       doc.rect(barX + s * (segW + 0.04), y, segW, segH, "F");
     }
-    const finBarraX = barX + segTotal * (segW + 0.04) + 0.14;
+    const finBarraX = barX + segTotal * (segW + 0.04) + 0.16;
     const bajoOVacio = nivelIdx > 0 && nivelIdx <= 2;
     if (nivelIdx === 0 || bajoOVacio) {
-      iconoAlerta(doc, finBarraX, y + 0.13, 0.24, AMBER);
+      iconoAlerta(doc, finBarraX, y + 0.14, 0.28, AMBER);
     } else {
-      iconoCheckCirculo(doc, finBarraX, y + 0.13, 0.24, GREEN);
+      iconoCheckCirculo(doc, finBarraX, y + 0.14, 0.28, GREEN);
     }
 
     const detalle = [dato?.litros ? `${dato.litros} L` : "", dato?.observaciones || ""].filter(Boolean).join(" · ");
@@ -400,12 +402,12 @@ export async function dibujarInformeChecklist(doc: any, registro: RegistroCheckl
     const xCol = marginX + colIdx * (checkColW + colGap);
     secciones.forEach((sec) => {
       const iconoFn = ICONO_SECCION[sec.key] || iconoLupa;
-      iconoFn(doc, xCol + 0.14, yCol[colIdx] - 0.04, 0.24, BLUE);
+      iconoFn(doc, xCol + 0.17, yCol[colIdx] - 0.05, 0.34, BLUE);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(7.6);
       doc.setTextColor(...BLUE);
-      doc.text(sec.titulo, xCol + 0.32, yCol[colIdx]);
-      yCol[colIdx] += 0.3;
+      doc.text(sec.titulo, xCol + 0.4, yCol[colIdx]);
+      yCol[colIdx] += 0.32;
 
       sec.puntos.forEach((punto) => {
         const key = `${sec.key}__${punto}`;
@@ -495,12 +497,12 @@ export async function dibujarInformeChecklist(doc: any, registro: RegistroCheckl
   doc.setFontSize(6.6);
   doc.setTextColor(169, 194, 238);
   doc.text(`GENERADO EL ${new Date().toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" }).toUpperCase()}  ·  TRANSPORTES LOGISTICAR`, marginX + 0.34, yPie + 0.24);
-  // franjas diagonales decorativas
+  // franjas decorativas (rectángulos verticales alternados, dentro de los límites del pie)
   doc.setFillColor(37, 49, 112);
-  const anchoFranjas = 3.2;
+  const anchoFranjas = 3.0;
   for (let i = 0; i < 6; i++) {
     const xf = pageW - anchoFranjas + i * 0.52;
-    doc.triangle(xf, yPie + 0.4, xf + 0.26, yPie + 0.4, xf + 0.26 + 0.2, yPie, "F");
+    doc.rect(xf, yPie + 0.06, 0.24, 0.28, "F");
   }
 }
 

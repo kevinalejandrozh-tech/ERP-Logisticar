@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { exportarExcel } from "@/lib/exportExcel";
 import { compressImage } from "@/lib/imageUtils";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import { dibujarInformeChecklist, dibujarDivisor, type RegistroChecklist } from "@/lib/checklistReporte";
 
 declare global {
@@ -95,6 +96,105 @@ export default function HistorialMantenimientosPage() {
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
   const [filtroUnidad, setFiltroUnidad] = useState<string>("todas");
   const [unidadesMaestras, setUnidadesMaestras] = useState<Record<string, string>[]>([]);
+
+  // ---- Reportes (ligados a este historial) ----
+  const [reportesAbiertos, setReportesAbiertos] = useState(false);
+  const [ultimoChecklistPorEco, setUltimoChecklistPorEco] = useState<Record<string, { id: number; fechaHora: string }>>({});
+  const cargarUltimoChecklist = async () => {
+    try {
+      const res = await fetch("/api/checklist/reporte-estado", { cache: "no-store" });
+      const data = await res.json();
+      const mapa: Record<string, { id: number; fechaHora: string }> = {};
+      (data.registros || []).forEach((r: any) => {
+        mapa[r.eco_unidad] = { id: r.id, fechaHora: r.fecha_hora };
+      });
+      setUltimoChecklistPorEco(mapa);
+    } catch {
+      // se reintenta al volver a la pestaña
+    }
+  };
+  const [comentariosRevision, setComentariosRevision] = useState<Record<string, string>>({});
+  const cargarComentariosRevision = async () => {
+    try {
+      const res = await fetch("/api/revision-semanal/comentarios", { cache: "no-store" });
+      const data = await res.json();
+      setComentariosRevision(data.comentarios || {});
+    } catch {
+      // se reintenta al volver a la pestaña
+    }
+  };
+  const guardarComentarioRevision = (eco: string, comentario: string) => {
+    setComentariosRevision((prev) => ({ ...prev, [eco]: comentario }));
+    fetch("/api/revision-semanal/comentarios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eco, comentario }) }).catch(() => cargarComentariosRevision());
+  };
+  const lunesDeSemanaActual = () => {
+    const d = new Date();
+    const dia = d.getDay() || 7;
+    const l = new Date(d);
+    l.setDate(d.getDate() - (dia - 1));
+    l.setHours(0, 0, 0, 0);
+    return l;
+  };
+  const unidadesConEstadoSemanal = useMemo(() => {
+    const lunesActual = lunesDeSemanaActual();
+    return unidadesMaestras.map((u) => {
+      const info = ultimoChecklistPorEco[u["ECO"]];
+      const revisadaEstaSemana = !!info && new Date(info.fechaHora).getTime() >= lunesActual.getTime();
+      return { u, info, revisadaEstaSemana };
+    });
+  }, [unidadesMaestras, ultimoChecklistPorEco]);
+  const totalRevisadasEstaSemana = unidadesConEstadoSemanal.filter((x) => x.revisadaEstaSemana).length;
+  const porcentajeAvanceSemanal = unidadesMaestras.length === 0 ? 0 : (totalRevisadasEstaSemana / unidadesMaestras.length) * 100;
+  const [filtroRevisionSemanal, setFiltroRevisionSemanal] = useState<"todos" | "realizados" | "pendientes">("todos");
+  const unidadesRevisionFiltradas = useMemo(() => {
+    if (filtroRevisionSemanal === "realizados") return unidadesConEstadoSemanal.filter((x) => x.revisadaEstaSemana);
+    if (filtroRevisionSemanal === "pendientes") return unidadesConEstadoSemanal.filter((x) => !x.revisadaEstaSemana);
+    return unidadesConEstadoSemanal;
+  }, [unidadesConEstadoSemanal, filtroRevisionSemanal]);
+  const [descargandoTodo, setDescargandoTodo] = useState(false);
+  const [liberandoEspacio, setLiberandoEspacio] = useState(false);
+  const [mensajeDescarga, setMensajeDescarga] = useState("");
+  const descargarTodoChecklist = async () => {
+    setDescargandoTodo(true);
+    setMensajeDescarga("");
+    try {
+      const res = await fetch("/api/checklist/export");
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Error al descargar.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Checklist_Unidades_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setMensajeDescarga("Descarga completa. Guárdala en tu PC antes de liberar espacio.");
+    } catch (err: any) {
+      setMensajeDescarga(err.message || "Error al descargar.");
+    } finally {
+      setDescargandoTodo(false);
+    }
+  };
+  const liberarEspacioNube = async () => {
+    if (!confirm("¿Ya guardaste el archivo descargado en tu PC? Esto borrará todos los registros de checklist de la nube de forma permanente.")) return;
+    setLiberandoEspacio(true);
+    setMensajeDescarga("");
+    try {
+      const res = await fetch("/api/checklist/clear", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setMensajeDescarga(`Se liberaron ${data.borrados} registros de la nube.`);
+      await cargarUltimoChecklist();
+    } catch (err: any) {
+      setMensajeDescarga(err.message || "Error al liberar espacio.");
+    } finally {
+      setLiberandoEspacio(false);
+    }
+  };
   const [generandoInformesChecklist, setGenerandoInformesChecklist] = useState(false);
   const imprimirInformesChecklist = async () => {
     setGenerandoInformesChecklist(true);
@@ -147,6 +247,8 @@ export default function HistorialMantenimientosPage() {
       .then((r) => r.json())
       .then((d) => setUnidadesMaestras(d.registros || []))
       .catch(() => {});
+    cargarUltimoChecklist();
+    cargarComentariosRevision();
   }, []);
 
   const cargar = async () => {
@@ -177,6 +279,12 @@ export default function HistorialMantenimientosPage() {
     cargar();
     cargarSolicitudes();
   }, []);
+  useRefrescarAlEnfocar(() => {
+    cargar();
+    cargarSolicitudes();
+    cargarUltimoChecklist();
+    cargarComentariosRevision();
+  });
 
   const actualizarLocal = (id: number, campo: keyof Fila, valor: string) => {
     setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, [campo]: valor } : f)));
@@ -426,6 +534,10 @@ export default function HistorialMantenimientosPage() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
                 Inventario
               </Link>
+              <Link href="/ordenes-servicio/cambios-aceite" className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold no-underline">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M12 2l7 12a7 7 0 11-14 0l7-12z" /></svg>
+                Cambios de aceite
+              </Link>
               <button
                 type="button"
                 onClick={imprimirInformesChecklist}
@@ -435,6 +547,14 @@ export default function HistorialMantenimientosPage() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
                 {generandoInformesChecklist ? "Generando..." : "Informes de Check List"}
               </button>
+              <button
+                type="button"
+                onClick={() => setReportesAbiertos((p) => !p)}
+                className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-[12px] font-bold border ${reportesAbiertos ? "bg-[var(--navy)] text-white border-[var(--navy)]" : "bg-white text-[var(--navy)] border-[var(--gray-200)]"}`}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={reportesAbiertos ? "#fff" : "#2f6fed"} strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+                {reportesAbiertos ? "Ocultar reportes" : "Reportes"}
+              </button>
             </div>
             {!cargando && filas.length > 0 && (
               <button type="button" onClick={exportar} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">
@@ -443,6 +563,106 @@ export default function HistorialMantenimientosPage() {
               </button>
             )}
           </div>
+
+          {reportesAbiertos && (
+            <div className="bg-[var(--gray-100)] rounded-2xl p-4 sm:p-5 mb-5">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-400)] m-0">Revisión semanal de unidades</p>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-[11px] font-bold text-[var(--navy)] whitespace-nowrap">
+                    {totalRevisadasEstaSemana}/{unidadesMaestras.length} revisadas
+                  </span>
+                  <div className="w-[90px] h-[8px] bg-[var(--gray-200)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${Math.min(100, porcentajeAvanceSemanal)}%`, backgroundColor: porcentajeAvanceSemanal > 95 ? "var(--green)" : porcentajeAvanceSemanal >= 50 ? "#14b8a6" : "#c3c9d4" }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-bold text-[var(--navy)] whitespace-nowrap">{porcentajeAvanceSemanal.toFixed(0)}%</span>
+                </div>
+              </div>
+              <div className="flex gap-1.5 mb-2.5">
+                {(
+                  [
+                    ["todos", "Todos"],
+                    ["realizados", "Realizados"],
+                    ["pendientes", "Pendientes"],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFiltroRevisionSemanal(key)}
+                    className={`text-[10.5px] font-bold px-2.5 py-1 rounded-full ${filtroRevisionSemanal === key ? "bg-[var(--navy)] text-white" : "bg-white text-[var(--navy)]"}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="bg-white rounded-xl overflow-hidden max-h-[340px] overflow-y-auto">
+                <table className="border-collapse min-w-max w-full">
+                  <thead>
+                    <tr>
+                      {["ECO", "Modelo/Tipo", "Inspección semanal", "Fecha de revisión", "Comentarios", ""].map((c) => (
+                        <th key={c} className="text-left text-[9px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap sticky top-0">
+                          {c}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unidadesRevisionFiltradas.map(({ u, info, revisadaEstaSemana }) => {
+                      const eco = u["ECO"];
+                      return (
+                        <tr key={eco} className="border-b border-[var(--gray-200)]" style={revisadaEstaSemana ? { backgroundColor: "rgba(33,168,102,0.18)" } : undefined}>
+                          <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap font-semibold text-[var(--navy)]">{eco}</td>
+                          <td className="px-2 py-1.5 text-[11.5px] whitespace-nowrap">{u["Modelo/Tipo"] || "—"}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">
+                            <Link href={`/checklist?eco=${encodeURIComponent(eco)}`} className={`inline-block text-white text-[10px] font-bold rounded-full px-2.5 py-1 no-underline whitespace-nowrap ${revisadaEstaSemana ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`}>
+                              Realizar Check List
+                            </Link>
+                          </td>
+                          <td className="px-2 py-1.5 text-[11px] whitespace-nowrap text-[var(--gray-400)]">
+                            {info ? new Date(info.fechaHora).toLocaleDateString("es-MX", { weekday: "short", day: "2-digit", month: "short" }) : "—"}
+                          </td>
+                          <td className="px-2 py-1.5 min-w-[160px]">
+                            <input
+                              defaultValue={comentariosRevision[eco] || ""}
+                              onBlur={(e) => guardarComentarioRevision(eco, e.target.value)}
+                              placeholder="Escribe un comentario..."
+                              className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-full"
+                            />
+                          </td>
+                          <td className="px-2 py-1.5 whitespace-nowrap text-center">
+                            {info ? (
+                              <Link href={`/checklist?id=${info.id}`} className="text-[var(--blue)]" title="Ver último checklist registrado">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                              </Link>
+                            ) : (
+                              <span className="text-[var(--gray-400)]" title="Sin checklist registrado">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {unidadesRevisionFiltradas.length === 0 && <p className="text-center text-[var(--gray-400)] text-[12px] py-4">Sin unidades para mostrar.</p>}
+              </div>
+              <div className="pt-2.5 mt-2.5 border-t border-[var(--gray-200)] flex flex-wrap items-center gap-2">
+                <button type="button" onClick={descargarTodoChecklist} disabled={descargandoTodo} className="text-[10.5px] font-bold text-[var(--gray-400)] hover:text-[var(--navy)] disabled:opacity-60">
+                  {descargandoTodo ? "Generando..." : "Descargar todo (Excel + fotos)"}
+                </button>
+                <span className="text-[var(--gray-200)]">|</span>
+                <button type="button" onClick={liberarEspacioNube} disabled={liberandoEspacio} className="text-[10.5px] font-bold text-[var(--red)] hover:text-[#a12817] disabled:opacity-60">
+                  {liberandoEspacio ? "Liberando..." : "Liberar espacio en la nube"}
+                </button>
+                {mensajeDescarga && <span className="text-[10px] text-[var(--blue)] w-full">{mensajeDescarga}</span>}
+              </div>
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="border-collapse min-w-max w-full">

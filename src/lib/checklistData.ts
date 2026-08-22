@@ -9,9 +9,9 @@ puntos: [
 "Espejos completos",
 "Vidrios en buen estado",
 "Funcionamiento del aire acondicionado",
-"Placa delantera asegurada",
-"Placa trasera asegurada",
-"Pintura, limpieza y estado de la caja de carga",
+"Revisión de placas",
+"Pintura",
+"Estado de la caja de carga",
 ],
 },
 {
@@ -29,63 +29,12 @@ puntos: [
 ],
 },
 {
-key: "general",
-titulo: "Inspección general",
-puntos: [
-"Fugas de aceite",
-"Fugas de líquido de frenos",
-"Fugas de refrigerante",
-"Estado de la carrocería",
-"Luces delanteras",
-"Luces traseras",
-"Luces direccionales",
-"Luces intermitentes",
-"Frenos de servicio",
-"Freno de motor",
-"Suspensión",
-"Sistema de dirección",
-"Batería y terminales",
-],
-},
-{
 key: "documentacion",
 titulo: "Documentación",
 puntos: [
 "Tarjeta de circulación",
 "Póliza de seguro vigente",
 "Verificación vigente",
-],
-},
-{
-key: "comandos",
-titulo: "Funcionamiento de comandos",
-puntos: [
-"Accesorios",
-"Paro de motor",
-"Habilitado de motor",
-"Apertura de chapa",
-"Cierre de chapa",
-"Activación de sirena",
-"Puertas segura",
-"Voz en cabina",
-"Rotochamber",
-],
-},
-{
-key: "acceso",
-titulo: "Accesorios",
-puntos: [
-"Botón de pánico izq",
-"Botón de pánico der",
-"1° chapa",
-"2° chapa",
-"3° chapa",
-"Puerta segura operador",
-"Puerta segura copiloto",
-"Sirenas",
-"Luces intermitentes",
-"Sensor de puerta operador",
-"Sensor de puerta copiloto",
 ],
 },
 ];
@@ -101,3 +50,16 @@ export const NIVELES_LABELS: { key: string; label: string }[] = [
 { key: "limpiaparabrisas", label: "Agua limpiaparabrisas" },
 ];
 export const NIVEL_OPCIONES = ["1/4", "1/2", "3/4", "LLENO"];
+
+// Opciones de respuesta personalizadas (positiva/negativa) para cada punto de "Inspección completa".
+// El valor "si" corresponde a la opción positiva y "no" a la opción negativa.
+export const OPCIONES_CABINA: Record<string, [string, string]> = {
+"Limpieza de la unidad": ["La unidad se encuentra limpia", "La unidad se encuentra sucia"],
+"Asientos en buen estado": ["Asientos en buen estado", "Asientos en mal estado"],
+"Espejos completos": ["Espejos en buen estado", "Daño en espejos"],
+"Vidrios en buen estado": ["Vidrios sin detalles", "Se detecta un vidrio roto"],
+"Funcionamiento del aire acondicionado": ["El aire acondicionado funciona bien", "El aire acondicionado no funciona"],
+"Revisión de placas": ["La placa está bien asegurada", "La placa necesita ser asegurada mejor"],
+"Pintura": ["Pintura en buen estado", "Se detecta detalle en pintura"],
+"Estado de la caja de carga": ["La caja de carga está en buen estado", "Se detecta un detalle en la caja de carga"],
+};

@@ -8,6 +8,7 @@ comentario,
 onChange,
 onToggleComentario,
 onComentarioChange,
+opciones,
 }: {
 label: string;
 value: SwitchState;
@@ -16,46 +17,48 @@ comentario: string;
 onChange: (v: SwitchState) => void;
 onToggleComentario: () => void;
 onComentarioChange: (v: string) => void;
+opciones?: [string, string];
 }) {
+const [textoPositivo, textoNegativo] = opciones || ["Sí", "No"];
 return (
 <div className="py-3 border-b border-[var(--gray-200)] last:border-0">
 <div className="flex items-center justify-between gap-2">
 <span className="text-xs text-[var(--text)] flex-1">{label}</span>
-<div className="flex items-center rounded-full bg-[var(--gray-100)] p-1 shrink-0">
-<button
-type="button"
-onClick={() => onChange(value === "si" ? null : "si")}
-className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap ${
-value === "si"
-? "bg-[var(--green)] text-white"
-: "text-[var(--gray-400)]"
-}`}
->
-Sí
-</button>
-<button
-type="button"
-onClick={() => onChange(value === "no" ? null : "no")}
-className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap ${
-value === "no"
-? "bg-[var(--red)] text-white"
-: "text-[var(--gray-400)]"
-}`}
->
-No
-</button>
 <button
 type="button"
 onClick={onToggleComentario}
-className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap ${
+className={`px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap shrink-0 ${
 comentarioActivo
 ? "bg-[var(--amber)] text-white"
-: "text-[var(--gray-400)]"
+: "bg-[var(--gray-100)] text-[var(--gray-400)]"
 }`}
 >
 Comentarios
 </button>
 </div>
+<div className="flex flex-col gap-1.5 mt-2">
+<button
+type="button"
+onClick={() => onChange(value === "si" ? null : "si")}
+className={`text-left px-3 py-1.5 rounded-md text-[11px] font-semibold ${
+value === "si"
+? "bg-[var(--green)] text-white"
+: "bg-[var(--gray-100)] text-[var(--text)]"
+}`}
+>
+{textoPositivo}
+</button>
+<button
+type="button"
+onClick={() => onChange(value === "no" ? null : "no")}
+className={`text-left px-3 py-1.5 rounded-md text-[11px] font-semibold ${
+value === "no"
+? "bg-[var(--red)] text-white"
+: "bg-[var(--gray-100)] text-[var(--text)]"
+}`}
+>
+{textoNegativo}
+</button>
 </div>
 {comentarioActivo && (
 <input

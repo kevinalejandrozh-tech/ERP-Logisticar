@@ -10,9 +10,10 @@ SECCIONES,
 TOTAL_PUNTOS,
 NIVELES_LABELS,
 NIVEL_OPCIONES,
+OPCIONES_CABINA,
 SwitchState,
 } from "@/lib/checklistData";
-import { UNIDADES, DICTAMEN_OPCIONES, imagenLlantaPorClave } from "@/lib/unidadesData";
+import { UNIDADES } from "@/lib/unidadesData";
 type PuntoState = { valor: SwitchState; comentarioActivo: boolean; comentario: string };
 type DetalleNoOk = { seccion: string; punto: string; comentario: string };
 type FilaReporte = {
@@ -90,9 +91,6 @@ const unidadSeleccionada = useMemo(
 );
 const [fotos, setFotos] = useState<Record<string, string | null>>({});
 const [fotosLibres, setFotosLibres] = useState<string[]>([]);
-const [llantasComentario, setLlantasComentario] = useState("");
-const [llantasDictamen, setLlantasDictamen] = useState(DICTAMEN_OPCIONES[0]);
-const [llantasFotos, setLlantasFotos] = useState<string[]>([]);
 const [niveles, setNiveles] = useState<Record<string, number>>({});
 const [nivelesLitros, setNivelesLitros] = useState<Record<string, string>>({});
 const [nivelesObs, setNivelesObs] = useState<Record<string, string>>({});
@@ -149,10 +147,6 @@ setEcoUnidad(r.eco_unidad || "");
 setKmActual(r.kilometraje_actual != null ? String(r.kilometraje_actual) : "");
 setFotos(r.fotos_evidencia || {});
 setFotosLibres(r.fotos_libres || []);
-const estadoLlantas = r.estado_llantas || {};
-setLlantasComentario(estadoLlantas.comentario || "");
-setLlantasDictamen(estadoLlantas.dictamen || DICTAMEN_OPCIONES[0]);
-setLlantasFotos(estadoLlantas.fotos || []);
 const nivelesGuardados = r.niveles || {};
 const nivelesNum: Record<string, number> = {};
 const nivelesLit: Record<string, string> = {};
@@ -204,11 +198,6 @@ placas: unidadSeleccionada?.placa || "",
 kilometraje_actual: kmActual ? Number(kmActual) : null,
 fotos_evidencia: fotos,
 fotos_libres: fotosLibres,
-estado_llantas: {
-comentario: llantasComentario,
-dictamen: llantasDictamen,
-fotos: llantasFotos,
-},
 niveles: nivelesConEtiqueta,
 checklist,
 porcentaje_llenado: porcentajeLlenado,
@@ -365,52 +354,6 @@ onVer={() => setFotoAmpliada(fotos[label] || null)}
 </div>
 <div>
 <p className="font-display font-extrabold text-[var(--navy)] text-[13px] uppercase mb-2.5">
-Estado de llantas
-</p>
-<div className="border border-[var(--gray-200)] rounded-lg p-3.5 flex gap-3">
-<div className="w-[42%] shrink-0">
-{unidadSeleccionada && (
-// eslint-disable-next-line @next/next/no-img-element
-<img
-src={imagenLlantaPorClave(unidadSeleccionada.clave)}
-alt="Configuración de llantas"
-className="w-full rounded-md"
-/>
-)}
-</div>
-<div className="flex-1 flex flex-col gap-2">
-<h3 className="font-display font-extrabold text-[var(--navy)] text-xs">
-Estado en general de las llantas
-</h3>
-<label className="text-[11px] font-bold text-[var(--blue)]">Comentarios</label>
-<textarea
-value={llantasComentario}
-onChange={(e) => setLlantasComentario(e.target.value)}
-placeholder="Captura libre"
-rows={2}
-className="w-full bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md p-2 text-[11.5px] outline-none"
-/>
-<div className="flex items-center gap-2">
-<label className="text-[11px] font-bold whitespace-nowrap">Dictamen</label>
-<select
-value={llantasDictamen}
-onChange={(e) => setLlantasDictamen(e.target.value)}
-className="flex-1 h-7 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md text-[11px] px-1"
->
-{DICTAMEN_OPCIONES.map((op) => (
-<option key={op} value={op}>
-{op}
-</option>
-))}
-</select>
-</div>
-<span className="text-[10.5px] font-bold text-[var(--blue)]">Evidencia de estado de llantas</span>
-<MultiFotoUploader fotos={llantasFotos} onChange={setLlantasFotos} soloLectura={modoSoloLectura} onVerFoto={(i) => setFotoAmpliada(llantasFotos[i])} />
-</div>
-</div>
-</div>
-<div>
-<p className="font-display font-extrabold text-[var(--navy)] text-[13px] uppercase mb-2.5">
 Revisión de niveles
 </p>
 <div className="border border-[var(--gray-200)] rounded-lg overflow-hidden">
@@ -498,6 +441,7 @@ comentario={estado?.comentario ?? ""}
 onChange={(v) => setPunto(key, v)}
 onToggleComentario={() => toggleComentario(key)}
 onComentarioChange={(v) => setComentario(key, v)}
+opciones={sec.key === "cabina" ? OPCIONES_CABINA[p] : undefined}
 />
 );
 })}

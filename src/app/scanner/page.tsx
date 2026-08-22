@@ -484,7 +484,7 @@ export default function ScannerPage() {
         {facturaVinculada && (
           <div className="bg-[var(--green)]/10 border border-[var(--green)]/40 rounded-xl px-4 py-3 mb-5 text-[12.5px] text-[var(--navy)] flex items-center justify-between gap-3 flex-wrap">
             <span>✓ Factura vinculada correctamente al registro de Historial de mantenimientos.</span>
-            <a href="/ordenes-servicio/historial-mantenimientos" className="text-[var(--blue)] font-bold no-underline">
+            <a href="/ordenes-servicio" className="text-[var(--blue)] font-bold no-underline">
               Regresar a Historial de mantenimientos →
             </a>
           </div>

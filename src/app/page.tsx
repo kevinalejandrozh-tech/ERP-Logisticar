@@ -95,9 +95,9 @@ descripcion="Gestiona solicitudes y da seguimiento a facturación."
 />
 <MenuCard
 href="/ordenes-servicio"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="9" y="2" width="6" height="4" rx="1" /><path d="M9 4H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-3" /><path d="M9 14l2 2 4-4" /></svg>}
-titulo="Órdenes de servicio y mantenimiento"
-descripcion="Gestiona órdenes de servicio y mantenimiento."
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
+titulo="Historial de mantenimientos"
+descripcion="Consulta y da seguimiento al historial de mantenimientos de las unidades."
 />
 <MenuCard
 href="/scanner"

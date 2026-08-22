@@ -1,9 +1,30 @@
 "use client";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { exportarExcel } from "@/lib/exportExcel";
 import { compressImage } from "@/lib/imageUtils";
+import { dibujarInformeChecklist, dibujarDivisor, type RegistroChecklist } from "@/lib/checklistReporte";
+
+declare global {
+  interface Window {
+    jspdf: any;
+  }
+}
+function cargarJsPDF(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.jspdf) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de PDF."));
+    document.body.appendChild(script);
+  });
+}
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const OPCIONES_TIPO = ["Preventivo", "Correctivo"];
@@ -72,7 +93,45 @@ export default function HistorialMantenimientosPage() {
   };
   const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>("todos");
+  const [filtroUnidad, setFiltroUnidad] = useState<string>("todas");
   const [unidadesMaestras, setUnidadesMaestras] = useState<Record<string, string>[]>([]);
+  const [generandoInformesChecklist, setGenerandoInformesChecklist] = useState(false);
+  const imprimirInformesChecklist = async () => {
+    setGenerandoInformesChecklist(true);
+    try {
+      const resLista = await fetch("/api/checklist/list", { cache: "no-store" });
+      const dataLista = await resLista.json();
+      const registrosLigeros: { id: number }[] = dataLista.registros || [];
+      if (registrosLigeros.length === 0) {
+        alert("No hay registros de Check List Diario de Unidades.");
+        return;
+      }
+      await cargarJsPDF();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "cm", format: "letter" });
+      const altoMitad = 27.94 / 2;
+      let posicionEnHoja = 0;
+      let primero = true;
+      for (const r of registrosLigeros) {
+        const resDetalle = await fetch(`/api/checklist/get?id=${r.id}`, { cache: "no-store" });
+        const dataDetalle = await resDetalle.json();
+        if (!dataDetalle.ok) continue;
+        const registro: RegistroChecklist = dataDetalle.registro;
+        if (posicionEnHoja === 0) {
+          if (!primero) doc.addPage();
+          primero = false;
+        }
+        await dibujarInformeChecklist(doc, registro, posicionEnHoja === 0 ? 0 : altoMitad);
+        if (posicionEnHoja === 0) dibujarDivisor(doc);
+        posicionEnHoja = posicionEnHoja === 0 ? 1 : 0;
+      }
+      doc.save(`Informes_CheckList_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err: any) {
+      alert(err.message || "No se pudieron generar los informes.");
+    } finally {
+      setGenerandoInformesChecklist(false);
+    }
+  };
 
   useEffect(() => {
     cargarQRious()
@@ -193,7 +252,8 @@ export default function HistorialMantenimientosPage() {
     ]);
   };
 
-  const filasFiltradas = filtroEstado === "todos" ? filas : filas.filter((f) => f.estado === filtroEstado);
+  const unidadesDisponibles = Array.from(new Set(filas.map((f) => f.ecoUnidad).filter(Boolean))).sort();
+  const filasFiltradas = filas.filter((f) => (filtroEstado === "todos" || f.estado === filtroEstado) && (filtroUnidad === "todas" || f.ecoUnidad === filtroUnidad));
 
   // ---- Solicitar material ----
   const [solicitudAbierta, setSolicitudAbierta] = useState<Fila | null>(null);
@@ -302,8 +362,8 @@ export default function HistorialMantenimientosPage() {
         <PageHeader
           titulo="Historial de mantenimientos"
           subtitulo="Registro libre del historial de mantenimientos de las unidades."
-          backHref="/ordenes-servicio"
-          backLabel="Órdenes de servicio"
+          backHref="/"
+          backLabel="Menú principal"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
         />
 
@@ -350,6 +410,31 @@ export default function HistorialMantenimientosPage() {
                   </option>
                 ))}
               </select>
+              <select
+                value={filtroUnidad}
+                onChange={(e) => setFiltroUnidad(e.target.value)}
+                className="text-[12px] font-bold text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3 py-1.5 bg-white"
+              >
+                <option value="todas">Filtrar por unidad: Todas</option>
+                {unidadesDisponibles.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
+              <Link href="/ordenes-servicio/inventario" className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold no-underline">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
+                Inventario
+              </Link>
+              <button
+                type="button"
+                onClick={imprimirInformesChecklist}
+                disabled={generandoInformesChecklist}
+                className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold disabled:opacity-60"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
+                {generandoInformesChecklist ? "Generando..." : "Informes de Check List"}
+              </button>
             </div>
             {!cargando && filas.length > 0 && (
               <button type="button" onClick={exportar} className="inline-flex items-center gap-1.5 text-[11.5px] text-[var(--gray-400)] hover:text-[var(--blue)]">

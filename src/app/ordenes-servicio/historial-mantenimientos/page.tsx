@@ -31,6 +31,100 @@ const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const OPCIONES_TIPO = ["Preventivo", "Correctivo"];
 const OPCIONES_ESTADO = ["Revisión Pendiente", "En proceso", "En espera de material", "Completo"];
 
+function formatoContable(valor: string): string {
+  const n = parseFloat(valor);
+  if (isNaN(n)) return "";
+  const abs = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n < 0 ? `($${abs})` : `$${abs}`;
+}
+function desformatoContable(valor: string): string {
+  const limpio = valor.replace(/[$,()]/g, "");
+  return valor.trim().startsWith("(") ? `-${limpio}` : limpio;
+}
+function escaparHtml(texto: string) {
+  return String(texto || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function cargarQRiousLib(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if ((window as any).QRious) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
+    document.body.appendChild(script);
+  });
+}
+async function generarImagenQR(valor: string): Promise<string> {
+  await cargarQRiousLib();
+  const canvas = document.createElement("canvas");
+  new (window as any).QRious({ element: canvas, value: valor || "000000", size: 300, level: "H" });
+  return canvas.toDataURL("image/png");
+}
+function urlEscaneoEtiqueta(numeroEtiqueta: string) {
+  return `${window.location.origin}/inventario-movimientos?etiqueta=${encodeURIComponent(numeroEtiqueta)}`;
+}
+function bloqueEtiquetaQRHtml(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }, imagenQR: string) {
+  return `
+<div class="etiqueta">
+  <img class="qr" src="${imagenQR}" alt="${escaparHtml(item.numeroEtiqueta)}" />
+  <div class="col-texto">
+    <p class="titulo">${escaparHtml(item.descripcion) || "—"}</p>
+    <p class="precio">$${parseFloat(item.costoUnitario || "0").toFixed(2)}</p>
+  </div>
+</div>`;
+}
+const ESTILOS_ETIQUETA_QR = `
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 0; background: #eef1f6; }
+  .lienzo { padding: 24px 16px; display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .etiqueta { width: 5cm; height: 2.5cm; box-sizing: border-box; padding: 2mm; background: #fff; border: 1px solid #ccc; display: flex; flex-direction: row; align-items: center; gap: 2mm; }
+  .qr { width: 1.9cm; height: 1.9cm; flex-shrink: 0; }
+  .col-texto { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 1.5mm; }
+  .titulo { font-size: 7pt; font-weight: 700; color: #000; text-align: left; margin: 0; line-height: 1.2; max-height: 0.85cm; overflow: hidden; width: 100%; }
+  .precio { font-size: 16pt; font-weight: 900; color: #000; margin: 0; white-space: nowrap; }
+  .barras { position: sticky; bottom: 0; background: #eef1f6; padding: 10px 0; }
+  button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print { body { background: #fff; } .lienzo { padding: 0; gap: 0; } .etiqueta { border: none; } .barras { display: none; } @page { size: 5cm 2.5cm; margin: 0; } }
+`;
+async function abrirVentanaEtiquetaQR(item: { descripcion: string; costoUnitario: string; numeroEtiqueta: string }) {
+  if (!item.numeroEtiqueta) {
+    alert("Este artículo aún no tiene número de etiqueta.");
+    return;
+  }
+  const imagenQR = await generarImagenQR(urlEscaneoEtiqueta(item.numeroEtiqueta));
+  const ventana = window.open("", "_blank", "width=380,height=420");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Etiqueta ${escaparHtml(item.numeroEtiqueta)}</title>
+<style>${ESTILOS_ETIQUETA_QR}</style>
+</head>
+<body>
+<div class="lienzo">
+  ${bloqueEtiquetaQRHtml(item, imagenQR)}
+  <div class="barras"><button id="btnImprimir">Imprimir</button></div>
+</div>
+<script>
+  document.getElementById("btnImprimir").addEventListener("click", function () {
+    window.print();
+    setTimeout(function () { window.close(); }, 300);
+  });
+</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+}
+
+
 declare global {
   interface Window {
     QRious: any;
@@ -360,8 +454,22 @@ export default function HistorialMantenimientosPage() {
     ]);
   };
 
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
   const unidadesDisponibles = Array.from(new Set(filas.map((f) => f.ecoUnidad).filter(Boolean))).sort();
-  const filasFiltradas = filas.filter((f) => (filtroEstado === "todos" || f.estado === filtroEstado) && (filtroUnidad === "todas" || f.ecoUnidad === filtroUnidad));
+  const filasFiltradas = filas.filter((f) => {
+    if (filtroEstado !== "todos" && f.estado !== filtroEstado) return false;
+    if (filtroUnidad !== "todas" && f.ecoUnidad !== filtroUnidad) return false;
+    if (f.fechaIngresoTaller) {
+      const fecha = f.fechaIngresoTaller.slice(0, 10);
+      if (filtroFechaDesde && fecha < filtroFechaDesde) return false;
+      if (filtroFechaHasta && fecha > filtroFechaHasta) return false;
+    } else if (filtroFechaDesde || filtroFechaHasta) {
+      return false;
+    }
+    return true;
+  });
+  const totalCostoFiltrado = filasFiltradas.reduce((acc, f) => acc + (parseFloat(f.costo) || 0), 0);
 
   // ---- Solicitar material ----
   const [solicitudAbierta, setSolicitudAbierta] = useState<Fila | null>(null);
@@ -404,6 +512,72 @@ export default function HistorialMantenimientosPage() {
       alert("No se pudo guardar la solicitud de material.");
     } finally {
       setGuardandoSolicitud(false);
+    }
+  };
+
+  // ---- Generar entrada + etiqueta directo desde Solicitar material (igual que en Inventario) ----
+  const [entradaRapidaAbierta, setEntradaRapidaAbierta] = useState(false);
+  const [entradaRapida, setEntradaRapida] = useState({ descripcion: "", cantidad: "1", costoUnitario: "" });
+  const [guardandoEntradaRapida, setGuardandoEntradaRapida] = useState(false);
+  const guardarEntradaRapida = async () => {
+    if (!entradaRapida.descripcion.trim()) {
+      alert("Captura la descripción del artículo.");
+      return;
+    }
+    setGuardandoEntradaRapida(true);
+    try {
+      const res = await fetch("/api/inventario/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          descripcion: entradaRapida.descripcion.trim(),
+          cantidad: entradaRapida.cantidad || "1",
+          costoUnitario: desformatoContable(entradaRapida.costoUnitario),
+          fechaIngreso: new Date().toISOString(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al registrar la entrada.");
+      // Agrega automáticamente la fila con el número de etiqueta recién generado a la solicitud
+      if (solicitudAbierta) {
+        setItemsSolicitud((prev) => [
+          ...prev.filter((it) => it.noEtiqueta.trim() || it.descripcion.trim()),
+          { ...filaSolicitudVacia(solicitudAbierta.folio, solicitudAbierta.ecoUnidad), noEtiqueta: data.numeroEtiqueta, descripcion: entradaRapida.descripcion.trim(), cantidad: entradaRapida.cantidad || "1" },
+        ]);
+      }
+      await abrirVentanaEtiquetaQR({ descripcion: entradaRapida.descripcion.trim(), costoUnitario: desformatoContable(entradaRapida.costoUnitario), numeroEtiqueta: data.numeroEtiqueta });
+      setEntradaRapida({ descripcion: "", cantidad: "1", costoUnitario: "" });
+      setEntradaRapidaAbierta(false);
+    } catch (err: any) {
+      alert(err.message || "No se pudo registrar la entrada.");
+    } finally {
+      setGuardandoEntradaRapida(false);
+    }
+  };
+  const [consumiendoIdx, setConsumiendoIdx] = useState<number | null>(null);
+  const consumirEtiquetaDesdeModal = async (idx: number) => {
+    const item = itemsSolicitud[idx];
+    if (!item?.noEtiqueta.trim()) {
+      alert("Captura el número de etiqueta a consumir.");
+      return;
+    }
+    if (!solicitudAbierta) return;
+    if (!confirm(`¿Consumir la etiqueta ${item.noEtiqueta}? Se sumará su costo al folio ${solicitudAbierta.folio} y se dará de baja del inventario.`)) return;
+    setConsumiendoIdx(idx);
+    try {
+      const res = await fetch("/api/inventario/consumir-etiqueta", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numeroEtiqueta: item.noEtiqueta.trim(), historialId: solicitudAbierta.id, comentario: item.descripcion }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al consumir la etiqueta.");
+      alert(`Etiqueta ${item.noEtiqueta} consumida y agregada al costo del folio ${solicitudAbierta.folio}.`);
+      await cargar();
+    } catch (err: any) {
+      alert(err.message || "No se pudo consumir la etiqueta.");
+    } finally {
+      setConsumiendoIdx(null);
     }
   };
 
@@ -475,6 +649,14 @@ export default function HistorialMantenimientosPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
         />
 
+        <div className="bg-[var(--navy)] rounded-2xl px-5 py-4 mb-5 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-[#a9c2ee] m-0 mb-1">Total costo (según filtros aplicados)</p>
+            <p className="text-[26px] font-bold text-white m-0 leading-none">{formatoContable(String(totalCostoFiltrado)) || "$0.00"}</p>
+          </div>
+          <p className="text-[12px] text-[#a9c2ee] m-0">{filasFiltradas.length} registro{filasFiltradas.length === 1 ? "" : "s"} en la vista actual</p>
+        </div>
+
         <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 mb-5 flex items-center gap-4">
           <canvas id="qr-reportar-falla" className="shrink-0" />
           <div>
@@ -530,6 +712,24 @@ export default function HistorialMantenimientosPage() {
                   </option>
                 ))}
               </select>
+              <div className="flex items-center gap-1.5 bg-white border border-[var(--gray-200)] rounded-lg px-2.5 py-1">
+                <span className="text-[10.5px] font-bold text-[var(--gray-400)] whitespace-nowrap">Del</span>
+                <input type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} className="text-[12px] font-bold text-[var(--navy)] outline-none" />
+                <span className="text-[10.5px] font-bold text-[var(--gray-400)] whitespace-nowrap">al</span>
+                <input type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} className="text-[12px] font-bold text-[var(--navy)] outline-none" />
+                {(filtroFechaDesde || filtroFechaHasta) && (
+                  <span
+                    onClick={() => {
+                      setFiltroFechaDesde("");
+                      setFiltroFechaHasta("");
+                    }}
+                    className="text-[var(--red)] cursor-pointer text-[13px] font-bold leading-none"
+                    title="Quitar filtro de fechas"
+                  >
+                    ✕
+                  </span>
+                )}
+              </div>
               <Link href="/ordenes-servicio/inventario" className="flex items-center gap-1.5 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-1.5 text-[12px] font-bold no-underline">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>
                 Inventario
@@ -695,7 +895,7 @@ export default function HistorialMantenimientosPage() {
                 {filasFiltradas.map((f) => {
                   const tieneSolicitud = solicitudes.some((s) => s.historialId === f.id);
                   return (
-                  <tr key={f.id} className="border-b border-[var(--gray-200)]" style={f.estado === "Completo" ? { backgroundColor: "rgba(33,168,102,0.15)" } : undefined}>
+                  <tr key={f.id} className="border-b border-[var(--gray-200)]" style={f.estado === "Completo" ? { backgroundColor: "rgba(33,168,102,0.38)" } : undefined}>
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       <select
                         disabled={bloqueado}
@@ -853,14 +1053,19 @@ export default function HistorialMantenimientosPage() {
                     <td className="px-2 py-1.5 whitespace-nowrap">
                       <div className="flex flex-col gap-1">
                         <input
-                          type="number"
+                          type="text"
                           disabled={bloqueado}
-                          defaultValue={f.costo}
-                          onBlur={(e) => {
-                            actualizarLocal(f.id, "costo", e.target.value);
-                            guardarCampo(f.id, "costo", e.target.value);
+                          defaultValue={formatoContable(f.costo) || f.costo}
+                          onFocus={(e) => {
+                            e.target.value = desformatoContable(e.target.value);
                           }}
-                          className="border border-[var(--gray-200)] disabled:bg-transparent disabled:border-transparent rounded px-1.5 py-1 text-[12px] w-[80px]"
+                          onBlur={(e) => {
+                            const crudo = desformatoContable(e.target.value);
+                            actualizarLocal(f.id, "costo", crudo);
+                            guardarCampo(f.id, "costo", crudo);
+                            e.target.value = formatoContable(crudo) || "";
+                          }}
+                          className="border border-[var(--gray-200)] disabled:bg-transparent disabled:border-transparent rounded px-1.5 py-1 text-[12px] w-[95px]"
                         />
                         <span
                           onClick={() => abrirSolicitud(f)}
@@ -989,11 +1194,55 @@ export default function HistorialMantenimientosPage() {
               </span>
             </div>
             <p className="text-[12.5px] text-[var(--gray-400)] mb-4">{solicitudAbierta.ecoUnidad}</p>
+
+            <div className="bg-[var(--gray-100)] rounded-xl p-3.5 mb-4">
+              <button type="button" onClick={() => setEntradaRapidaAbierta((p) => !p)} className="flex items-center gap-1.5 text-[12.5px] font-bold text-[var(--navy)]">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+                Generar entrada y crear etiqueta (como en Inventario)
+              </button>
+              {entradaRapidaAbierta && (
+                <div className="flex flex-wrap items-end gap-2.5 mt-3">
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[var(--gray-400)] mb-1">Descripción</label>
+                    <input
+                      value={entradaRapida.descripcion}
+                      onChange={(e) => setEntradaRapida((p) => ({ ...p, descripcion: e.target.value }))}
+                      className="border border-[var(--gray-200)] rounded px-2 py-1.5 text-[12.5px] w-[220px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[var(--gray-400)] mb-1">Cantidad</label>
+                    <input
+                      type="number"
+                      value={entradaRapida.cantidad}
+                      onChange={(e) => setEntradaRapida((p) => ({ ...p, cantidad: e.target.value }))}
+                      className="border border-[var(--gray-200)] rounded px-2 py-1.5 text-[12.5px] w-[70px]"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10.5px] font-bold text-[var(--gray-400)] mb-1">Costo unitario</label>
+                    <input
+                      value={entradaRapida.costoUnitario}
+                      onFocus={(e) => setEntradaRapida((p) => ({ ...p, costoUnitario: desformatoContable(e.target.value) }))}
+                      onChange={(e) => setEntradaRapida((p) => ({ ...p, costoUnitario: e.target.value }))}
+                      onBlur={(e) => setEntradaRapida((p) => ({ ...p, costoUnitario: formatoContable(e.target.value) || "" }))}
+                      placeholder="0.00"
+                      className="border border-[var(--gray-200)] rounded px-2 py-1.5 text-[12.5px] w-[100px]"
+                    />
+                  </div>
+                  <button type="button" onClick={guardarEntradaRapida} disabled={guardandoEntradaRapida} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                    {guardandoEntradaRapida ? "Guardando..." : "Registrar e imprimir etiqueta"}
+                  </button>
+                  <p className="text-[10.5px] text-[var(--gray-400)] m-0 w-full">Se crea el artículo en el inventario, se genera su número de etiqueta y se agrega abajo a la solicitud.</p>
+                </div>
+              )}
+            </div>
+
             <div className="overflow-x-auto mb-3">
               <table className="border-collapse min-w-max w-full">
                 <thead>
                   <tr>
-                    {["No. Etiqueta", "Descripción", "Cantidad", "Folio de servicio", "Para qué unidad", "A quién se entrega", ""].map((c) => (
+                    {["No. Etiqueta", "Descripción", "Cantidad", "Folio de servicio", "Para qué unidad", "A quién se entrega", "Acciones", ""].map((c) => (
                       <th key={c} className="text-left text-[10px] uppercase tracking-wide text-white bg-[var(--navy)] px-2 py-1.5 whitespace-nowrap">
                         {c}
                       </th>
@@ -1020,6 +1269,24 @@ export default function HistorialMantenimientosPage() {
                       </td>
                       <td className="px-2 py-1.5">
                         <input value={it.entregadoA} onChange={(e) => actualizarItemSolicitud(idx, "entregadoA", e.target.value)} className="border border-[var(--gray-200)] rounded px-1.5 py-1 text-[12px] w-[110px]" />
+                      </td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <span
+                            onClick={() => it.noEtiqueta.trim() && abrirVentanaEtiquetaQR({ descripcion: it.descripcion, costoUnitario: "0", numeroEtiqueta: it.noEtiqueta.trim() })}
+                            className={`text-[10.5px] font-bold ${it.noEtiqueta.trim() ? "text-[var(--blue)] cursor-pointer" : "text-[var(--gray-200)] cursor-not-allowed"}`}
+                            title="Ver / imprimir etiqueta"
+                          >
+                            Etiqueta
+                          </span>
+                          <span
+                            onClick={() => it.noEtiqueta.trim() && consumirEtiquetaDesdeModal(idx)}
+                            className={`text-[10.5px] font-bold ${it.noEtiqueta.trim() ? "text-[var(--green)] cursor-pointer" : "text-[var(--gray-200)] cursor-not-allowed"}`}
+                            title="Consumir etiqueta y sumar el costo a este folio"
+                          >
+                            {consumiendoIdx === idx ? "..." : "Consumir"}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-2 py-1.5">
                         <span onClick={() => quitarFilaSolicitud(idx)} className="text-[var(--red)] cursor-pointer" title="Quitar fila">

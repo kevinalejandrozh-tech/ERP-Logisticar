@@ -87,6 +87,12 @@ export default function PersonasPage() {
               titulo="Agregar / Administrar personas"
               descripcion="Da de alta o edita la información del personal."
             />
+            <MenuCard
+              href="/personas/capacitaciones"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M2 8l10-4 10 4-10 4-10-4z" /><path d="M6 10v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" /><path d="M22 8v6" /></svg>}
+              titulo="Capacitaciones"
+              descripcion="Consulta el catálogo de capacitaciones y sus evaluaciones."
+            />
           </div>
         </div>
         <PageFooter />

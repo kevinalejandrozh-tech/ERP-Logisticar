@@ -436,4 +436,19 @@ comentario TEXT,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+// ---- Capacitaciones: evaluaciones (Manejo defensivo y futuras capacitaciones) ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS capacitaciones_evaluaciones (
+id SERIAL PRIMARY KEY,
+capacitacion TEXT NOT NULL,
+nombre TEXT NOT NULL,
+total_preguntas INTEGER NOT NULL DEFAULT 0,
+correctas INTEGER NOT NULL DEFAULT 0,
+aciertos NUMERIC NOT NULL DEFAULT 0,
+tiempo_evaluacion INTEGER,
+respuestas JSONB NOT NULL DEFAULT '[]'::jsonb,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

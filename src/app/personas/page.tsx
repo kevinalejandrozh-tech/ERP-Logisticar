@@ -93,6 +93,12 @@ export default function PersonasPage() {
               titulo="Capacitaciones"
               descripcion="Consulta el catálogo de capacitaciones y sus evaluaciones."
             />
+            <MenuCard
+              href="/personas/uniformes"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M16 4l4 3v4h-3v9H7v-9H4V7l4-3" /><path d="M9 4a3 3 0 006 0" /></svg>}
+              titulo="Uniformes"
+              descripcion="Registra tallas asignadas y genera la responsiva de entrega."
+            />
           </div>
         </div>
         <PageFooter />

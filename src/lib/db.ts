@@ -57,6 +57,18 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 await p.query(`ALTER TABLE mochilas ADD COLUMN IF NOT EXISTS unidad TEXT;`);
 await p.query(`ALTER TABLE mochilas ADD COLUMN IF NOT EXISTS responsable TEXT;`);
 await p.query(`
+CREATE TABLE IF NOT EXISTS uniformes (
+id SERIAL PRIMARY KEY,
+operador TEXT NOT NULL,
+talla_chamarra TEXT,
+talla_playera TEXT,
+talla_pantalon TEXT,
+talla_zapatos TEXT,
+fecha_entrega TIMESTAMPTZ NOT NULL DEFAULT now(),
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,
 folio TEXT UNIQUE NOT NULL,

@@ -53,7 +53,10 @@ export default function ProcedimientosAtcPage() {
   };
 
   const seleccionar = (numero: number, letra: OpcionLetra) => {
-    setRespuestas((prev) => ({ ...prev, [numero]: letra }));
+    setRespuestas((prev) => {
+      if (prev[numero]) return prev; // ya respondida: no se puede editar
+      return { ...prev, [numero]: letra };
+    });
   };
 
   const siguiente = () => {
@@ -220,26 +223,38 @@ export default function ProcedimientosAtcPage() {
                   </p>
                   <div className="flex flex-col gap-2">
                     {LETRAS.map((letra) => {
+                      const yaRespondida = respuestas[p.numero] !== undefined;
                       const seleccionada = respuestas[p.numero] === letra;
+                      const esLaCorrecta = letra === p.correcta;
+                      let estiloBoton = "border-[var(--gray-200)] text-[var(--text)] hover:bg-[var(--gray-100)]";
+                      let estiloCirculo = "border-[var(--gray-400)] text-[var(--gray-400)]";
+                      if (yaRespondida) {
+                        if (seleccionada && esLaCorrecta) {
+                          estiloBoton = "border-[var(--green)] bg-[rgba(33,168,102,0.14)] text-[var(--navy)] font-semibold";
+                          estiloCirculo = "bg-[var(--green)] border-[var(--green)] text-white";
+                        } else if (seleccionada && !esLaCorrecta) {
+                          estiloBoton = "border-[var(--red)] bg-[rgba(226,65,44,0.14)] text-[var(--navy)] font-semibold";
+                          estiloCirculo = "bg-[var(--red)] border-[var(--red)] text-white";
+                        } else if (!seleccionada && esLaCorrecta) {
+                          estiloBoton = "border-[var(--green)] bg-[rgba(33,168,102,0.14)] text-[var(--navy)] font-semibold";
+                          estiloCirculo = "bg-[var(--green)] border-[var(--green)] text-white";
+                        } else {
+                          estiloBoton = "border-[var(--gray-200)] text-[var(--gray-400)] opacity-60";
+                        }
+                      }
                       return (
                         <button
                           key={letra}
                           type="button"
                           onClick={() => seleccionar(p.numero, letra)}
-                          className={`text-left flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[13px] transition-colors ${
-                            seleccionada
-                              ? "border-[var(--blue)] bg-[var(--blue-light)] text-[var(--navy)] font-semibold"
-                              : "border-[var(--gray-200)] text-[var(--text)] hover:bg-[var(--gray-100)]"
-                          }`}
+                          disabled={yaRespondida}
+                          className={`text-left flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[13px] transition-colors ${estiloBoton} ${yaRespondida ? "cursor-default" : ""}`}
                         >
-                          <span
-                            className={`shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-[10.5px] font-bold ${
-                              seleccionada ? "bg-[var(--blue)] border-[var(--blue)] text-white" : "border-[var(--gray-400)] text-[var(--gray-400)]"
-                            }`}
-                          >
-                            {letra}
-                          </span>
-                          <span>{p.opciones[letra]}</span>
+                          <span className={`shrink-0 w-5 h-5 rounded-full border flex items-center justify-center text-[10.5px] font-bold ${estiloCirculo}`}>{letra}</span>
+                          <span className="flex-1">{p.opciones[letra]}</span>
+                          {yaRespondida && esLaCorrecta && (
+                            <span className="shrink-0 text-[10.5px] font-bold text-[var(--green)] uppercase">Correcta</span>
+                          )}
                         </button>
                       );
                     })}

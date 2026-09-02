@@ -69,6 +69,21 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`
+CREATE TABLE IF NOT EXISTS menu_dia_opciones (
+id SERIAL PRIMARY KEY,
+opciones JSONB NOT NULL DEFAULT '[]'::jsonb,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS menu_dia_pedidos (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+pedido TEXT NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,
 folio TEXT UNIQUE NOT NULL,

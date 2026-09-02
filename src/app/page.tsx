@@ -128,6 +128,12 @@ icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h
 titulo="Reportes"
 descripcion="Consulta y genera reportes clave del sistema."
 />
+<MenuCard
+href="/menu-dia"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>}
+titulo="Menú del día"
+descripcion="Publica el menú del día y recibe los pedidos vía código QR."
+/>
 </div>
 </div>
 <PageFooter />

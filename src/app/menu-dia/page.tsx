@@ -60,7 +60,7 @@ export default function MenuDiaPage() {
       .then(() => {
         const canvas = document.getElementById("qr-menu-dia") as HTMLCanvasElement | null;
         if (canvas) {
-          new window.QRious({ element: canvas, value: `${window.location.origin}/menu-dia/pedido`, size: 160, level: "M" });
+          new window.QRious({ element: canvas, value: `${window.location.origin}/menu-dia/pedido`, size: 92, level: "M" });
         }
       })
       .catch(() => {});
@@ -181,31 +181,32 @@ export default function MenuDiaPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>}
         />
 
-        {opciones.length > 0 && (
-          <div className="bg-white rounded-2xl border border-[var(--gray-200)] p-4 sm:p-5 mb-5 flex items-center gap-4 flex-wrap">
-            <canvas id="qr-menu-dia" className="shrink-0" />
-            <div>
-              <p className="text-[13px] font-bold text-[var(--navy)] m-0 mb-1">Menú activo — escanea para pedir</p>
-              <p className="text-[12px] text-[var(--gray-400)] m-0 mb-2">Comparte este código para que cada persona registre su nombre y elija su opción.</p>
-              <div className="flex flex-wrap gap-1.5">
-                {opciones.map((op, i) => (
-                  <span key={i} className="text-[11px] font-bold text-[var(--navy)] bg-[var(--blue-light)] rounded-full px-2.5 py-1">
-                    {op}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-          <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
-            <button type="button" onClick={abrirModal} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
-              Agregar menú del día
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3.5 mb-4">
+            <div className="flex flex-wrap items-center gap-3.5">
+              <button type="button" onClick={abrirModal} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold shrink-0">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+                Agregar menú del día
+              </button>
+              {opciones.length > 0 && (
+                <div className="flex items-center gap-3 bg-[var(--gray-100)] rounded-xl p-2.5 pr-4">
+                  <canvas id="qr-menu-dia" className="shrink-0 rounded-lg bg-white" />
+                  <div>
+                    <p className="text-[12px] font-bold text-[var(--navy)] m-0 mb-1">Escanea para pedir</p>
+                    <p className="text-[10.5px] text-[var(--gray-400)] m-0 mb-1.5">Nombre y selección de menú.</p>
+                    <div className="flex flex-wrap gap-1">
+                      {opciones.map((op, i) => (
+                        <span key={i} className="text-[10px] font-bold text-[var(--navy)] bg-white rounded-full px-2 py-0.5">
+                          {op}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             {pedidos.length > 0 && (
-              <button type="button" onClick={imprimirTabla} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+              <button type="button" onClick={imprimirTabla} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold shrink-0">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" /><rect x="6" y="14" width="12" height="8" /></svg>
                 Imprimir PDF
               </button>
@@ -213,6 +214,7 @@ export default function MenuDiaPage() {
           </div>
 
           {cargando && <p className="text-center text-[var(--gray-400)] text-[13px] py-10">Cargando...</p>}
+
 
           {!cargando && (
             <div className="overflow-x-auto">

@@ -73,6 +73,10 @@ Plan de trabajo y seguimiento
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="4" width="9" height="9" rx="1.5" /><rect x="13" y="4" width="9" height="9" rx="1.5" /><path d="M2 17h9M13 17h9" /></svg>
 Generar comparativo
 </Link>
+<Link href="/menu-dia" className="flex items-center gap-2 bg-[var(--blue)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
+Menú del día
+</Link>
 </div>
 <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 md:gap-[18px]">
@@ -127,12 +131,6 @@ href="/reportes"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
 titulo="Reportes"
 descripcion="Consulta y genera reportes clave del sistema."
-/>
-<MenuCard
-href="/menu-dia"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>}
-titulo="Menú del día"
-descripcion="Publica el menú del día y recibe los pedidos vía código QR."
 />
 </div>
 </div>

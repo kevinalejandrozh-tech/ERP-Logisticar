@@ -53,9 +53,8 @@ export default function MenuDiaPage() {
   }, []);
   useRefrescarAlEnfocar(cargar);
 
-  // QR hacia la página pública de pedido
+  // QR hacia la página pública de pedido (siempre visible, no depende de que haya un menú activo)
   useEffect(() => {
-    if (opciones.length === 0) return;
     cargarQRiousLib()
       .then(() => {
         const canvas = document.getElementById("qr-menu-dia") as HTMLCanvasElement | null;
@@ -188,22 +187,26 @@ export default function MenuDiaPage() {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
                 Agregar menú del día
               </button>
-              {opciones.length > 0 && (
-                <div className="flex items-center gap-3 bg-[var(--gray-100)] rounded-xl p-2.5 pr-4">
-                  <canvas id="qr-menu-dia" className="shrink-0 rounded-lg bg-white" />
-                  <div>
-                    <p className="text-[12px] font-bold text-[var(--navy)] m-0 mb-1">Escanea para pedir</p>
-                    <p className="text-[10.5px] text-[var(--gray-400)] m-0 mb-1.5">Nombre y selección de menú.</p>
-                    <div className="flex flex-wrap gap-1">
-                      {opciones.map((op, i) => (
-                        <span key={i} className="text-[10px] font-bold text-[var(--navy)] bg-white rounded-full px-2 py-0.5">
-                          {op}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+              <div className="flex items-center gap-3 bg-[var(--gray-100)] rounded-xl p-2.5 pr-4">
+                <canvas id="qr-menu-dia" className="shrink-0 rounded-lg bg-white" />
+                <div>
+                  <p className="text-[12px] font-bold text-[var(--navy)] m-0 mb-1">Escanea para pedir</p>
+                  {opciones.length > 0 ? (
+                    <>
+                      <p className="text-[10.5px] text-[var(--gray-400)] m-0 mb-1.5">Nombre y selección de menú.</p>
+                      <div className="flex flex-wrap gap-1">
+                        {opciones.map((op, i) => (
+                          <span key={i} className="text-[10px] font-bold text-[var(--navy)] bg-white rounded-full px-2 py-0.5">
+                            {op}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-[10.5px] text-[var(--gray-400)] m-0">Aún no hay menú activo para hoy.</p>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
             {pedidos.length > 0 && (
               <button type="button" onClick={imprimirTabla} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold shrink-0">

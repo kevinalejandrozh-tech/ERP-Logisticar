@@ -183,7 +183,7 @@ export default function CapacitacionesPage() {
         tarjetas.forEach(([id, ruta]) => {
           const canvas = document.getElementById(id) as HTMLCanvasElement | null;
           if (canvas) {
-            new window.QRious({ element: canvas, value: `${origen}${ruta}`, size: 150, level: "M" });
+            new window.QRious({ element: canvas, value: `${origen}${ruta}`, size: 60, level: "M" });
           }
         });
       })
@@ -216,7 +216,7 @@ export default function CapacitacionesPage() {
               href="/personas/capacitaciones/manejo-defensivo"
               className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] block hover:border-[var(--blue)] transition-colors"
             >
-              <div className="w-[80px] h-[80px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
+              <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
                 <canvas id="qr-manejo-defensivo" />
               </div>
               <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight">Manejo defensivo</h3>
@@ -231,7 +231,7 @@ export default function CapacitacionesPage() {
               href="/personas/capacitaciones/procedimientos-atc"
               className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] block hover:border-[var(--blue)] transition-colors"
             >
-              <div className="w-[80px] h-[80px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
+              <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
                 <canvas id="qr-procedimientos-atc" />
               </div>
               <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight">Procedimientos ATC</h3>

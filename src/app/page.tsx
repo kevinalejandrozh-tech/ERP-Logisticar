@@ -132,6 +132,12 @@ icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h
 titulo="Reportes"
 descripcion="Consulta y genera reportes clave del sistema."
 />
+<MenuCard
+href="/buzon-sugerencias"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M12 2C7 2 3 5 3 9c0 2.4 1.4 4.5 3.5 5.8V21l4-2.2c.5.1 1 .2 1.5.2 5 0 9-3 9-7s-4-7-9-7z" /></svg>}
+titulo="Buzón de sugerencias e ideas de mejora"
+descripcion="Comparte o consulta sugerencias e ideas de mejora del equipo, vía código QR."
+/>
 </div>
 </div>
 <PageFooter />

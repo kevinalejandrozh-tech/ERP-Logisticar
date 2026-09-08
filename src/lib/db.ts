@@ -84,6 +84,14 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`
+CREATE TABLE IF NOT EXISTS buzon_sugerencias (
+id SERIAL PRIMARY KEY,
+nombre TEXT,
+comentario TEXT NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,
 folio TEXT UNIQUE NOT NULL,

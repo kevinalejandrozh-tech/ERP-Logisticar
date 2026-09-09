@@ -92,6 +92,32 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`
+CREATE TABLE IF NOT EXISTS expedientes (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+rfc TEXT,
+rfc_pdf TEXT,
+curp TEXT,
+curp_pdf TEXT,
+nss TEXT,
+nss_pdf TEXT,
+categoria TEXT,
+puesto TEXT,
+unidad_maneja TEXT,
+tipo_viajes TEXT,
+tipo_licencia TEXT,
+tipo_licencia_pdf TEXT,
+fecha_ingreso DATE,
+cuenta TEXT,
+sueldo_ofertado TEXT,
+radio_asignado TEXT,
+resultados_evaluacion TEXT,
+fotografia TEXT,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,
 folio TEXT UNIQUE NOT NULL,

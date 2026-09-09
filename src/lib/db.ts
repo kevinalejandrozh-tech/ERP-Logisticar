@@ -117,6 +117,13 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS documentos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS notas JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS cursos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_asistencia TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_puntualidad TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_combustible TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_incidencias TEXT;`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,

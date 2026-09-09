@@ -6,13 +6,6 @@ import MenuCard from "@/components/MenuCard";
 import PageFooter from "@/components/PageFooter";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
-function semanaISO(fecha: Date): number {
-  const d = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
-  const diaSemana = d.getUTCDay() || 7;
-  d.setUTCDate(d.getUTCDate() + 4 - diaSemana);
-  const inicioAnio = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil(((d.getTime() - inicioAnio.getTime()) / 86400000 + 1) / 7);
-}
 export default function Home() {
 const [almacenamiento, setAlmacenamiento] = useState<{ porcentaje: number; mbUsados: number; mbLimite: number } | null>(null);
 useEffect(() => {
@@ -61,54 +54,13 @@ Buscar...
 </div>
 </div>
 <div className="flex flex-wrap gap-2.5 md:gap-3.5 mb-6">
-<Link href="/monitoreo-viajes" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16" /></svg>
-PLAN DE CARGAS SEM. {semanaISO(new Date())}
-</Link>
-<Link href="/plan-trabajo" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
-Plan de trabajo y seguimiento
-</Link>
-<Link href="/comparativo" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="4" width="9" height="9" rx="1.5" /><rect x="13" y="4" width="9" height="9" rx="1.5" /><path d="M2 17h9M13 17h9" /></svg>
-Generar comparativo
-</Link>
 <Link href="/menu-dia" className="flex items-center gap-2 bg-[var(--blue)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
 </Link>
 </div>
 <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5 md:gap-[18px]">
-<MenuCard
-href="/ordenes-servicio/inventario"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
-titulo="Compras / Inventario y consumos"
-descripcion="Controla el inventario de insumos y refacciones."
-/>
-<MenuCard
-href="/monitoreo-viajes"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 10c0 6-9 12-9 12s-9-6-9-12a9 9 0 0118 0z" /><circle cx="12" cy="10" r="3" /></svg>}
-titulo="Monitoreo de viajes y rutas"
-descripcion="Consulta el monitoreo en tiempo real de viajes y rutas."
-/>
-<MenuCard
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 11l18-5v12L3 14v-3z" /><path d="M11 13v4a2 2 0 002 2" /></svg>}
-titulo="Atención a clientes / Facturación"
-descripcion="Gestiona solicitudes y da seguimiento a facturación."
-/>
-<MenuCard
-href="/ordenes-servicio"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
-titulo="Historial de mantenimientos"
-descripcion="Consulta y da seguimiento al historial de mantenimientos de las unidades."
-/>
-<MenuCard
-href="/scanner"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="6" width="18" height="13" rx="2" /><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" /><circle cx="12" cy="12.5" r="3" /><path d="M3 10h18" /></svg>}
-titulo="Logis SCANNER"
-descripcion="Escanea documentos y expórtalos a PDF con calidad profesional."
-/>
+<div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[18px]">
 <MenuCard
 href="/unidades"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
@@ -116,21 +68,10 @@ titulo="Unidades"
 descripcion="Administra y consulta la información de las unidades."
 />
 <MenuCard
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
-titulo="Liquidaciones"
-descripcion="Administra las liquidaciones de viajes y gastos."
-/>
-<MenuCard
 href="/personas"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" /><circle cx="17.5" cy="9" r="2.4" /><path d="M15 14c2.6.2 5 2.1 5 6" /></svg>}
 titulo="Personas"
 descripcion="Gestiona la información del personal del sistema."
-/>
-<MenuCard
-href="/reportes"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
-titulo="Reportes"
-descripcion="Consulta y genera reportes clave del sistema."
 />
 <MenuCard
 href="/buzon-sugerencias"

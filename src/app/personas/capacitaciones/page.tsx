@@ -81,6 +81,12 @@ function colorAciertos(aciertos: number): string {
   return "text-[var(--red)]";
 }
 
+function colorBarra(aciertos: number): string {
+  if (aciertos >= 80) return "bg-[var(--green)]";
+  if (aciertos >= 60) return "bg-[var(--amber)]";
+  return "bg-[var(--red)]";
+}
+
 function imprimirCertificado(ev: Evaluacion) {
   const ventana = window.open("", "_blank", "width=950,height=700");
   if (!ventana) {
@@ -164,6 +170,8 @@ export default function CapacitacionesPage() {
   const [catalogo, setCatalogo] = useState<CapacitacionResumen[]>([]);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editando, setEditando] = useState<CapacitacionData | undefined>(undefined);
+  const [editandoNombreId, setEditandoNombreId] = useState<number | null>(null);
+  const [nombreTmp, setNombreTmp] = useState("");
 
   const cargar = () => {
     fetch("/api/capacitaciones/list", { cache: "no-store" })
@@ -223,6 +231,35 @@ export default function CapacitacionesPage() {
       alert("No se pudo eliminar la capacitación.");
     }
   };
+
+  const guardarNombreEvaluacion = async (id: number) => {
+    const nombre = nombreTmp.trim();
+    setEditandoNombreId(null);
+    if (!nombre) return;
+    setEvaluaciones((prev) => prev.map((e) => (e.id === id ? { ...e, nombre } : e)));
+    try {
+      const res = await fetch("/api/capacitaciones/update", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, nombre }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      alert("No se pudo actualizar el nombre.");
+      cargar();
+    }
+  };
+
+  const eliminarEvaluacion = async (id: number, nombre: string) => {
+    if (!confirm(`¿Eliminar por completo el registro de "${nombre}"? Esta acción no se puede deshacer.`)) return;
+    setEvaluaciones((prev) => prev.filter((e) => e.id !== id));
+    try {
+      const res = await fetch("/api/capacitaciones/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      alert("No se pudo eliminar el registro.");
+      cargar();
+    }
+  };
+
+  const mejoresDesempenos = [...evaluaciones].sort((a, b) => b.aciertos - a.aciertos).slice(0, 10);
+  const maximoAciertos = mejoresDesempenos.length > 0 ? Math.max(...mejoresDesempenos.map((e) => e.aciertos), 1) : 1;
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
@@ -287,6 +324,39 @@ export default function CapacitacionesPage() {
           </div>
         </div>
 
+        {/* Gráfica de mejores desempeños */}
+        {!cargando && evaluaciones.length > 0 && (
+          <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-6">
+            <h3 className="text-[15px] font-bold text-[var(--navy)] mb-1">Mejores desempeños</h3>
+            <p className="text-[12px] text-[var(--gray-400)] mb-5">Los aciertos más altos registrados en todas las evaluaciones.</p>
+            <div className="flex flex-col gap-3">
+              {mejoresDesempenos.map((ev, i) => (
+                <div key={ev.id} className="flex items-center gap-3">
+                  <span
+                    className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                      i === 0 ? "bg-[#f2b134] text-white" : i === 1 ? "bg-[var(--gray-400)] text-white" : i === 2 ? "bg-[#c07a3e] text-white" : "bg-[var(--gray-100)] text-[var(--gray-400)]"
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <div className="w-[150px] shrink-0">
+                    <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 truncate">{ev.nombre}</p>
+                    <p className="text-[10.5px] text-[var(--gray-400)] m-0 truncate">{ev.capacitacion}</p>
+                  </div>
+                  <div className="flex-1 h-6 bg-[var(--gray-100)] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full flex items-center justify-end px-2 ${colorBarra(ev.aciertos)}`}
+                      style={{ width: `${Math.max(8, (ev.aciertos / maximoAciertos) * 100)}%` }}
+                    >
+                      <span className="text-[10.5px] font-bold text-white">{Math.round(ev.aciertos)}%</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Tabla de registros */}
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <h3 className="text-[15px] font-bold text-[var(--navy)] mb-4">Registro de evaluaciones</h3>
@@ -305,14 +375,37 @@ export default function CapacitacionesPage() {
                     <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3">Aciertos</th>
                     <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3">Tiempo de evaluación</th>
                     <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3 w-[90px]">Detalle</th>
-                    <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3 rounded-r-lg w-[100px]">Certificado</th>
+                    <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3 w-[100px]">Certificado</th>
+                    <th className="text-left text-[11.5px] uppercase tracking-wide text-white bg-[var(--navy)] px-3.5 py-3 rounded-r-lg w-[70px]">Eliminar</th>
                   </tr>
                 </thead>
                 <tbody>
                   {evaluaciones.map((ev) => (
                     <tr key={ev.id} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
                       <td className="px-3.5 py-3 text-[13.5px] font-semibold text-[var(--navy)]">{ev.capacitacion}</td>
-                      <td className="px-3.5 py-3 text-[13.5px]">{ev.nombre}</td>
+                      <td className="px-3.5 py-3 text-[13.5px]">
+                        {editandoNombreId === ev.id ? (
+                          <input
+                            autoFocus
+                            value={nombreTmp}
+                            onChange={(e) => setNombreTmp(e.target.value)}
+                            onBlur={() => guardarNombreEvaluacion(ev.id)}
+                            onKeyDown={(e) => e.key === "Enter" && guardarNombreEvaluacion(ev.id)}
+                            className="border border-[var(--blue)] rounded-md px-2 py-1 text-[13.5px] w-full"
+                          />
+                        ) : (
+                          <span
+                            onClick={() => {
+                              setEditandoNombreId(ev.id);
+                              setNombreTmp(ev.nombre);
+                            }}
+                            className="cursor-text hover:underline decoration-dotted"
+                            title="Clic para editar el nombre"
+                          >
+                            {ev.nombre}
+                          </span>
+                        )}
+                      </td>
                       <td className={`px-3.5 py-3 text-[13.5px] font-bold ${colorAciertos(ev.aciertos)}`}>
                         {Math.round(ev.aciertos)}% <span className="text-[var(--gray-400)] font-normal text-[12px]">({ev.correctas}/{ev.totalPreguntas})</span>
                       </td>
@@ -342,6 +435,13 @@ export default function CapacitacionesPage() {
                             <path d="M8.5 12.5L7 22l5-3 5 3-1.5-9.5" />
                           </svg>
                         </button>
+                      </td>
+                      <td className="px-3.5 py-3">
+                        <span onClick={() => eliminarEvaluacion(ev.id, ev.nombre)} className="text-[var(--red)] cursor-pointer" title="Eliminar registro por completo">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+                          </svg>
+                        </span>
                       </td>
                     </tr>
                   ))}

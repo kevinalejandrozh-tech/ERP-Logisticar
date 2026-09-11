@@ -584,20 +584,28 @@ orden INTEGER NOT NULL DEFAULT 0
 );
 `);
 const planeacionFilasExistente = await p.query(`SELECT COUNT(*)::int AS n FROM planeacion_cargas_filas`);
-console.log("[planeacion-cargas] filas existentes al iniciar:", planeacionFilasExistente.rows[0].n);
-if (planeacionFilasExistente.rows[0].n === 0) {
+const totalEsperado = PLANEACION_CARGAS_FILAS_SEED.length;
+console.log("[planeacion-cargas] filas existentes:", planeacionFilasExistente.rows[0].n, "esperadas:", totalEsperado);
+// Si hay algo pero menos de lo esperado, es un intento anterior que se interrumpio a medias: se limpia y se vuelve a cargar.
+const estaIncompleto = planeacionFilasExistente.rows[0].n > 0 && planeacionFilasExistente.rows[0].n < totalEsperado;
+if (planeacionFilasExistente.rows[0].n === 0 || estaIncompleto) {
 try {
+if (estaIncompleto) {
+console.log("[planeacion-cargas] estado incompleto detectado, limpiando antes de recargar");
+await p.query(`DELETE FROM planeacion_cargas_filas`);
+await p.query(`DELETE FROM planeacion_cargas_columnas`);
+}
 const existentesCols = await p.query(`SELECT id, nombre FROM planeacion_cargas_columnas`);
-console.log("[planeacion-cargas] columnas existentes:", existentesCols.rows.length, "seed columnas:", PLANEACION_CARGAS_COLUMNAS_SEED.length, "seed filas:", PLANEACION_CARGAS_FILAS_SEED.length);
 const porNombre = new Map<string, number>();
 for (const row of existentesCols.rows) porNombre.set(String(row.nombre).trim().toLowerCase(), row.id);
 const idsPorIndice: number[] = [];
+
+// Resolver/crear todas las columnas primero, reutilizando o creando segun corresponda.
+const porCrear: { nombre: string; indice: number }[] = [];
 for (let i = 0; i < PLANEACION_CARGAS_COLUMNAS_SEED.length; i++) {
 const nombre = PLANEACION_CARGAS_COLUMNAS_SEED[i];
 const clave = nombre.trim().toLowerCase();
 let id = porNombre.get(clave);
-// Caso especial: si ya existia la columna previamente fusionada "No. EMBARQUE CARTA PORTE",
-// se renombra y reutiliza su id en vez de crear una columna nueva.
 if (!id && clave.startsWith("no") && clave.includes("embarque")) {
 const fusionada = existentesCols.rows.find(
 (r: any) => String(r.nombre).toLowerCase().includes("embarque") && String(r.nombre).toLowerCase().includes("carta porte")
@@ -607,25 +615,37 @@ await p.query(`UPDATE planeacion_cargas_columnas SET nombre = $2 WHERE id = $1`,
 id = fusionada.id;
 }
 }
-if (!id) {
-const result = await p.query(`INSERT INTO planeacion_cargas_columnas (nombre, orden) VALUES ($1,$2) RETURNING id`, [nombre, i]);
-id = result.rows[0].id;
-} else {
+if (id) {
 await p.query(`UPDATE planeacion_cargas_columnas SET nombre = $2, orden = $3 WHERE id = $1`, [id, nombre, i]);
+idsPorIndice[i] = id;
+} else {
+porCrear.push({ nombre, indice: i });
 }
-idsPorIndice.push(id as number);
 }
-console.log("[planeacion-cargas] columnas resueltas:", idsPorIndice.length);
-let ordenFila = 0;
-for (const fila of PLANEACION_CARGAS_FILAS_SEED) {
+if (porCrear.length > 0) {
+const valores = porCrear.map((_, k) => `($${k * 2 + 1}, $${k * 2 + 2})`).join(", ");
+const params = porCrear.flatMap((c) => [c.nombre, c.indice]);
+const creadas = await p.query(`INSERT INTO planeacion_cargas_columnas (nombre, orden) VALUES ${valores} RETURNING id, orden`, params);
+for (const row of creadas.rows) idsPorIndice[row.orden] = row.id;
+}
+console.log("[planeacion-cargas] columnas resueltas:", idsPorIndice.filter(Boolean).length);
+
+// Insertar todas las filas en una sola consulta por lote (evita 61 idas y vueltas a la base de datos).
+if (PLANEACION_CARGAS_FILAS_SEED.length > 0) {
+const marcadores: string[] = [];
+const params: any[] = [];
+PLANEACION_CARGAS_FILAS_SEED.forEach((fila, ordenFila) => {
 const datos: Record<string, string> = {};
 for (let i = 0; i < idsPorIndice.length; i++) {
 if (fila[i]) datos[String(idsPorIndice[i])] = fila[i];
 }
-await p.query(`INSERT INTO planeacion_cargas_filas (datos, orden) VALUES ($1::jsonb, $2)`, [JSON.stringify(datos), ordenFila]);
-ordenFila++;
+const base = params.length;
+marcadores.push(`($${base + 1}::jsonb, $${base + 2})`);
+params.push(JSON.stringify(datos), ordenFila);
+});
+await p.query(`INSERT INTO planeacion_cargas_filas (datos, orden) VALUES ${marcadores.join(", ")}`, params);
 }
-console.log("[planeacion-cargas] filas insertadas:", ordenFila);
+console.log("[planeacion-cargas] filas insertadas:", PLANEACION_CARGAS_FILAS_SEED.length);
 } catch (errSiembra: any) {
 console.error("[planeacion-cargas] ERROR EN SIEMBRA:", errSiembra && errSiembra.message, errSiembra && errSiembra.stack);
 }

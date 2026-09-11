@@ -3,6 +3,7 @@ import { ensureSchema, getPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 30;
 
 export async function GET() {
   try {

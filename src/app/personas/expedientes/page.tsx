@@ -9,6 +9,7 @@ import ExpedienteFormModal from "@/components/ExpedienteFormModal";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 type ExpedienteResumen = { id: number; nombre: string; puesto: string | null; categoria: string | null; fotografia: string | null };
+type UltimaEvaluacion = { capacitacion: string; aciertos: number; fecha: string };
 
 declare global {
   interface Window {
@@ -29,12 +30,19 @@ function cargarQRiousLib(): Promise<void> {
   });
 }
 
+function colorAciertos(aciertos: number): string {
+  if (aciertos >= 80) return "text-[var(--green)] bg-[rgba(33,168,102,0.12)]";
+  if (aciertos >= 60) return "text-[var(--amber)] bg-[rgba(242,177,52,0.14)]";
+  return "text-[var(--red)] bg-[rgba(226,65,44,0.12)]";
+}
+
 export default function ExpedientesPage() {
   const router = useRouter();
   const [registros, setRegistros] = useState<ExpedienteResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [qrExpediente, setQrExpediente] = useState<ExpedienteResumen | null>(null);
+  const [ultimasEvaluaciones, setUltimasEvaluaciones] = useState<Record<string, UltimaEvaluacion>>({});
 
   const cargar = async () => {
     try {
@@ -49,6 +57,10 @@ export default function ExpedientesPage() {
   };
   useEffect(() => {
     cargar();
+    fetch("/api/capacitaciones/ultimas-por-nombre", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setUltimasEvaluaciones(d.porNombre || {}))
+      .catch(() => {});
   }, []);
   useRefrescarAlEnfocar(cargar);
 
@@ -116,7 +128,15 @@ export default function ExpedientesPage() {
                       </div>
                     )}
                     <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-0.5 leading-tight">{r.nombre}</p>
-                    {(r.puesto || r.categoria) && <p className="text-[10.5px] text-[var(--gray-400)] m-0">{[r.puesto, r.categoria].filter(Boolean).join(" · ")}</p>}
+                    {(r.puesto || r.categoria) && <p className="text-[10.5px] text-[var(--gray-400)] m-0 mb-1.5">{[r.puesto, r.categoria].filter(Boolean).join(" · ")}</p>}
+                    {ultimasEvaluaciones[r.nombre.trim().toLowerCase()] && (
+                      <span
+                        className={`inline-block text-[10px] font-bold rounded-full px-2 py-0.5 ${colorAciertos(ultimasEvaluaciones[r.nombre.trim().toLowerCase()].aciertos)}`}
+                        title={`Última evaluación: ${ultimasEvaluaciones[r.nombre.trim().toLowerCase()].capacitacion}`}
+                      >
+                        {Math.round(ultimasEvaluaciones[r.nombre.trim().toLowerCase()].aciertos)}% · {ultimasEvaluaciones[r.nombre.trim().toLowerCase()].capacitacion}
+                      </span>
+                    )}
                   </button>
                 </div>
               ))}

@@ -25,6 +25,7 @@ export default function TomarCapacitacionPage() {
   const [fase, setFase] = useState<Fase>("cargando");
   const [error, setError] = useState("");
   const [nombre, setNombre] = useState("");
+  const [nombresExpedientes, setNombresExpedientes] = useState<string[]>([]);
   const [respuestas, setRespuestas] = useState<Record<number, OpcionLetra>>({});
   const [pagina, setPagina] = useState(0);
   const [inicio, setInicio] = useState<number | null>(null);
@@ -52,6 +53,13 @@ export default function TomarCapacitacionPage() {
         setError(err.message || "No se encontró la capacitación.");
         setFase("error");
       });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/expedientes/list", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setNombresExpedientes((d.registros || []).map((e: { nombre: string }) => e.nombre).sort()))
+      .catch(() => {});
   }, []);
 
   const totalPreguntas = cap?.preguntas.length || 0;
@@ -191,13 +199,18 @@ export default function TomarCapacitacionPage() {
 
             <div className="max-w-[320px] mx-auto text-left mb-5">
               <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Nombre del evaluado</label>
-              <input
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                placeholder="Escribe el nombre completo"
-                className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
-                autoFocus
-              />
+              {nombresExpedientes.length === 0 ? (
+                <p className="text-[12.5px] text-[var(--red)]">No hay personas registradas en Expedientes. Agrégalas en Personas → Expedientes.</p>
+              ) : (
+                <select value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px] bg-white" autoFocus>
+                  <option value="">Selecciona un nombre…</option>
+                  {nombresExpedientes.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             <div className="max-w-[320px] mx-auto bg-[var(--gray-100)] rounded-xl px-5 py-3.5 mb-7 flex items-center justify-between">

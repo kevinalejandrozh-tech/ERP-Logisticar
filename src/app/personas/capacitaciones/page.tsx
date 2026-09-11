@@ -81,12 +81,6 @@ function colorAciertos(aciertos: number): string {
   return "text-[var(--red)]";
 }
 
-function colorBarra(aciertos: number): string {
-  if (aciertos >= 80) return "bg-[var(--green)]";
-  if (aciertos >= 60) return "bg-[var(--amber)]";
-  return "bg-[var(--red)]";
-}
-
 function imprimirCertificado(ev: Evaluacion) {
   const ventana = window.open("", "_blank", "width=950,height=700");
   if (!ventana) {
@@ -172,6 +166,8 @@ export default function CapacitacionesPage() {
   const [editando, setEditando] = useState<CapacitacionData | undefined>(undefined);
   const [editandoNombreId, setEditandoNombreId] = useState<number | null>(null);
   const [nombreTmp, setNombreTmp] = useState("");
+  const [filtroCapacitacion, setFiltroCapacitacion] = useState("");
+  const [nombresExpedientes, setNombresExpedientes] = useState<string[]>([]);
 
   const cargar = () => {
     fetch("/api/capacitaciones/list", { cache: "no-store" })
@@ -190,6 +186,10 @@ export default function CapacitacionesPage() {
   useEffect(() => {
     cargar();
     cargarCatalogo();
+    fetch("/api/expedientes/list", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setNombresExpedientes((d.registros || []).map((e: { nombre: string }) => e.nombre).sort()))
+      .catch(() => {});
   }, []);
   useRefrescarAlEnfocar(() => {
     cargar();
@@ -232,8 +232,8 @@ export default function CapacitacionesPage() {
     }
   };
 
-  const guardarNombreEvaluacion = async (id: number) => {
-    const nombre = nombreTmp.trim();
+  const guardarNombreEvaluacion = async (id: number, nombreNuevo?: string) => {
+    const nombre = (nombreNuevo ?? nombreTmp).trim();
     setEditandoNombreId(null);
     if (!nombre) return;
     setEvaluaciones((prev) => prev.map((e) => (e.id === id ? { ...e, nombre } : e)));
@@ -258,7 +258,9 @@ export default function CapacitacionesPage() {
     }
   };
 
-  const mejoresDesempenos = [...evaluaciones].sort((a, b) => b.aciertos - a.aciertos).slice(0, 10);
+  const capacitacionesDisponibles = Array.from(new Set(evaluaciones.map((e) => e.capacitacion))).sort();
+  const evaluacionesFiltradas = filtroCapacitacion ? evaluaciones.filter((e) => e.capacitacion === filtroCapacitacion) : evaluaciones;
+  const mejoresDesempenos = [...evaluacionesFiltradas].sort((a, b) => b.aciertos - a.aciertos).slice(0, 10);
   const maximoAciertos = mejoresDesempenos.length > 0 ? Math.max(...mejoresDesempenos.map((e) => e.aciertos), 1) : 1;
 
   return (
@@ -324,31 +326,47 @@ export default function CapacitacionesPage() {
           </div>
         </div>
 
-        {/* Gráfica de mejores desempeños */}
+        {/* Filtro por curso */}
         {!cargando && evaluaciones.length > 0 && (
+          <div className="flex items-center gap-2.5 mb-5">
+            <label className="text-[12.5px] font-bold text-[var(--navy)]">Filtrar por curso:</label>
+            <select
+              value={filtroCapacitacion}
+              onChange={(e) => setFiltroCapacitacion(e.target.value)}
+              className="border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] bg-white"
+            >
+              <option value="">Todos los cursos</option>
+              {capacitacionesDisponibles.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Gráfica de mejores desempeños */}
+        {!cargando && evaluacionesFiltradas.length > 0 && (
           <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-6">
             <h3 className="text-[15px] font-bold text-[var(--navy)] mb-1">Mejores desempeños</h3>
-            <p className="text-[12px] text-[var(--gray-400)] mb-5">Los aciertos más altos registrados en todas las evaluaciones.</p>
-            <div className="flex flex-col gap-3">
+            <p className="text-[12px] text-[var(--gray-400)] mb-5">Los aciertos más altos registrados{filtroCapacitacion ? ` en ${filtroCapacitacion}` : " en todas las evaluaciones"}.</p>
+            <div className="flex flex-col gap-2.5">
               {mejoresDesempenos.map((ev, i) => (
                 <div key={ev.id} className="flex items-center gap-3">
-                  <span
-                    className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${
-                      i === 0 ? "bg-[#f2b134] text-white" : i === 1 ? "bg-[var(--gray-400)] text-white" : i === 2 ? "bg-[#c07a3e] text-white" : "bg-[var(--gray-100)] text-[var(--gray-400)]"
-                    }`}
-                  >
+                  <span className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[12px] font-bold text-white" style={{ backgroundColor: "#0f4c4c" }}>
                     {i + 1}
                   </span>
-                  <div className="w-[150px] shrink-0">
-                    <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 truncate">{ev.nombre}</p>
-                    <p className="text-[10.5px] text-[var(--gray-400)] m-0 truncate">{ev.capacitacion}</p>
-                  </div>
-                  <div className="flex-1 h-6 bg-[var(--gray-100)] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full flex items-center justify-end px-2 ${colorBarra(ev.aciertos)}`}
-                      style={{ width: `${Math.max(8, (ev.aciertos / maximoAciertos) * 100)}%` }}
-                    >
-                      <span className="text-[10.5px] font-bold text-white">{Math.round(ev.aciertos)}%</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11.5px] font-semibold text-[var(--navy)] m-0 mb-1 truncate">
+                      {ev.nombre} <span className="text-[var(--gray-400)] font-normal">· {ev.capacitacion}</span>
+                    </p>
+                    <div className="h-7 rounded-sm overflow-hidden" style={{ backgroundColor: "#e4eef0" }}>
+                      <div
+                        className="h-full flex items-center justify-end px-2.5"
+                        style={{ width: `${Math.max(10, (ev.aciertos / maximoAciertos) * 100)}%`, backgroundColor: "#159a9c" }}
+                      >
+                        <span className="text-[11.5px] font-bold text-white whitespace-nowrap">{Math.round(ev.aciertos)}%</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -365,6 +383,8 @@ export default function CapacitacionesPage() {
             <p className="text-[13px] text-[var(--gray-400)]">Cargando registros…</p>
           ) : evaluaciones.length === 0 ? (
             <p className="text-[13px] text-[var(--gray-400)]">Aún no hay evaluaciones registradas.</p>
+          ) : evaluacionesFiltradas.length === 0 ? (
+            <p className="text-[13px] text-[var(--gray-400)]">No hay evaluaciones registradas para &quot;{filtroCapacitacion}&quot;.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full border-collapse min-w-[640px]">
@@ -380,27 +400,36 @@ export default function CapacitacionesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {evaluaciones.map((ev) => (
+                  {evaluacionesFiltradas.map((ev) => (
                     <tr key={ev.id} className="border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)]">
                       <td className="px-3.5 py-3 text-[13.5px] font-semibold text-[var(--navy)]">{ev.capacitacion}</td>
                       <td className="px-3.5 py-3 text-[13.5px]">
                         {editandoNombreId === ev.id ? (
-                          <input
+                          <select
                             autoFocus
                             value={nombreTmp}
-                            onChange={(e) => setNombreTmp(e.target.value)}
-                            onBlur={() => guardarNombreEvaluacion(ev.id)}
-                            onKeyDown={(e) => e.key === "Enter" && guardarNombreEvaluacion(ev.id)}
-                            className="border border-[var(--blue)] rounded-md px-2 py-1 text-[13.5px] w-full"
-                          />
+                            onChange={(e) => {
+                              setNombreTmp(e.target.value);
+                              guardarNombreEvaluacion(ev.id, e.target.value);
+                            }}
+                            onBlur={() => setEditandoNombreId(null)}
+                            className="border border-[var(--blue)] rounded-md px-2 py-1 text-[13.5px] w-full bg-white"
+                          >
+                            {!nombresExpedientes.includes(ev.nombre) && <option value={ev.nombre}>{ev.nombre}</option>}
+                            {nombresExpedientes.map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
                         ) : (
                           <span
                             onClick={() => {
                               setEditandoNombreId(ev.id);
                               setNombreTmp(ev.nombre);
                             }}
-                            className="cursor-text hover:underline decoration-dotted"
-                            title="Clic para editar el nombre"
+                            className="cursor-pointer hover:underline decoration-dotted"
+                            title="Clic para cambiar el nombre (lista de Expedientes)"
                           >
                             {ev.nombre}
                           </span>

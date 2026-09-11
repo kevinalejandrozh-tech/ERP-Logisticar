@@ -1,4 +1,6 @@
 import { Pool } from "pg";
+import { PREGUNTAS_MANEJO_DEFENSIVO } from "./manejoDefensivoData";
+import { PREGUNTAS_PROCEDIMIENTOS_ATC } from "./procedimientosAtcData";
 let pool: Pool | null = null;
 export function getPool() {
 if (!process.env.DATABASE_URL) {
@@ -519,4 +521,33 @@ respuestas JSONB NOT NULL DEFAULT '[]'::jsonb,
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+// ---- Capacitaciones: catalogo dinamico (titulo, descripcion y preguntas editables) ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS capacitaciones_catalogo (
+id SERIAL PRIMARY KEY,
+titulo TEXT NOT NULL,
+descripcion TEXT,
+preguntas JSONB NOT NULL DEFAULT '[]'::jsonb,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+const catalogoExistente = await p.query(`SELECT COUNT(*)::int AS n FROM capacitaciones_catalogo`);
+if (catalogoExistente.rows[0].n === 0) {
+const simplificar = (preguntas: { pregunta: string; opciones: Record<string, string>; correcta: string }[]) =>
+JSON.stringify(preguntas.map((q) => ({ pregunta: q.pregunta, opciones: q.opciones, correcta: q.correcta })));
+await p.query(
+`INSERT INTO capacitaciones_catalogo (titulo, descripcion, preguntas) VALUES
+($1,$2,$3::jsonb), ($4,$5,$6::jsonb)`,
+[
+"Manejo defensivo",
+"Evaluación sobre conductor profesional, señalización y manejo defensivo.",
+simplificar(PREGUNTAS_MANEJO_DEFENSIVO),
+"Procedimientos ATC",
+"Evaluación sobre el procedimiento de Atención a Clientes: clientes, evidencias y empates.",
+simplificar(PREGUNTAS_PROCEDIMIENTOS_ATC),
+]
+);
+}
 }

@@ -4,6 +4,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
+import CapacitacionFormModal, { CapacitacionData } from "@/components/CapacitacionFormModal";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
@@ -154,10 +155,15 @@ function imprimirCertificado(ev: Evaluacion) {
   ventana.document.close();
 }
 
+type CapacitacionResumen = { id: number; titulo: string; descripcion: string | null; total_preguntas: number };
+
 export default function CapacitacionesPage() {
   const [evaluaciones, setEvaluaciones] = useState<Evaluacion[]>([]);
   const [cargando, setCargando] = useState(true);
   const [detalle, setDetalle] = useState<Evaluacion | null>(null);
+  const [catalogo, setCatalogo] = useState<CapacitacionResumen[]>([]);
+  const [modalAbierto, setModalAbierto] = useState(false);
+  const [editando, setEditando] = useState<CapacitacionData | undefined>(undefined);
 
   const cargar = () => {
     fetch("/api/capacitaciones/list", { cache: "no-store" })
@@ -166,30 +172,57 @@ export default function CapacitacionesPage() {
       .catch(() => {})
       .finally(() => setCargando(false));
   };
+  const cargarCatalogo = () => {
+    fetch("/api/capacitaciones/catalogo/list", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => setCatalogo(data.registros || []))
+      .catch(() => {});
+  };
 
   useEffect(() => {
     cargar();
+    cargarCatalogo();
   }, []);
-  useRefrescarAlEnfocar(cargar);
+  useRefrescarAlEnfocar(() => {
+    cargar();
+    cargarCatalogo();
+  });
 
   useEffect(() => {
+    if (catalogo.length === 0) return;
     cargarQRiousLib()
       .then(() => {
         const origen = window.location.origin;
-        const tarjetas: [string, string][] = [
-          ["qr-manejo-defensivo", "/personas/capacitaciones/manejo-defensivo"],
-          ["qr-procedimientos-atc", "/personas/capacitaciones/procedimientos-atc"],
-        ];
-        tarjetas.forEach(([id, ruta]) => {
-          const canvas = document.getElementById(id) as HTMLCanvasElement | null;
+        catalogo.forEach((c) => {
+          const canvas = document.getElementById(`qr-cap-${c.id}`) as HTMLCanvasElement | null;
           if (canvas) {
-            new window.QRious({ element: canvas, value: `${origen}${ruta}`, size: 60, level: "M" });
+            new window.QRious({ element: canvas, value: `${origen}/personas/capacitaciones/tomar?id=${c.id}`, size: 60, level: "M" });
           }
         });
       })
       .catch(() => {});
-  }, []);
+  }, [catalogo]);
 
+  const abrirEditar = async (id: number) => {
+    try {
+      const res = await fetch(`/api/capacitaciones/catalogo/get?id=${id}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "No se pudo cargar la capacitación.");
+      setEditando({ id: data.registro.id, titulo: data.registro.titulo, descripcion: data.registro.descripcion || "", preguntas: data.registro.preguntas || [] });
+      setModalAbierto(true);
+    } catch (err: any) {
+      alert(err.message || "No se pudo cargar la capacitación.");
+    }
+  };
+  const eliminarCapacitacion = async (id: number, titulo: string) => {
+    if (!confirm(`¿Eliminar la capacitación "${titulo}"? Esta acción no se puede deshacer.`)) return;
+    try {
+      await fetch("/api/capacitaciones/catalogo/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }) });
+      cargarCatalogo();
+    } catch {
+      alert("No se pudo eliminar la capacitación.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
@@ -210,48 +243,47 @@ export default function CapacitacionesPage() {
 
         {/* Catálogo */}
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-6">
-          <h3 className="text-[15px] font-bold text-[var(--navy)] mb-4">Catálogo de capacitaciones</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[15px] font-bold text-[var(--navy)] m-0">Catálogo de capacitaciones</h3>
+            <button
+              type="button"
+              onClick={() => {
+                setEditando(undefined);
+                setModalAbierto(true);
+              }}
+              className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+              Agregar capacitación
+            </button>
+          </div>
+
+          {catalogo.length === 0 && <p className="text-[13px] text-[var(--gray-400)]">Aún no hay capacitaciones. Usa &quot;Agregar capacitación&quot; para crear la primera.</p>}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-5">
-            <Link
-              href="/personas/capacitaciones/manejo-defensivo"
-              className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] block hover:border-[var(--blue)] transition-colors"
-            >
-              <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
-                <canvas id="qr-manejo-defensivo" />
+            {catalogo.map((c) => (
+              <div key={c.id} className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] relative hover:border-[var(--blue)] transition-colors">
+                <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                  <span onClick={() => abrirEditar(c.id)} className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer" title="Editar capacitación">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                  </span>
+                  <span onClick={() => eliminarCapacitacion(c.id, c.titulo)} className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer" title="Eliminar capacitación">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+                  </span>
+                </div>
+                <Link href={`/personas/capacitaciones/tomar?id=${c.id}`} className="block no-underline">
+                  <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
+                    <canvas id={`qr-cap-${c.id}`} />
+                  </div>
+                  <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight pr-6">{c.titulo}</h3>
+                  <div className="w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
+                  <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed mb-1">
+                    {c.descripcion || `Evaluación de ${c.total_preguntas} preguntas.`}
+                  </p>
+                  <p className="text-[10.5px] font-bold text-[var(--blue)] m-0">{c.total_preguntas} preguntas · Escanea para iniciar</p>
+                </Link>
               </div>
-              <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight">Manejo defensivo</h3>
-              <div className="w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
-              <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed mb-1">
-                Evaluación de 100 preguntas sobre conductor profesional, señalización y manejo defensivo.
-              </p>
-              <p className="text-[10.5px] font-bold text-[var(--blue)] m-0">Escanea para iniciar</p>
-            </Link>
-
-            <Link
-              href="/personas/capacitaciones/procedimientos-atc"
-              className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] block hover:border-[var(--blue)] transition-colors"
-            >
-              <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
-                <canvas id="qr-procedimientos-atc" />
-              </div>
-              <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight">Procedimientos ATC</h3>
-              <div className="w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
-              <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed mb-1">
-                Evaluación de 35 preguntas sobre el procedimiento de Atención a Clientes: clientes, evidencias y empates.
-              </p>
-              <p className="text-[10.5px] font-bold text-[var(--blue)] m-0">Escanea para iniciar</p>
-            </Link>
-
-            <div className="bg-[var(--gray-100)] border border-dashed border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center opacity-70">
-              <div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] rounded-full bg-white flex items-center justify-center mx-auto mb-3 md:mb-4">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2">
-                  <path d="M12 5v14M5 12h14" />
-                </svg>
-              </div>
-              <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--gray-400)] m-0 mb-2 leading-tight">Próximamente</h3>
-              <div className="w-[26px] h-[3px] bg-[var(--gray-200)] rounded-sm mx-auto mb-2.5" />
-              <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed">Nuevas capacitaciones se agregarán aquí.</p>
-            </div>
+            ))}
           </div>
         </div>
 
@@ -389,6 +421,17 @@ export default function CapacitacionesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {modalAbierto && (
+        <CapacitacionFormModal
+          inicial={editando}
+          onCancelar={() => setModalAbierto(false)}
+          onGuardado={() => {
+            setModalAbierto(false);
+            cargarCatalogo();
+          }}
+        />
       )}
     </div>
   );

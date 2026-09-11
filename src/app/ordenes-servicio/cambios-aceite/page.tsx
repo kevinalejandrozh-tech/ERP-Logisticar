@@ -204,8 +204,8 @@ export default function CambiosAceitePage() {
         <PageHeader
           titulo="Cambios de aceite"
           subtitulo="Da seguimiento a los cambios de aceite por unidad y su próximo vencimiento."
-          backHref="/ordenes-servicio"
-          backLabel="Historial de mantenimientos"
+          backHref="/"
+          backLabel="Menú principal"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M12 2l7 12a7 7 0 11-14 0l7-12z" /></svg>}
         />
 

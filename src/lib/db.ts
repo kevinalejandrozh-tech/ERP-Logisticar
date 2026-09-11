@@ -566,4 +566,36 @@ datos JSONB NOT NULL DEFAULT '{}'::jsonb,
 orden INTEGER NOT NULL DEFAULT 0
 );
 `);
+
+// ---- Planeacion y Programa de Cargas: tablero principal con columnas predefinidas ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS planeacion_cargas_columnas (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+orden INTEGER NOT NULL DEFAULT 0
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS planeacion_cargas_filas (
+id SERIAL PRIMARY KEY,
+datos JSONB NOT NULL DEFAULT '{}'::jsonb,
+orden INTEGER NOT NULL DEFAULT 0
+);
+`);
+const planeacionExistente = await p.query(`SELECT COUNT(*)::int AS n FROM planeacion_cargas_columnas`);
+if (planeacionExistente.rows[0].n === 0) {
+const columnasIniciales = [
+"SEMANA", "DÍA", "CARGA PLANEADA X CLIENTE", "CARGA PLANEADA X LOGISTICAR",
+"INICIO DE RUTA PROGRAMADO", "HORARIO DE CITA DE ENTREGA", "NOMBRE CUENTA", "PROYECTO DELL",
+"No. EMBARQUE CARTA PORTE", "ESTADO DESTINO", "RUTA O DESTINO", "N° DE CAJAS",
+"TIPO MERCANCÍA", "TIROS", "TIPO DE SERVICIO", "TIPO",
+"ECO", "OPERADOR", "HORARIO ARRIBO PATIO", "ESTATUS PATIO",
+"ARRIBO ALMACÉN (CARGA)", "ESTATUS ALMACÉN", "INICIO DE RUTA", "ARRIBO A PATIO AYUDANTE",
+"AYUDANTE", "NOMBRE QUIEN CONFIRMA SERVICIO", "TÉRMINO DE SERVICIO", "ESTATUS",
+"NÚMERO DE EMBARQUE DE LA DEVOLUCIÓN", "ARRIBO A PATIO", "ESTATUS USO DE CTRLTRACK", "FECHA DE LIBERACIÓN DEL SERVICIO",
+];
+for (let i = 0; i < columnasIniciales.length; i++) {
+await p.query(`INSERT INTO planeacion_cargas_columnas (nombre, orden) VALUES ($1,$2)`, [columnasIniciales[i], i]);
+}
+}
 }

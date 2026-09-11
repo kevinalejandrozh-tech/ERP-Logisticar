@@ -584,8 +584,11 @@ orden INTEGER NOT NULL DEFAULT 0
 );
 `);
 const planeacionFilasExistente = await p.query(`SELECT COUNT(*)::int AS n FROM planeacion_cargas_filas`);
+console.log("[planeacion-cargas] filas existentes al iniciar:", planeacionFilasExistente.rows[0].n);
 if (planeacionFilasExistente.rows[0].n === 0) {
+try {
 const existentesCols = await p.query(`SELECT id, nombre FROM planeacion_cargas_columnas`);
+console.log("[planeacion-cargas] columnas existentes:", existentesCols.rows.length, "seed columnas:", PLANEACION_CARGAS_COLUMNAS_SEED.length, "seed filas:", PLANEACION_CARGAS_FILAS_SEED.length);
 const porNombre = new Map<string, number>();
 for (const row of existentesCols.rows) porNombre.set(String(row.nombre).trim().toLowerCase(), row.id);
 const idsPorIndice: number[] = [];
@@ -612,6 +615,7 @@ await p.query(`UPDATE planeacion_cargas_columnas SET nombre = $2, orden = $3 WHE
 }
 idsPorIndice.push(id as number);
 }
+console.log("[planeacion-cargas] columnas resueltas:", idsPorIndice.length);
 let ordenFila = 0;
 for (const fila of PLANEACION_CARGAS_FILAS_SEED) {
 const datos: Record<string, string> = {};
@@ -620,6 +624,10 @@ if (fila[i]) datos[String(idsPorIndice[i])] = fila[i];
 }
 await p.query(`INSERT INTO planeacion_cargas_filas (datos, orden) VALUES ($1::jsonb, $2)`, [JSON.stringify(datos), ordenFila]);
 ordenFila++;
+}
+console.log("[planeacion-cargas] filas insertadas:", ordenFila);
+} catch (errSiembra: any) {
+console.error("[planeacion-cargas] ERROR EN SIEMBRA:", errSiembra && errSiembra.message, errSiembra && errSiembra.stack);
 }
 }
 }

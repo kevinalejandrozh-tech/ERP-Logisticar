@@ -585,13 +585,10 @@ orden INTEGER NOT NULL DEFAULT 0
 `);
 const planeacionFilasExistente = await p.query(`SELECT COUNT(*)::int AS n FROM planeacion_cargas_filas`);
 const totalEsperado = PLANEACION_CARGAS_FILAS_SEED.length;
-console.log("[planeacion-cargas] filas existentes:", planeacionFilasExistente.rows[0].n, "esperadas:", totalEsperado);
-// Si hay algo pero menos de lo esperado, es un intento anterior que se interrumpio a medias: se limpia y se vuelve a cargar.
 const estaIncompleto = planeacionFilasExistente.rows[0].n > 0 && planeacionFilasExistente.rows[0].n < totalEsperado;
 if (planeacionFilasExistente.rows[0].n === 0 || estaIncompleto) {
 try {
 if (estaIncompleto) {
-console.log("[planeacion-cargas] estado incompleto detectado, limpiando antes de recargar");
 await p.query(`DELETE FROM planeacion_cargas_filas`);
 await p.query(`DELETE FROM planeacion_cargas_columnas`);
 }
@@ -628,7 +625,6 @@ const params = porCrear.flatMap((c) => [c.nombre, c.indice]);
 const creadas = await p.query(`INSERT INTO planeacion_cargas_columnas (nombre, orden) VALUES ${valores} RETURNING id, orden`, params);
 for (const row of creadas.rows) idsPorIndice[row.orden] = row.id;
 }
-console.log("[planeacion-cargas] columnas resueltas:", idsPorIndice.filter(Boolean).length);
 
 // Insertar todas las filas en una sola consulta por lote (evita 61 idas y vueltas a la base de datos).
 if (PLANEACION_CARGAS_FILAS_SEED.length > 0) {
@@ -645,7 +641,6 @@ params.push(JSON.stringify(datos), ordenFila);
 });
 await p.query(`INSERT INTO planeacion_cargas_filas (datos, orden) VALUES ${marcadores.join(", ")}`, params);
 }
-console.log("[planeacion-cargas] filas insertadas:", PLANEACION_CARGAS_FILAS_SEED.length);
 } catch (errSiembra: any) {
 console.error("[planeacion-cargas] ERROR EN SIEMBRA:", errSiembra && errSiembra.message, errSiembra && errSiembra.stack);
 }

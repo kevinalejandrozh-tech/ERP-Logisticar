@@ -34,6 +34,7 @@ export default function ExpedientesPage() {
   const [registros, setRegistros] = useState<ExpedienteResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [qrExpediente, setQrExpediente] = useState<ExpedienteResumen | null>(null);
 
   const cargar = async () => {
     try {
@@ -52,18 +53,16 @@ export default function ExpedientesPage() {
   useRefrescarAlEnfocar(cargar);
 
   useEffect(() => {
-    if (registros.length === 0) return;
+    if (!qrExpediente) return;
     cargarQRiousLib()
       .then(() => {
-        registros.forEach((r) => {
-          const canvas = document.getElementById(`qr-expediente-${r.id}`) as HTMLCanvasElement | null;
-          if (canvas) {
-            new window.QRious({ element: canvas, value: `${window.location.origin}/personas/expedientes/detalle?id=${r.id}`, size: 84, level: "M" });
-          }
-        });
+        const canvas = document.getElementById("qr-expediente-modal") as HTMLCanvasElement | null;
+        if (canvas) {
+          new window.QRious({ element: canvas, value: `${window.location.origin}/personas/expedientes/detalle?id=${qrExpediente.id}`, size: 190, level: "M" });
+        }
       })
       .catch(() => {});
-  }, [registros]);
+  }, [qrExpediente]);
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
@@ -93,26 +92,33 @@ export default function ExpedientesPage() {
           {!cargando && registros.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
               {registros.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => router.push(`/personas/expedientes/detalle?id=${r.id}`)}
-                  className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 text-center hover:border-[var(--blue)] transition-colors"
-                >
-                  <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 p-1.5">
-                    <canvas id={`qr-expediente-${r.id}`} />
-                  </div>
-                  {r.fotografia ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={r.fotografia} alt={r.nombre} className="w-[46px] h-[46px] rounded-full object-cover mx-auto mb-2 border border-[var(--gray-200)]" />
-                  ) : (
-                    <div className="w-[46px] h-[46px] rounded-full bg-[var(--blue-light)] flex items-center justify-center mx-auto mb-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
-                    </div>
-                  )}
-                  <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-0.5 leading-tight">{r.nombre}</p>
-                  {(r.puesto || r.categoria) && <p className="text-[10.5px] text-[var(--gray-400)] m-0">{[r.puesto, r.categoria].filter(Boolean).join(" · ")}</p>}
-                </button>
+                <div key={r.id} className="relative bg-white border border-[var(--gray-200)] rounded-2xl p-4 text-center hover:border-[var(--blue)] transition-colors">
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQrExpediente(r);
+                    }}
+                    title="Ver código QR"
+                    className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer z-10"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                      <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
+                    </svg>
+                  </span>
+                  <button type="button" onClick={() => router.push(`/personas/expedientes/detalle?id=${r.id}`)} className="w-full text-center">
+                    {r.fotografia ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.fotografia} alt={r.nombre} className="w-[96px] h-[96px] rounded-full object-cover mx-auto mb-3 border border-[var(--gray-200)]" />
+                    ) : (
+                      <div className="w-[96px] h-[96px] rounded-full bg-[var(--blue-light)] flex items-center justify-center mx-auto mb-3">
+                        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
+                      </div>
+                    )}
+                    <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-0.5 leading-tight">{r.nombre}</p>
+                    {(r.puesto || r.categoria) && <p className="text-[10.5px] text-[var(--gray-400)] m-0">{[r.puesto, r.categoria].filter(Boolean).join(" · ")}</p>}
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -128,6 +134,21 @@ export default function ExpedientesPage() {
             cargar();
           }}
         />
+      )}
+
+      {qrExpediente && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setQrExpediente(null)}>
+          <div className="bg-white rounded-2xl p-6 text-center shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[13.5px] font-bold text-[var(--navy)] mb-1">{qrExpediente.nombre}</p>
+            <p className="text-[11.5px] text-[var(--gray-400)] mb-4">Escanea para consultar el expediente</p>
+            <div className="w-[210px] h-[210px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-4 p-2.5">
+              <canvas id="qr-expediente-modal" />
+            </div>
+            <button type="button" onClick={() => setQrExpediente(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
+              Cerrar
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

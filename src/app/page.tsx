@@ -79,6 +79,12 @@ icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M12 2C7 
 titulo="Buzón de sugerencias e ideas de mejora"
 descripcion="Comparte o consulta sugerencias e ideas de mejora del equipo, vía código QR."
 />
+<MenuCard
+href="/control-viajes"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
+titulo="Control de Viajes"
+descripcion="Tabla libre: agrega columnas y filas, y edita directamente."
+/>
 </div>
 </div>
 <PageFooter />

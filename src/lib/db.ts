@@ -550,4 +550,20 @@ simplificar(PREGUNTAS_PROCEDIMIENTOS_ATC),
 ]
 );
 }
+
+// ---- Control de Viajes: tabla libre editable (columnas y filas) ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS control_viajes_columnas (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+orden INTEGER NOT NULL DEFAULT 0
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS control_viajes_filas (
+id SERIAL PRIMARY KEY,
+datos JSONB NOT NULL DEFAULT '{}'::jsonb,
+orden INTEGER NOT NULL DEFAULT 0
+);
+`);
 }

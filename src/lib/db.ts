@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { PREGUNTAS_MANEJO_DEFENSIVO } from "./manejoDefensivoData";
 import { PREGUNTAS_PROCEDIMIENTOS_ATC } from "./procedimientosAtcData";
+import { PLANEACION_CARGAS_COLUMNAS_SEED, PLANEACION_CARGAS_FILAS_SEED } from "./planeacionCargasSeed";
 let pool: Pool | null = null;
 export function getPool() {
 if (!process.env.DATABASE_URL) {
@@ -582,20 +583,43 @@ datos JSONB NOT NULL DEFAULT '{}'::jsonb,
 orden INTEGER NOT NULL DEFAULT 0
 );
 `);
-const planeacionExistente = await p.query(`SELECT COUNT(*)::int AS n FROM planeacion_cargas_columnas`);
-if (planeacionExistente.rows[0].n === 0) {
-const columnasIniciales = [
-"SEMANA", "DÍA", "CARGA PLANEADA X CLIENTE", "CARGA PLANEADA X LOGISTICAR",
-"INICIO DE RUTA PROGRAMADO", "HORARIO DE CITA DE ENTREGA", "NOMBRE CUENTA", "PROYECTO DELL",
-"No. EMBARQUE CARTA PORTE", "ESTADO DESTINO", "RUTA O DESTINO", "N° DE CAJAS",
-"TIPO MERCANCÍA", "TIROS", "TIPO DE SERVICIO", "TIPO",
-"ECO", "OPERADOR", "HORARIO ARRIBO PATIO", "ESTATUS PATIO",
-"ARRIBO ALMACÉN (CARGA)", "ESTATUS ALMACÉN", "INICIO DE RUTA", "ARRIBO A PATIO AYUDANTE",
-"AYUDANTE", "NOMBRE QUIEN CONFIRMA SERVICIO", "TÉRMINO DE SERVICIO", "ESTATUS",
-"NÚMERO DE EMBARQUE DE LA DEVOLUCIÓN", "ARRIBO A PATIO", "ESTATUS USO DE CTRLTRACK", "FECHA DE LIBERACIÓN DEL SERVICIO",
-];
-for (let i = 0; i < columnasIniciales.length; i++) {
-await p.query(`INSERT INTO planeacion_cargas_columnas (nombre, orden) VALUES ($1,$2)`, [columnasIniciales[i], i]);
+const planeacionFilasExistente = await p.query(`SELECT COUNT(*)::int AS n FROM planeacion_cargas_filas`);
+if (planeacionFilasExistente.rows[0].n === 0) {
+const existentesCols = await p.query(`SELECT id, nombre FROM planeacion_cargas_columnas`);
+const porNombre = new Map<string, number>();
+for (const row of existentesCols.rows) porNombre.set(String(row.nombre).trim().toLowerCase(), row.id);
+const idsPorIndice: number[] = [];
+for (let i = 0; i < PLANEACION_CARGAS_COLUMNAS_SEED.length; i++) {
+const nombre = PLANEACION_CARGAS_COLUMNAS_SEED[i];
+const clave = nombre.trim().toLowerCase();
+let id = porNombre.get(clave);
+// Caso especial: si ya existia la columna previamente fusionada "No. EMBARQUE CARTA PORTE",
+// se renombra y reutiliza su id en vez de crear una columna nueva.
+if (!id && clave.startsWith("no") && clave.includes("embarque")) {
+const fusionada = existentesCols.rows.find(
+(r: any) => String(r.nombre).toLowerCase().includes("embarque") && String(r.nombre).toLowerCase().includes("carta porte")
+);
+if (fusionada) {
+await p.query(`UPDATE planeacion_cargas_columnas SET nombre = $2 WHERE id = $1`, [fusionada.id, nombre]);
+id = fusionada.id;
+}
+}
+if (!id) {
+const result = await p.query(`INSERT INTO planeacion_cargas_columnas (nombre, orden) VALUES ($1,$2) RETURNING id`, [nombre, i]);
+id = result.rows[0].id;
+} else {
+await p.query(`UPDATE planeacion_cargas_columnas SET nombre = $2, orden = $3 WHERE id = $1`, [id, nombre, i]);
+}
+idsPorIndice.push(id as number);
+}
+let ordenFila = 0;
+for (const fila of PLANEACION_CARGAS_FILAS_SEED) {
+const datos: Record<string, string> = {};
+for (let i = 0; i < idsPorIndice.length; i++) {
+if (fila[i]) datos[String(idsPorIndice[i])] = fila[i];
+}
+await p.query(`INSERT INTO planeacion_cargas_filas (datos, orden) VALUES ($1::jsonb, $2)`, [JSON.stringify(datos), ordenFila]);
+ordenFila++;
 }
 }
 }

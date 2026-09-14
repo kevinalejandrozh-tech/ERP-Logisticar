@@ -90,7 +90,7 @@ titulo="Control de Viajes"
 descripcion="Tabla libre: agrega columnas y filas, y edita directamente."
 />
 <MenuCard
-href="/checklist"
+href="/checklist/elegir"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 12l2.5 2.5L16 9" /></svg>}
 titulo="Check List Diario de Unidades"
 descripcion="Inspección diaria de unidades. Consulta los registros guardados desde la misma página."

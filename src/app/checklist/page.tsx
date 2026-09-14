@@ -64,7 +64,7 @@ function escaparHtml(t: string) {
 export default function ChecklistPage() {
   const [ecoUnidad, setEcoUnidad] = useState(UNIDADES[0]?.eco || "");
   const [kmActual, setKmActual] = useState("");
-  const [errorKm, setErrorKm] = useState("");
+  const [errorPaso, setErrorPaso] = useState("");
   const [modoSoloLectura, setModoSoloLectura] = useState(false);
   const [registroVista, setRegistroVista] = useState<{ folio: string; descripcion_unidad: string | null; placas: string | null; fecha_hora: string } | null>(null);
   const [cargandoVista, setCargandoVista] = useState(false);
@@ -106,8 +106,7 @@ export default function ChecklistPage() {
   const [niveles, setNiveles] = useState<Record<string, number>>({});
   const [nivelesLitros, setNivelesLitros] = useState<Record<string, string>>({});
   const [nivelesObs, setNivelesObs] = useState<Record<string, string>>({});
-  const [errorNiveles, setErrorNiveles] = useState("");
-  const [checklist, setChecklist] = useState<Record<string, PuntoState>>({});
+    const [checklist, setChecklist] = useState<Record<string, PuntoState>>({});
   const [guardando, setGuardando] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
 
@@ -116,7 +115,7 @@ export default function ChecklistPage() {
       ...prev,
       [key]: {
         valor,
-        comentarioActivo: autoAbrirComentarioSiNo && valor === "no" ? true : prev[key]?.comentarioActivo ?? false,
+        comentarioActivo: autoAbrirComentarioSiNo ? valor === "no" : prev[key]?.comentarioActivo ?? false,
         comentario: prev[key]?.comentario ?? "",
       },
     }));
@@ -180,14 +179,28 @@ export default function ChecklistPage() {
   const validarPasoActual = (): string | null => {
     if (paso === "unidad") {
       if (!ecoUnidad) return "Selecciona el ECO de la unidad.";
-      if (kmActual !== "" && Number(kmActual) < 0) return "El kilometraje no puede ser negativo.";
+      if (kmActual === "") return "Captura el kilometraje actual.";
+      if (Number(kmActual) < 0) return "El kilometraje no puede ser negativo.";
     }
     if (paso === "niveles") {
-      const litrosNegativo = NIVELES_LABELS.some((n) => {
-        const v = nivelesLitros[n.key];
-        return v !== undefined && v !== "" && Number(v) < 0;
+      const incompleto = NIVELES_LABELS.some((n) => {
+        const nivel = niveles[n.key] || 0;
+        const litros = nivelesLitros[n.key];
+        return nivel === 0 || litros === undefined || litros === "" || Number(litros) <= 0;
       });
-      if (litrosNegativo) return "La cantidad de litros no puede ser negativa.";
+      if (incompleto) return "Completa el nivel y la cantidad de litros (mayor a 0) de todos los puntos antes de continuar.";
+    }
+    if (paso === "inspeccion") {
+      const faltantes = SECCIONES.find((s) => s.key === "cabina")?.puntos.filter((p) => !checklist[`cabina__${p}`]?.valor) ?? [];
+      if (faltantes.length > 0) return `Responde todos los puntos de inspección antes de continuar (faltan ${faltantes.length}).`;
+    }
+    if (paso === "adicionales") {
+      const faltantes = SECCIONES.find((s) => s.key === "adicionales")?.puntos.filter((p) => !checklist[`adicionales__${p}`]?.valor) ?? [];
+      if (faltantes.length > 0) return `Responde todos los puntos de adicionales antes de continuar (faltan ${faltantes.length}).`;
+    }
+    if (paso === "documentacion") {
+      const faltantes = SECCIONES.find((s) => s.key === "documentacion")?.puntos.filter((p) => !checklist[`documentacion__${p}`]?.valor) ?? [];
+      if (faltantes.length > 0) return `Responde todos los puntos de documentación antes de continuar (faltan ${faltantes.length}).`;
     }
     return null;
   };
@@ -195,12 +208,11 @@ export default function ChecklistPage() {
   const irSiguiente = () => {
     const error = validarPasoActual();
     if (error) {
-      if (paso === "unidad") setErrorKm(error);
-      if (paso === "niveles") setErrorNiveles(error);
+      setErrorPaso(error);
+      window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    setErrorKm("");
-    setErrorNiveles("");
+    setErrorPaso("");
     const idx = ORDEN_PASOS.indexOf(paso);
     if (idx < ORDEN_PASOS.length - 1) {
       setPaso(ORDEN_PASOS[idx + 1]);
@@ -208,6 +220,7 @@ export default function ChecklistPage() {
     }
   };
   const irAtras = () => {
+    setErrorPaso("");
     const idx = ORDEN_PASOS.indexOf(paso);
     if (idx > 0) {
       setPaso(ORDEN_PASOS[idx - 1]);
@@ -428,6 +441,12 @@ export default function ChecklistPage() {
           </div>
         )}
 
+        {errorPaso && !folioGuardado && (
+          <div className="mx-4 sm:mx-6 mt-3 bg-[rgba(226,65,44,0.1)] border border-[var(--red)]/30 rounded-lg px-3.5 py-2.5 text-[12px] font-semibold text-[var(--red)]">
+            ⚠ {errorPaso}
+          </div>
+        )}
+
         <div className={`px-4 sm:px-6 py-4 flex flex-col gap-5 ${modoSoloLectura ? "pointer-events-none" : ""}`}>
           {paso === "unidad" && !folioGuardado && (
             <>
@@ -450,14 +469,13 @@ export default function ChecklistPage() {
                     value={kmActual}
                     onChange={(e) => {
                       setKmActual(e.target.value);
-                      setErrorKm("");
+                      setErrorPaso("");
                     }}
                     placeholder="0"
                     className="flex-1 h-9 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm"
                   />
                 </div>
               </div>
-              {errorKm && <p className="text-[11.5px] text-[var(--red)] font-semibold -mt-2">{errorKm}</p>}
               <div className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[11.5px] flex flex-col gap-1">
                 <span>
                   <b className="text-[var(--navy)]">Descripción de unidad:</b> {unidadSeleccionada?.descripcion || "—"}
@@ -483,7 +501,6 @@ export default function ChecklistPage() {
           {paso === "niveles" && !folioGuardado && (
             <div>
               <p className="font-display font-extrabold text-[var(--navy)] text-[13px] uppercase mb-2.5">Revisión de niveles</p>
-              {errorNiveles && <p className="text-[11.5px] text-[var(--red)] font-semibold mb-2">{errorNiveles}</p>}
               <div className="border border-[var(--gray-200)] rounded-lg overflow-hidden">
                 <table className="w-full border-collapse">
                   <thead>
@@ -509,7 +526,7 @@ export default function ChecklistPage() {
                             value={nivelesLitros[n.key] ?? ""}
                             onChange={(e) => {
                               setNivelesLitros((prev) => ({ ...prev, [n.key]: e.target.value }));
-                              setErrorNiveles("");
+                              setErrorPaso("");
                             }}
                             placeholder="0"
                             className="w-full text-center border border-[var(--gray-200)] rounded px-1 py-1 text-[10px]"
@@ -590,16 +607,7 @@ export default function ChecklistPage() {
                 const key = `documentacion__${p}`;
                 const estado = checklist[key];
                 return (
-                  <PuntoChecklist
-                    key={key}
-                    label={p}
-                    value={estado?.valor ?? null}
-                    comentarioActivo={estado?.comentarioActivo ?? false}
-                    comentario={estado?.comentario ?? ""}
-                    onChange={(v) => setPunto(key, v)}
-                    onToggleComentario={() => toggleComentario(key)}
-                    onComentarioChange={(v) => setComentario(key, v)}
-                  />
+                  <PuntoChecklistCompacto key={key} label={p} value={estado?.valor ?? null} comentario={estado?.comentario ?? ""} onChange={(v) => setPunto(key, v)} onComentarioChange={(v) => setComentario(key, v)} />
                 );
               })}
             </div>

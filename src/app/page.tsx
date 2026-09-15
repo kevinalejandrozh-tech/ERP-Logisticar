@@ -4,9 +4,16 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import MenuCard from "@/components/MenuCard";
 import PageFooter from "@/components/PageFooter";
+import { useSesion } from "@/lib/useSesion";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
 export default function Home() {
+const sesion = useSesion();
+const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
+const cerrarSesion = async () => {
+await fetch("/api/auth/logout", { method: "POST" });
+window.location.href = "/login";
+};
 const [almacenamiento, setAlmacenamiento] = useState<{ porcentaje: number; mbUsados: number; mbLimite: number } | null>(null);
 useEffect(() => {
 fetch("/api/sistema/almacenamiento", { cache: "no-store" })
@@ -43,12 +50,36 @@ Buscar...
 </div>
 )}
 <div className="hidden md:block w-px h-7 bg-[var(--gray-200)]" />
-<div className="flex items-center gap-2">
+<div className="relative">
+<div onClick={() => setMenuUsuarioAbierto((v) => !v)} className="flex items-center gap-2 cursor-pointer">
 <div className="w-8 h-8 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
 <svg width="16" height="16" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>
 </div>
-<span className="hidden lg:inline text-[13.5px] font-semibold text-[var(--navy)]">Nombre de usuario</span>
+<div className="hidden lg:block leading-tight">
+<span className="block text-[13px] font-semibold text-[var(--navy)]">{sesion.nombre || "..."}</span>
+<span className="block text-[10px] text-[var(--gray-400)]">{sesion.rol === "sysadmin" ? "Sysadmin" : sesion.rol === "supervisor_tms" ? "Supervisor TMS" : ""}</span>
+</div>
 <svg className="hidden lg:block" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
+</div>
+{menuUsuarioAbierto && (
+<>
+<div onClick={() => setMenuUsuarioAbierto(false)} className="fixed inset-0 z-40" />
+<div className="absolute right-0 top-11 bg-white border border-[var(--gray-200)] rounded-xl shadow-lg w-[200px] z-50 overflow-hidden">
+<div className="px-3.5 py-3 border-b border-[var(--gray-200)]">
+<p className="text-[12.5px] font-bold text-[var(--navy)] m-0">{sesion.nombre}</p>
+<p className="text-[10.5px] text-[var(--gray-400)] m-0">{sesion.correo}</p>
+</div>
+{sesion.rol === "sysadmin" && (
+<Link href="/admin/usuarios" className="block px-3.5 py-2.5 text-[12.5px] text-[var(--navy)] font-semibold no-underline hover:bg-[var(--gray-100)]">
+Gestión de usuarios
+</Link>
+)}
+<span onClick={cerrarSesion} className="block px-3.5 py-2.5 text-[12.5px] text-[var(--red)] font-semibold cursor-pointer hover:bg-[var(--gray-100)]">
+Cerrar sesión
+</span>
+</div>
+</>
+)}
 </div>
 <svg className="hidden sm:block shrink-0" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3 2 2 0 11-2.8-2.8 1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9 2 2 0 112.8-2.8 1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3 2 2 0 112.8 2.8 1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1h.1a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
 </div>

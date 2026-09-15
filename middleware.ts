@@ -1,0 +1,57 @@
+import { NextRequest, NextResponse } from "next/server";
+import { COOKIE_SESION, verificarTokenSesion } from "@/lib/sesion";
+
+// Páginas que se llenan vía código QR por cualquier operador, sin necesidad de cuenta.
+const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/checklist-evidencias"];
+
+// Rutas de API que esas mismas páginas públicas necesitan para funcionar.
+const API_PUBLICA = new Set([
+  "/api/auth/login",
+  "/api/auth/logout",
+  "/api/auth/sesion",
+  "/api/menu-dia/opciones",
+  "/api/menu-dia/pedidos",
+  "/api/buzon-sugerencias",
+  "/api/capacitaciones",
+  "/api/capacitaciones/catalogo/get",
+  "/api/expedientes/list",
+  "/api/checklist/get",
+]);
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  const esPaginaPublica = PAGINAS_PUBLICAS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const esApiPublica = API_PUBLICA.has(pathname);
+
+  if (esPaginaPublica || esApiPublica) {
+    return NextResponse.next();
+  }
+
+  const token = req.cookies.get(COOKIE_SESION)?.value;
+  const sesion = token ? await verificarTokenSesion(token) : null;
+
+  if (!sesion) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "No autorizado. Inicia sesión." }, { status: 401 });
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/login";
+    url.search = `?destino=${encodeURIComponent(pathname)}`;
+    return NextResponse.redirect(url);
+  }
+
+  // supervisor_tms: solo puede consultar (GET). Cualquier escritura queda bloqueada.
+  if (sesion.rol === "supervisor_tms" && pathname.startsWith("/api/") && req.method !== "GET") {
+    return NextResponse.json({ error: "Tu usuario solo tiene permisos de consulta." }, { status: 403 });
+  }
+
+  const res = NextResponse.next();
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+  res.headers.set("x-usuario-rol", sesion.rol);
+  return res;
+}
+
+export const config = {
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|svg|webp|ico)).*)"],
+};

@@ -645,4 +645,44 @@ await p.query(`INSERT INTO planeacion_cargas_filas (datos, orden) VALUES ${marca
 console.error("[planeacion-cargas] ERROR EN SIEMBRA:", errSiembra && errSiembra.message, errSiembra && errSiembra.stack);
 }
 }
+
+// ---- Autenticacion: usuarios y sesiones ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS usuarios (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+correo TEXT UNIQUE NOT NULL,
+password_hash TEXT NOT NULL,
+rol TEXT NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS sesiones (
+id SERIAL PRIMARY KEY,
+token TEXT UNIQUE NOT NULL,
+usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+expira_en TIMESTAMPTZ NOT NULL
+);
+`);
+const usuariosExistentes = await p.query(`SELECT COUNT(*)::int AS n FROM usuarios`);
+if (usuariosExistentes.rows[0].n === 0) {
+const bcrypt = await import("bcryptjs");
+const hashSysadmin = await bcrypt.hash("SistemasLogisticar", 10);
+const hashSupervisor = await bcrypt.hash("SupervisorTMS2026", 10);
+await p.query(
+`INSERT INTO usuarios (nombre, correo, password_hash, rol) VALUES ($1,$2,$3,$4), ($5,$6,$7,$8)`,
+[
+"Kevin Alejandro Hernández",
+"admin@transporteslogisticar.com",
+hashSysadmin,
+"sysadmin",
+"Supervisor TMS",
+"supervisor.tms@transporteslogisticar.com",
+hashSupervisor,
+"supervisor_tms",
+]
+);
+}
 }

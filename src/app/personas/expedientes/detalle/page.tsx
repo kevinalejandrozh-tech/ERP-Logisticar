@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
 import ExpedienteFormModal, { ExpedienteData, Curso } from "@/components/ExpedienteFormModal";
+import { useSesion } from "@/lib/useSesion";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
@@ -71,6 +72,8 @@ function Seccion({ icono, titulo, subtitulo, accion, children }: { icono: React.
 }
 
 export default function DetalleExpedientePage() {
+  const sesion = useSesion();
+  const esSoloConsulta = sesion.rol === "supervisor_tms";
   const [registro, setRegistro] = useState<ExpedienteCompleto | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
@@ -201,14 +204,18 @@ export default function DetalleExpedientePage() {
                   <h2 className="text-[21px] font-bold text-[var(--navy)] m-0 mb-1 uppercase leading-tight">{registro.nombre}</h2>
                   <p className="text-[12.5px] text-[var(--gray-400)] m-0 mb-3">Fecha de ingreso: {formatoFechaLarga(registro.fecha_ingreso)}</p>
                   <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setEditando(true)} className="flex items-center gap-1.5 bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
-                      Editar
-                    </button>
-                    <button type="button" onClick={eliminar} className="flex items-center gap-1.5 bg-white text-[var(--red)] border border-[var(--gray-200)] rounded-lg px-4 py-2 text-[12.5px] font-bold">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
-                      Eliminar
-                    </button>
+                    {!esSoloConsulta && (
+                      <>
+                        <button type="button" onClick={() => setEditando(true)} className="flex items-center gap-1.5 bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                          Editar
+                        </button>
+                        <button type="button" onClick={eliminar} className="flex items-center gap-1.5 bg-white text-[var(--red)] border border-[var(--gray-200)] rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /></svg>
+                          Eliminar
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -240,7 +247,7 @@ export default function DetalleExpedientePage() {
             <Seccion icono={<IconoSeccion path={<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></>} />} titulo="Información laboral">
               <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
                 <div className="pl-0 pr-4">{campoBox("Cuenta", registro.cuenta)}</div>
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Sueldo ofertado", registro.sueldo_ofertado)}</div>
+                {!esSoloConsulta && <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Sueldo ofertado", registro.sueldo_ofertado)}</div>}
                 <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Radio asignado", registro.radio_asignado)}</div>
               </div>
             </Seccion>

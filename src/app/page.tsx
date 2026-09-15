@@ -85,6 +85,8 @@ Cerrar sesión
 </div>
 </div>
 <div className="flex flex-wrap gap-2.5 md:gap-3.5 mb-6">
+{sesion.rol !== "supervisor_tms" && (
+<>
 <Link href="/planeacion-cargas" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 4v18M8 15h13" /></svg>
 Planeación y Programa de Cargas
@@ -93,6 +95,8 @@ Planeación y Programa de Cargas
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
 </Link>
+</>
+)}
 </div>
 <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[18px]">
@@ -102,6 +106,15 @@ icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="1" y="7"
 titulo="Unidades"
 descripcion="Administra y consulta la información de las unidades."
 />
+{sesion.rol === "supervisor_tms" ? (
+<MenuCard
+href="/personas/expedientes"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
+titulo="Expedientes"
+descripcion="Consulta los expedientes del personal (cuenta TMS)."
+/>
+) : (
+<>
 <MenuCard
 href="/personas"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" /><circle cx="17.5" cy="9" r="2.4" /><path d="M15 14c2.6.2 5 2.1 5 6" /></svg>}
@@ -126,6 +139,8 @@ icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="3"
 titulo="Check List Diario de Unidades"
 descripcion="Inspección diaria de unidades. Consulta los registros guardados desde la misma página."
 />
+</>
+)}
 </div>
 </div>
 <PageFooter />

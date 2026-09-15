@@ -17,11 +17,15 @@ export async function GET(req: NextRequest) {
     }
     const registro = result.rows[0];
 
-    // El rol supervisor_tms puede consultar todo el expediente EXCEPTO el sueldo, que queda
-    // completamente fuera de la respuesta (no solo oculto en pantalla).
     const token = req.cookies.get(COOKIE_SESION)?.value;
     const sesion = token ? await verificarTokenSesion(token) : null;
+
+    // El rol supervisor_tms solo puede consultar expedientes cuya Cuenta sea "TMS".
     if (sesion?.rol === "supervisor_tms") {
+      if (registro.cuenta !== "TMS") {
+        return NextResponse.json({ error: "No tienes acceso a este expediente." }, { status: 404 });
+      }
+      // Y dentro de los que sí puede ver, el sueldo queda completamente fuera de la respuesta.
       delete registro.sueldo_ofertado;
     }
 

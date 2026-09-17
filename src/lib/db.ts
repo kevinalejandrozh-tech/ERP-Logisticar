@@ -685,4 +685,22 @@ hashSupervisor,
 ]
 );
 }
+
+// ---- Modulo de Compras: extensión de ordenes_compra y detalle de productos ----
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS num_proveedores INTEGER;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS total_general NUMERIC;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS productos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS productos_orden_compra (
+id SERIAL PRIMARY KEY,
+orden_folio TEXT,
+cantidad NUMERIC,
+articulo TEXT,
+precio_unitario NUMERIC,
+total_producto NUMERIC,
+proveedores JSONB NOT NULL DEFAULT '[]'::jsonb,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

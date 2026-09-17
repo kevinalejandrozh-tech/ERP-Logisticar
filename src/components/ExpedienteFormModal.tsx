@@ -103,7 +103,12 @@ export default function ExpedienteFormModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(datos),
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(res.status === 413 ? "La fotografía es muy pesada. Vuelve a cargarla e intenta de nuevo." : `Error del servidor (${res.status}). Intenta de nuevo.`);
+      }
       if (!res.ok) throw new Error(data.error || "Error al guardar el expediente.");
       onGuardado();
     } catch (err: any) {

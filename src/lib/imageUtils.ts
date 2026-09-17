@@ -16,7 +16,7 @@ canvas.width = width;
 canvas.height = height;
 const ctx = canvas.getContext("2d");
 if (!ctx) {
-resolve(reader.result as string);
+reject(new Error("No se pudo comprimir la imagen."));
 return;
 }
 ctx.drawImage(img, 0, 0, width, height);

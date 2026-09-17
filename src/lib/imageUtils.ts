@@ -20,7 +20,13 @@ reject(new Error("No se pudo comprimir la imagen."));
 return;
 }
 ctx.drawImage(img, 0, 0, width, height);
-resolve(canvas.toDataURL("image/jpeg", quality));
+let resultado = canvas.toDataURL("image/jpeg", quality);
+let q = quality;
+while (resultado.length > 700000 && q > 0.2) {
+q -= 0.15;
+resultado = canvas.toDataURL("image/jpeg", q);
+}
+resolve(resultado);
 };
 img.src = reader.result as string;
 };

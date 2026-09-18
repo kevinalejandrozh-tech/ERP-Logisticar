@@ -42,6 +42,25 @@ export default function ElegirChecklistPage() {
             </div>
           </Link>
 
+          <Link
+            href="/checklist/documentacion"
+            className="block bg-white border border-[var(--gray-200)] rounded-2xl p-5 no-underline hover:border-[var(--blue)] transition-colors shadow-sm hover:shadow-md"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6M9 13h6M9 17h6" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-[14.5px] font-bold text-[var(--navy)] m-0 mb-0.5">Check de documentación</p>
+                <p className="text-[12px] text-[var(--gray-400)] m-0">Póliza de seguro, tarjeta de circulación y verificación físico/mecánica con fotografías.</p>
+              </div>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.2" className="shrink-0"><path d="M9 6l6 6-6 6" /></svg>
+            </div>
+          </Link>
+
           <div className="block bg-[var(--gray-100)] border border-dashed border-[var(--gray-200)] rounded-2xl p-5 opacity-70 cursor-not-allowed">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center shrink-0">

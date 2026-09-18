@@ -1,4 +1,4 @@
-export function compressImage(file: File, maxWidth = 900, quality = 0.6): Promise<string> {
+export function compressImage(file: File, maxWidth = 900, quality = 0.6, maxLength = 700000): Promise<string> {
 return new Promise((resolve, reject) => {
 const reader = new FileReader();
 reader.onerror = () => reject(new Error("No se pudo leer la imagen."));
@@ -22,7 +22,7 @@ return;
 ctx.drawImage(img, 0, 0, width, height);
 let resultado = canvas.toDataURL("image/jpeg", quality);
 let q = quality;
-while (resultado.length > 700000 && q > 0.2) {
+while (resultado.length > maxLength && q > 0.2) {
 q -= 0.15;
 resultado = canvas.toDataURL("image/jpeg", q);
 }

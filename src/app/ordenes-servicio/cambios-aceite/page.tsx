@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { exportarExcel } from "@/lib/exportExcel";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 
@@ -358,7 +357,6 @@ export default function CambiosAceitePage() {
           </div>
         </div>
 
-        <PageFooter />
       </div>
     </div>
   );

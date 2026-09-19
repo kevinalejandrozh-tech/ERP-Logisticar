@@ -3,8 +3,6 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import PageFooter from "@/components/PageFooter";
-
 interface FilaProducto {
   id: string;
   cantidad: string;
@@ -698,7 +696,7 @@ export default function ComprasPage() {
             <div id="area-impresion" className="p-4 sm:p-8 bg-white text-[12px] sm:text-[13px] text-gray-800">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 sm:pb-6 border-b border-gray-300 gap-3 sm:gap-0">
                 <div className="flex items-center gap-2.5 sm:gap-3">
-                  <Logo size={38} />
+                  <Logo size={38} enlace={false} />
                   <span className="font-bold text-[15px] sm:text-[18px] text-[var(--navy)] tracking-wide uppercase">
                     TRANSPORTES LOGISTICAR
                   </span>
@@ -806,9 +804,6 @@ export default function ComprasPage() {
         </div>
       )}
 
-      <footer className="no-print mt-auto w-full">
-        <PageFooter />
-      </footer>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Logo from "@/components/Logo";
 import { UNIDADES } from "@/lib/unidadesData";
 import { compressImage } from "@/lib/imageUtils";
@@ -13,6 +13,11 @@ import {
 import { descargarExcelDocumentacion, descargarPdfDocumentacion } from "@/lib/checkDocumentacionExport";
 
 type Vista = "formulario" | "previsualizacion" | "guardado";
+type ResumenDoc = Record<string, { respuesta: string | null; fotos: number }>;
+type FilaConsulta = { id: number; folio: string; eco_unidad: string; descripcion_unidad: string | null; placas: string | null; fecha_hora: string; resumen: ResumenDoc | null };
+
+const fechaHoraMx = (iso: string) => new Date(iso).toLocaleString("es-MX", { timeZone: "America/Mexico_City", dateStyle: "medium", timeStyle: "short" });
+const hoyMx = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
 
 const docsVacios = (): DocumentosCheck =>
   Object.fromEntries(DOCUMENTOS_CHECK.map((d) => [d.key, { respuesta: null as RespuestaDoc, fotos: [] as string[] }]));
@@ -26,6 +31,53 @@ export default function CheckDocumentacionPage() {
   const [registro, setRegistro] = useState<RegistroDocumentacion | null>(null);
   const [descargando, setDescargando] = useState<"pdf" | "xlsx" | null>(null);
   const [ampliada, setAmpliada] = useState<string | null>(null);
+
+  // Consultas
+  const [tab, setTab] = useState<"registrar" | "consultar">("registrar");
+  const [filtroFecha, setFiltroFecha] = useState("");
+  const [filas, setFilas] = useState<FilaConsulta[]>([]);
+  const [cargandoLista, setCargandoLista] = useState(false);
+  const [errorLista, setErrorLista] = useState("");
+  const [detalle, setDetalle] = useState<RegistroDocumentacion | null>(null);
+  const [cargandoDetalle, setCargandoDetalle] = useState(false);
+
+  const cargarLista = async (fecha: string) => {
+    setCargandoLista(true);
+    setErrorLista("");
+    try {
+      const res = await fetch(`/api/checklist-documentacion/list${fecha ? `?fecha=${fecha}` : ""}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudieron cargar los registros.");
+      setFilas(data.registros || []);
+    } catch (e: any) {
+      setErrorLista(e.message || "No se pudieron cargar los registros.");
+      setFilas([]);
+    } finally {
+      setCargandoLista(false);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === "consultar" && !detalle) cargarLista(filtroFecha);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, filtroFecha]);
+
+  const verRegistro = async (id: number) => {
+    setCargandoDetalle(true);
+    setErrorLista("");
+    try {
+      const res = await fetch(`/api/checklist-documentacion/get?id=${id}`, { cache: "no-store" });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo abrir el registro.");
+      const r = data.registro;
+      setDetalle({ folio: r.folio, fecha_hora: r.fecha_hora, eco_unidad: r.eco_unidad, descripcion_unidad: r.descripcion_unidad || "", placas: r.placas || "", documentos: r.documentos });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e: any) {
+      setErrorLista(e.message || "No se pudo abrir el registro.");
+    } finally {
+      setCargandoDetalle(false);
+    }
+  };
 
   const unidad = useMemo(() => UNIDADES.find((u) => u.eco === eco), [eco]);
 
@@ -102,14 +154,15 @@ export default function CheckDocumentacionPage() {
     }
   };
 
-  const descargar = async (tipo: "pdf" | "xlsx") => {
-    if (!registro) return;
+  const descargar = async (tipo: "pdf" | "xlsx", reg: RegistroDocumentacion | null = registro) => {
+    if (!reg) return;
     setDescargando(tipo);
     try {
-      if (tipo === "pdf") await descargarPdfDocumentacion(registro);
-      else await descargarExcelDocumentacion(registro);
+      if (tipo === "pdf") await descargarPdfDocumentacion(reg);
+      else await descargarExcelDocumentacion(reg);
     } catch {
       setError("No se pudo generar el archivo. Intenta de nuevo.");
+      setErrorLista("No se pudo generar el archivo. Intenta de nuevo.");
     } finally {
       setDescargando(null);
     }
@@ -126,6 +179,23 @@ export default function CheckDocumentacionPage() {
     <span className={`text-[11.5px] font-bold px-2.5 py-0.5 rounded-full ${r === "si" ? "bg-[rgba(33,168,102,0.12)] text-[var(--green)]" : "bg-[rgba(226,65,44,0.1)] text-[var(--red)]"}`}>
       {r === "si" ? "Sí" : "No"}
     </span>
+  );
+
+  const tarjetasDocumentos = (documentos: DocumentosCheck) => (
+    <div className="flex flex-col gap-3">
+      {DOCUMENTOS_CHECK.map((d) => {
+        const doc = documentos[d.key];
+        return (
+          <div key={d.key} className="border border-[var(--gray-200)] rounded-lg p-3.5 flex flex-col gap-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[12.5px] font-semibold m-0">{d.label}</p>
+              {badge(doc?.respuesta ?? null)}
+            </div>
+            {doc?.fotos?.length > 0 ? galeria(doc.fotos) : <p className="text-[11px] italic text-[var(--gray-400)] m-0">Sin fotografías adjuntas.</p>}
+          </div>
+        );
+      })}
+    </div>
   );
 
   const galeria = (fotos: string[]) => (
@@ -154,10 +224,29 @@ export default function CheckDocumentacionPage() {
           <h1 className="font-display font-extrabold text-[var(--navy)] text-base uppercase tracking-wide">Check de Documentación</h1>
         </div>
 
-        {error && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 sm:px-6 pt-4">
+          {([
+            { k: "registrar", n: "Opción 1", t: "Registrar check", d: "Captura un nuevo check de documentación con fotografías." },
+            { k: "consultar", n: "Opción 2", t: "Consultar checks", d: "Historial de registros, filtro por día, PDF y Excel." },
+          ] as const).map((o) => (
+            <button
+              key={o.k}
+              type="button"
+              onClick={() => setTab(o.k)}
+              className={`p-3.5 rounded-xl border text-left transition-all ${tab === o.k ? "bg-white border-[var(--blue)] shadow-md ring-2 ring-[var(--blue)]/20" : "bg-white/60 border-[var(--gray-200)] hover:bg-white"}`}
+            >
+              <span className="text-[11px] font-bold tracking-wider text-[var(--blue)] uppercase block mb-0.5">{o.n}</span>
+              <h2 className="text-[14.5px] font-bold text-[var(--navy)] m-0">{o.t}</h2>
+              <p className="text-[11.5px] text-[var(--gray-400)] mt-1.5 mb-0">{o.d}</p>
+            </button>
+          ))}
+        </div>
+
+        {tab === "registrar" && error && (
           <div className="mx-4 sm:mx-6 mt-3 bg-[rgba(226,65,44,0.1)] border border-[var(--red)]/30 rounded-lg px-3.5 py-2.5 text-[12px] font-semibold text-[var(--red)]">⚠ {error}</div>
         )}
 
+        {tab === "registrar" && (
         <div className="px-4 sm:px-6 py-4 flex flex-col gap-5">
           {vista !== "guardado" && (
             <div className="flex flex-col gap-3">
@@ -244,20 +333,7 @@ export default function CheckDocumentacionPage() {
           {vista === "previsualizacion" && (
             <>
               <p className="text-[12px] text-[var(--gray-400)] m-0">Revisa la información antes de guardar.</p>
-              <div className="flex flex-col gap-3">
-                {DOCUMENTOS_CHECK.map((d) => {
-                  const doc = docs[d.key];
-                  return (
-                    <div key={d.key} className="border border-[var(--gray-200)] rounded-lg p-3.5 flex flex-col gap-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[12.5px] font-semibold m-0">{d.label}</p>
-                        {badge(doc.respuesta)}
-                      </div>
-                      {doc.fotos.length > 0 ? galeria(doc.fotos) : <p className="text-[11px] italic text-[var(--gray-400)] m-0">Sin fotografías adjuntas.</p>}
-                    </div>
-                  );
-                })}
-              </div>
+              {tarjetasDocumentos(docs)}
               <div className="flex gap-2.5">
                 <button type="button" disabled={guardando} onClick={() => { setError(""); setVista("formulario"); }} className="flex-1 border border-[var(--gray-200)] text-[var(--navy)] font-display font-bold text-[12.5px] rounded-lg py-3 disabled:opacity-50">
                   ← Editar
@@ -290,6 +366,103 @@ export default function CheckDocumentacionPage() {
             </div>
           )}
         </div>
+        )}
+
+        {tab === "consultar" && (
+          <div className="px-4 sm:px-6 py-4 flex flex-col gap-4">
+            {errorLista && (
+              <div className="bg-[rgba(226,65,44,0.1)] border border-[var(--red)]/30 rounded-lg px-3.5 py-2.5 text-[12px] font-semibold text-[var(--red)]">⚠ {errorLista}</div>
+            )}
+
+            {!detalle && (
+              <>
+                <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
+                  <div className="flex-1">
+                    <label className="font-display font-extrabold text-[var(--navy)] text-xs block mb-1">Filtrar por día</label>
+                    <input
+                      type="date"
+                      value={filtroFecha}
+                      onChange={(e) => setFiltroFecha(e.target.value)}
+                      className="w-full h-9 bg-[var(--gray-100)] border border-[var(--gray-200)] rounded-md px-3 text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setFiltroFecha(hoyMx())} className="h-9 px-3.5 bg-[var(--blue-light)] text-[var(--blue)] text-[12px] font-bold rounded-md">Hoy</button>
+                    <button type="button" onClick={() => setFiltroFecha("")} className="h-9 px-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[12px] font-bold rounded-md">Todos</button>
+                    <button type="button" onClick={() => cargarLista(filtroFecha)} className="h-9 px-3.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[12px] font-bold rounded-md">🔄</button>
+                  </div>
+                </div>
+
+                {(cargandoLista || cargandoDetalle) && (
+                  <p className="text-center text-[13px] text-gray-500 py-6 m-0">{cargandoDetalle ? "Abriendo registro..." : "Cargando registros..."}</p>
+                )}
+
+                {!cargandoLista && !errorLista && filas.length === 0 && (
+                  <div className="py-10 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
+                    <p className="text-[13px] text-gray-500 font-medium m-0">
+                      {filtroFecha ? "No hay registros en el día seleccionado." : "Aún no hay registros guardados."}
+                    </p>
+                  </div>
+                )}
+
+                {!cargandoLista && filas.length > 0 && (
+                  <div className="overflow-x-auto border border-[var(--gray-200)] rounded-xl">
+                    <table className="w-full text-left text-[12.5px] border-collapse min-w-[560px]">
+                      <thead className="bg-[#f8fafc] text-[var(--navy)] font-bold border-b border-[var(--gray-200)]">
+                        <tr>
+                          <th className="p-3">Folio</th>
+                          <th className="p-3">Fecha</th>
+                          <th className="p-3">Unidad</th>
+                          <th className="p-3 text-center">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[var(--gray-200)]">
+                        {filas.map((f) => (
+                          <tr key={f.id} className="hover:bg-gray-50/60 transition-colors">
+                            <td className="p-3 font-bold text-[var(--navy)] break-all">{f.folio}</td>
+                            <td className="p-3 text-gray-600 whitespace-nowrap">{fechaHoraMx(f.fecha_hora)}</td>
+                            <td className="p-3">
+                              <span className="font-semibold">{f.eco_unidad}</span>
+                              {f.descripcion_unidad && <span className="block text-[11px] text-[var(--gray-400)]">{f.descripcion_unidad}</span>}
+                            </td>
+                            <td className="p-3 text-center">
+                              <button type="button" disabled={cargandoDetalle} onClick={() => verRegistro(f.id)} className="px-3 py-1 bg-blue-50 text-[var(--blue)] hover:bg-blue-100 font-semibold text-[12px] rounded-md transition-colors whitespace-nowrap disabled:opacity-60">
+                                👁️ Ver
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+
+            {detalle && (
+              <>
+                <button type="button" onClick={() => setDetalle(null)} className="self-start text-[var(--blue)] text-[12px] font-bold">← Volver a la lista</button>
+                <div className="bg-[var(--blue-light)] rounded-lg px-3 py-2 text-[11px] font-bold text-[var(--navy)]">
+                  Folio: {detalle.folio} · {fechaHoraMx(detalle.fecha_hora)}
+                </div>
+                <div className="bg-[var(--gray-100)] rounded-lg px-3 py-2.5 text-[11.5px] flex flex-col gap-1">
+                  <span><b className="text-[var(--navy)]">ECO unidad:</b> {detalle.eco_unidad}</span>
+                  <span><b className="text-[var(--navy)]">Descripción de unidad:</b> {detalle.descripcion_unidad || "—"}</span>
+                  <span><b className="text-[var(--navy)]">Placas:</b> {detalle.placas || "—"}</span>
+                </div>
+                {tarjetasDocumentos(detalle.documentos)}
+                <div className="flex gap-2.5">
+                  <button type="button" disabled={descargando !== null} onClick={() => descargar("pdf", detalle)} className="flex-1 bg-[var(--navy)] text-white font-display font-bold text-[12.5px] rounded-lg py-3 disabled:opacity-60">
+                    {descargando === "pdf" ? "Generando PDF..." : "Descargar PDF"}
+                  </button>
+                  <button type="button" disabled={descargando !== null} onClick={() => descargar("xlsx", detalle)} className="flex-1 bg-[var(--green)] text-white font-display font-bold text-[12.5px] rounded-lg py-3 disabled:opacity-60">
+                    {descargando === "xlsx" ? "Generando Excel..." : "Descargar Excel"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {ampliada && (

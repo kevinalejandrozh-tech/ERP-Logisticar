@@ -54,7 +54,7 @@ export default function PedidoMenuDiaPage() {
     <div className="min-h-screen flex justify-center bg-[#dcdfe6] py-8 px-4">
       <div className="w-full max-w-[420px] bg-white rounded-2xl shadow-xl overflow-hidden h-fit">
         <div className="px-5 pt-5 pb-4 border-b border-[var(--gray-200)] flex items-center gap-2.5">
-          <Logo size={30} />
+          <Logo size={30} enlace={false} />
           <div className="leading-tight">
             <p className="font-display font-extrabold text-[var(--red)] text-[12px] m-0">TRANSPORTES</p>
             <p className="font-display font-extrabold text-[var(--red)] text-[12px] m-0">LOGISTICAR</p>

@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import MenuCard from "@/components/MenuCard";
-import PageFooter from "@/components/PageFooter";
 import { useSesion } from "@/lib/useSesion";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
@@ -150,7 +149,6 @@ descripcion="Accede al apartado para la gestión y seguimiento de compras."
 
 </div>
 </div>
-<PageFooter />
 </div>
 </div>
 );

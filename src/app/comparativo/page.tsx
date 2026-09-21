@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import { compressImage } from "@/lib/imageUtils";
 
@@ -706,7 +705,6 @@ export default function ComparativoPage() {
           </div>
         </div>
 
-        <PageFooter />
       </div>
 
       {modalAbierto && (

@@ -1,8 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
-
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 type Pagina = { id: string; dataUrl: string };
@@ -529,7 +527,6 @@ export default function ScannerPage() {
           </div>
         </div>
 
-        <PageFooter />
       </div>
 
       {imagenActual && (

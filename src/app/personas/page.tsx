@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import MenuCard from "@/components/MenuCard";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
@@ -102,7 +101,6 @@ export default function PersonasPage() {
             />
           </div>
         </div>
-        <PageFooter />
       </div>
 
       {credencialAbierta && (

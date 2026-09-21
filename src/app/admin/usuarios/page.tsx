@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { useSesion } from "@/lib/useSesion";
 
 type Usuario = { id: number; nombre: string; correo: string; rol: string; created_at: string };
@@ -141,7 +140,6 @@ export default function GestionUsuariosPage() {
           )}
         </div>
       </div>
-      <PageFooter />
     </div>
   );
 }

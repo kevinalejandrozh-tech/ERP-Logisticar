@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ZoomControls from "@/components/ZoomControls";
+import PageFooter from "@/components/PageFooter";
 
 export const metadata: Metadata = {
   title: "Gestión Logisticar",
@@ -18,7 +19,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <ZoomControls>{children}</ZoomControls>
+        <ZoomControls>
+          {children}
+          <PageFooter />
+        </ZoomControls>
       </body>
     </html>
   );

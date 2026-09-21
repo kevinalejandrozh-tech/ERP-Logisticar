@@ -147,7 +147,7 @@ export default function TomarCapacitacionPage() {
   const encabezado = (
     <div className="flex items-center justify-between gap-3 flex-wrap mb-6">
       <div className="flex items-center gap-2.5">
-        <Logo size={34} />
+        <Logo size={34} enlace={false} />
         <div>
           <h1 className="font-display text-[15px] md:text-[17px] font-bold text-[var(--navy)] m-0">{cap?.titulo || "Capacitación"}</h1>
           <p className="text-[11px] md:text-[12px] text-[var(--gray-400)] m-0">Evaluación de conocimientos</p>

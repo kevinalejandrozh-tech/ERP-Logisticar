@@ -290,14 +290,14 @@ export default function ComprasPage() {
         throw new Error(errData.message || "Error al guardar la orden de compra.");
       }
 
-      alert(`✅ ¡Orden de compra ${folioOC} confirmada y guardada con éxito!`);
+      alert(`¡Orden de compra ${folioOC} confirmada y guardada con éxito!`);
 
       // Reiniciar formulario
       setFilas([{ id: Date.now().toString(), cantidad: "", articulo: "", precio: "", proveedores: [""] }]);
       setNumProveedores(1);
       setMostrarPreview(false);
     } catch (err: any) {
-      alert(`⚠️ ${err.message || "Ocurrió un error al guardar en la base de datos."}`);
+      alert(`${err.message || "Ocurrió un error al guardar en la base de datos."}`);
     } finally {
       setGuardando(false);
     }
@@ -576,7 +576,7 @@ export default function ComprasPage() {
                 onClick={cargarOrdenes}
                 className="px-3.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-[12px] font-semibold rounded-lg self-start sm:self-auto flex items-center gap-1.5"
               >
-                🔄 Actualizar lista
+                Actualizar lista
               </button>
             </div>
 
@@ -589,7 +589,7 @@ export default function ComprasPage() {
 
             {errorConsulta && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px] mb-4">
-                ⚠️ {errorConsulta}
+                {errorConsulta}
               </div>
             )}
 
@@ -643,7 +643,7 @@ export default function ComprasPage() {
                               onClick={() => verOrdenGuardada(orden)}
                               className="px-3 py-1 bg-blue-50 text-[var(--blue)] hover:bg-blue-100 font-semibold text-[12px] rounded-md transition-colors"
                             >
-                              👁️ Ver / Imprimir
+                              Ver / Imprimir
                             </button>
                           </td>
                         </tr>
@@ -670,7 +670,7 @@ export default function ComprasPage() {
                   onClick={() => window.print()}
                   className="w-full sm:w-auto justify-center px-3.5 py-2 sm:py-1.5 bg-blue-600 text-white text-[12px] sm:text-[12.5px] font-semibold rounded-lg hover:bg-blue-500 flex items-center gap-1.5"
                 >
-                  🖨️ Imprimir / Guardar PDF
+                  Imprimir / Guardar PDF
                 </button>
 
                 {!esModoVisualizacion && (
@@ -679,7 +679,7 @@ export default function ComprasPage() {
                     disabled={guardando}
                     className="w-full sm:w-auto justify-center px-4 py-2 sm:py-1.5 bg-emerald-600 text-white text-[12px] sm:text-[12.5px] font-bold rounded-lg hover:bg-emerald-500 disabled:opacity-50 flex items-center gap-1.5"
                   >
-                    {guardando ? "Guardando..." : "✅ Confirmar orden"}
+                    {guardando ? "Guardando..." : "Confirmar orden"}
                   </button>
                 )}
 

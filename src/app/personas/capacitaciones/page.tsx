@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import CapacitacionFormModal, { CapacitacionData } from "@/components/CapacitacionFormModal";
 
@@ -480,7 +479,6 @@ export default function CapacitacionesPage() {
           )}
         </div>
 
-        <PageFooter />
       </div>
 
       {detalle && (

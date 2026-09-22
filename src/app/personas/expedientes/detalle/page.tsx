@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import ExpedienteFormModal, { ExpedienteData, Curso } from "@/components/ExpedienteFormModal";
 import { useSesion } from "@/lib/useSesion";
 
@@ -407,7 +406,6 @@ export default function DetalleExpedientePage() {
             </Seccion>
           </>
         )}
-        <PageFooter />
       </div>
 
       {editando && registro && (

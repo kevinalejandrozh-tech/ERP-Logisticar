@@ -35,7 +35,7 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-[#dcdfe6] px-4">
       <div className="w-full max-w-[380px] bg-white rounded-2xl shadow-xl p-7">
         <div className="flex flex-col items-center mb-6">
-          <Logo size={54} />
+          <Logo size={54} enlace={false} />
           <p className="font-display font-extrabold text-[var(--red)] text-[13px] mt-2">TRANSPORTES LOGISTICAR</p>
           <h1 className="font-display font-extrabold text-[var(--navy)] text-[16px] mt-1">Iniciar sesión</h1>
         </div>

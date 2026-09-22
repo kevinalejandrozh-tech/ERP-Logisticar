@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, getPool } from "@/lib/db";
 import { verificarPassword } from "@/lib/auth";
-import { crearTokenSesion, COOKIE_SESION, Rol } from "@/lib/sesion";
+import { crearTokenSesion, COOKIE_SESION, DURACION_SESION_SEGUNDOS, Rol } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 
     const token = await crearTokenSesion({ userId: usuario.id, nombre: usuario.nombre, correo: usuario.correo, rol: usuario.rol as Rol });
 
-    const expiraEn = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const expiraEn = new Date(Date.now() + DURACION_SESION_SEGUNDOS * 1000);
     await pool.query(`INSERT INTO sesiones (token, usuario_id, expira_en) VALUES ($1,$2,$3)`, [token, usuario.id, expiraEn]);
 
     const res = NextResponse.json({ ok: true, nombre: usuario.nombre, rol: usuario.rol });
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       secure: true,
       sameSite: "lax",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60,
+      // sin maxAge: cookie de sesión, se elimina al cerrar el navegador
     });
     return res;
   } catch (err: any) {

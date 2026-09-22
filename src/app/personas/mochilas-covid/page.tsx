@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { OPCIONES_CONTENIDO_MOCHILA } from "@/lib/mochilasData";
 import { exportarExcel } from "@/lib/exportExcel";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
@@ -715,7 +714,6 @@ Aún no hay mochilas registradas. Usa &quot;Agregar / Editar&quot; para crear la
 </>
 )}
 </div>
-<PageFooter />
 </div>
 {formAbierto && (
 <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">

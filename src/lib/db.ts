@@ -40,6 +40,18 @@ await p.query(`ALTER TABLE checklist_unidades ADD COLUMN IF NOT EXISTS fotos_evi
 await p.query(`ALTER TABLE checklist_unidades ADD COLUMN IF NOT EXISTS estado_llantas JSONB;`);
 await p.query(`ALTER TABLE checklist_unidades ADD COLUMN IF NOT EXISTS fotos_libres JSONB;`);
 await p.query(`
+CREATE TABLE IF NOT EXISTS checklist_documentacion (
+id SERIAL PRIMARY KEY,
+folio TEXT UNIQUE NOT NULL,
+eco_unidad TEXT NOT NULL,
+descripcion_unidad TEXT,
+placas TEXT,
+documentos JSONB NOT NULL DEFAULT '{}'::jsonb,
+fecha_hora TIMESTAMPTZ NOT NULL DEFAULT now(),
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
 CREATE TABLE IF NOT EXISTS unidades (
 id SERIAL PRIMARY KEY,
 eco TEXT UNIQUE NOT NULL,
@@ -686,4 +698,22 @@ hashSupervisor,
 ]
 );
 }
+
+// ---- Modulo de Compras: extensión de ordenes_compra y detalle de productos ----
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS num_proveedores INTEGER;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS total_general NUMERIC;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS productos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS productos_orden_compra (
+id SERIAL PRIMARY KEY,
+orden_folio TEXT,
+cantidad NUMERIC,
+articulo TEXT,
+precio_unitario NUMERIC,
+total_producto NUMERIC,
+proveedores JSONB NOT NULL DEFAULT '[]'::jsonb,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

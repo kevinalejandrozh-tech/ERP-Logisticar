@@ -2,7 +2,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import ExpedienteFormModal from "@/components/ExpedienteFormModal";
 
@@ -246,7 +245,6 @@ export default function ExpedientesPage() {
             </div>
           )}
         </div>
-        <PageFooter />
       </div>
 
       {modalAbierto && (

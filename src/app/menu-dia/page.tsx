@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
@@ -248,7 +247,6 @@ export default function MenuDiaPage() {
             </div>
           )}
         </div>
-        <PageFooter />
       </div>
 
       {modalAbierto && (

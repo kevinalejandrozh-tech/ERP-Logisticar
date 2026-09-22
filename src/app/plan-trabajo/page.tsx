@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { compressImage } from "@/lib/imageUtils";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 
@@ -1500,7 +1499,6 @@ export default function PlanTrabajoPage() {
         </div>
         )}
 
-        <PageFooter />
       </div>
 
       {formAbierto && (

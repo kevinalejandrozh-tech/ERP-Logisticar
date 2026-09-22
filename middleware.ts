@@ -47,14 +47,28 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(COOKIE_SESION)?.value;
   const sesion = token ? await verificarTokenSesion(token) : null;
 
-  if (!sesion) {
+  // Navegación manual: URL escrita en la barra de direcciones, favorito, enlace externo o pestaña nueva.
+  // Los clics dentro del sistema llegan como "same-origin", así que esto solo bloquea el acceso por barra.
+  // Si el navegador no envía estas cabeceras (versiones antiguas) no se aplica el bloqueo.
+  const esNavegacionManual =
+    !pathname.startsWith("/api/") &&
+    req.headers.get("sec-fetch-dest") === "document" &&
+    req.headers.get("sec-fetch-site") === "none";
+
+  if (!sesion || esNavegacionManual) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "No autorizado. Inicia sesión." }, { status: 401 });
     }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.search = `?destino=${encodeURIComponent(pathname)}`;
-    return NextResponse.redirect(url);
+    url.search = esNavegacionManual || pathname === "/" ? "" : `?destino=${encodeURIComponent(pathname)}`;
+    const redireccion = NextResponse.redirect(url);
+    if (esNavegacionManual && token) {
+      // Se invalida la sesión: para entrar hay que iniciar sesión de nuevo.
+      redireccion.cookies.set(COOKIE_SESION, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+    }
+    redireccion.headers.set("Cache-Control", "no-store");
+    return redireccion;
   }
 
   if (sesion.rol === "supervisor_tms") {

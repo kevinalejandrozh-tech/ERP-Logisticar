@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { exportarExcel } from "@/lib/exportExcel";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import { UNIDADES } from "@/lib/unidadesData";
@@ -897,7 +896,6 @@ export default function MonitoreoViajesPage() {
         </div>
         )}
 
-        <PageFooter />
       </div>
     </div>
   );

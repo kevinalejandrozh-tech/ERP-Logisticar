@@ -1,8 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
-
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 export default function DetalleViajePage() {
@@ -26,7 +24,6 @@ export default function DetalleViajePage() {
         <div className="bg-white rounded-[18px] p-10 shadow-[0_1px_3px_rgba(22,33,92,0.06)] text-center">
           <p className="text-[14px] text-[var(--gray-400)] m-0">Esta página está en construcción. Próximamente aquí se mostrará el detalle completo del viaje.</p>
         </div>
-        <PageFooter />
       </div>
     </div>
   );

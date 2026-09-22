@@ -81,6 +81,26 @@ export default function ExpedienteFormModal({
     try {
       const base64 = await compressImage(file, 700, 0.7);
       set("fotografia", base64);
+      // Si ya existe el expediente, se guarda la foto de inmediato por su propio endpoint
+      // (independiente de cursos/otros campos) para que el tamaño de esos otros campos
+      // nunca provoque un error al reemplazar la fotografía.
+      if (datos.id) {
+        const res = await fetch("/api/expedientes/foto", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: datos.id, fotografia: base64 }),
+        });
+        if (!res.ok) {
+          let msg = "No se pudo guardar la fotografía.";
+          try {
+            const data = await res.json();
+            msg = data.error || msg;
+          } catch {
+            msg = res.status === 413 ? "La fotografía es muy pesada. Vuelve a cargarla e intenta de nuevo." : msg;
+          }
+          alert(msg);
+        }
+      }
     } catch {
       alert("No se pudo cargar la fotografía.");
     } finally {
@@ -105,7 +125,12 @@ export default function ExpedienteFormModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(datos),
       });
-      const data = await res.json();
+      let data: any = {};
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(res.status === 413 ? "La fotografía es muy pesada. Vuelve a cargarla e intenta de nuevo." : `Error del servidor (${res.status}). Intenta de nuevo.`);
+      }
       if (!res.ok) throw new Error(data.error || "Error al guardar el expediente.");
       onGuardado();
     } catch (err: any) {

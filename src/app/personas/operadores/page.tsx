@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
-import PageFooter from "@/components/PageFooter";
 import { exportarExcel } from "@/lib/exportExcel";
 
 type Operador = { id: number; nombre: string; fechaIngreso: string };
@@ -738,7 +737,6 @@ export default function OperadoresPage() {
           </div>
         )}
 
-        <PageFooter />
       </div>
 
       {formAbierto && (

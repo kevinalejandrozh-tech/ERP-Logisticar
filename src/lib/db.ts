@@ -140,6 +140,9 @@ await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_puntua
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_combustible TEXT;`);
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_incidencias TEXT;`);
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS tipo_personal TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS estatus TEXT NOT NULL DEFAULT 'Disponible';`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS asistencia BOOLEAN NOT NULL DEFAULT false;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS campos_extra JSONB NOT NULL DEFAULT '{}'::jsonb;`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,

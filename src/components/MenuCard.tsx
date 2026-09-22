@@ -1,11 +1,13 @@
 import Link from "next/link";
 export default function MenuCard({
 href,
+onClick,
 icono,
 titulo,
 descripcion,
 }: {
 href?: string;
+onClick?: () => void;
 icono: React.ReactNode;
 titulo: string;
 descripcion: string;
@@ -27,6 +29,13 @@ return (
 <Link href={href} className={clases}>
 {contenido}
 </Link>
+);
+}
+if (onClick) {
+return (
+<button type="button" onClick={onClick} className={`${clases} w-full`}>
+{contenido}
+</button>
 );
 }
 return (

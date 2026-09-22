@@ -8,12 +8,14 @@ const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 type Documento = { nombre: string; archivo: string; fecha: string };
 type Nota = { texto: string; fecha: string };
+type CampoExtra = { label: string; valor: string };
 
 type ExpedienteCompleto = ExpedienteData & {
   id: number;
   fecha_ingreso: string | null;
   documentos: Documento[];
   notas: Nota[];
+  campos_extra: Record<string, CampoExtra[]>;
 };
 
 function formatoFechaLarga(iso: string | null) {
@@ -90,7 +92,7 @@ export default function DetalleExpedientePage() {
       .then((r) => r.json())
       .then((data) => {
         if (!data.ok) throw new Error(data.error || "No se encontró el expediente.");
-        setRegistro({ ...data.registro, documentos: data.registro.documentos || [], notas: data.registro.notas || [], cursos: data.registro.cursos || [] });
+        setRegistro({ ...data.registro, documentos: data.registro.documentos || [], notas: data.registro.notas || [], cursos: data.registro.cursos || [], campos_extra: data.registro.campos_extra || {} });
       })
       .catch((err) => setError(err.message || "No se encontró el expediente."))
       .finally(() => setCargando(false));
@@ -177,12 +179,66 @@ export default function DetalleExpedientePage() {
     }
   };
 
-  const campoBox = (label: string, valor: string | undefined | null) => (
-    <div className="flex-1 min-w-[110px]">
-      <p className="text-[10px] font-bold text-[var(--gray-400)] uppercase tracking-wide m-0 mb-1">{label}</p>
-      <p className="text-[14.5px] text-[var(--navy)] font-bold m-0">{valor || "—"}</p>
+  const guardarCamposExtra = async (campos_extra: Record<string, CampoExtra[]>) => {
+    if (!registro) return;
+    setRegistro({ ...registro, campos_extra });
+    try {
+      await fetch("/api/expedientes/campos-extra", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id, campos_extra }) });
+    } catch {
+      cargar();
+    }
+  };
+  const agregarCampoExtra = (seccion: string) => {
+    if (!registro) return;
+    const label = window.prompt("Nombre del campo (ej. Supervisor, Equipo, Estado civil):");
+    if (!label || !label.trim()) return;
+    const valor = window.prompt(`Valor de "${label.trim()}":`) || "";
+    const actuales = registro.campos_extra[seccion] || [];
+    guardarCamposExtra({ ...registro.campos_extra, [seccion]: [...actuales, { label: label.trim(), valor: valor.trim() }] });
+  };
+  const eliminarCampoExtra = (seccion: string, idx: number) => {
+    if (!registro) return;
+    const actuales = (registro.campos_extra[seccion] || []).filter((_, i) => i !== idx);
+    guardarCamposExtra({ ...registro.campos_extra, [seccion]: actuales });
+  };
+
+  const filaCampo = (label: string, valor: string | undefined | null, icono?: React.ReactNode) => (
+    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-[var(--gray-100)] last:border-0">
+      <span className="text-[12.5px] text-[var(--gray-400)] shrink-0">{label}</span>
+      <span className="text-[13px] font-semibold text-[var(--navy)] text-right flex items-center gap-1.5 justify-end">
+        {icono}
+        {valor || "—"}
+      </span>
     </div>
   );
+
+  const bloqueCamposExtra = (seccion: string) => {
+    if (!registro) return null;
+    const campos = registro.campos_extra[seccion] || [];
+    return (
+      <>
+        {campos.map((c, i) => (
+          <div key={i} className="flex items-center justify-between gap-3 py-2.5 border-b border-[var(--gray-100)] last:border-0 group">
+            <span className="text-[12.5px] text-[var(--gray-400)] shrink-0">{c.label}</span>
+            <span className="text-[13px] font-semibold text-[var(--navy)] text-right flex items-center gap-2 justify-end">
+              {c.valor || "—"}
+              {!esSoloConsulta && (
+                <span onClick={() => eliminarCampoExtra(seccion, i)} className="text-[var(--red)] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                </span>
+              )}
+            </span>
+          </div>
+        ))}
+        {!esSoloConsulta && (
+          <button type="button" onClick={() => agregarCampoExtra(seccion)} className="mt-2.5 flex items-center gap-1.5 text-[11.5px] font-bold text-[var(--blue)]">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M12 5v14M5 12h14" /></svg>
+            Agregar información
+          </button>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
@@ -248,10 +304,11 @@ export default function DetalleExpedientePage() {
 
             {/* Datos personales */}
             <Seccion icono={<IconoSeccion path={<><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></>} />} titulo="Datos personales">
-              <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
-                <div className="pl-0 pr-4">{campoBox("RFC", registro.rfc)}</div>
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("CURP", registro.curp)}</div>
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("NSS", registro.nss)}</div>
+              <div className="border border-[var(--gray-200)] rounded-xl px-4">
+                {filaCampo("RFC", registro.rfc)}
+                {filaCampo("CURP", registro.curp)}
+                {filaCampo("NSS", registro.nss)}
+                {bloqueCamposExtra("datos_personales")}
               </div>
             </Seccion>
 
@@ -261,21 +318,23 @@ export default function DetalleExpedientePage() {
                 icono={<IconoSeccion path={<><circle cx="12" cy="12" r="9" /><path d="M12 3v6M12 15v6M3 12h6M15 12h6" /></>} />}
                 titulo="Licencia y operación"
               >
-                <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
-                  <div className="pl-0 pr-4">{campoBox("Tipo de licencia", registro.tipo_licencia)}</div>
-                  <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Categoría", registro.categoria)}</div>
-                  <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Puesto", registro.puesto)}</div>
-                  <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Unidad que maneja", registro.unidad_maneja)}</div>
+                <div className="border border-[var(--gray-200)] rounded-xl px-4">
+                  {filaCampo("Tipo de licencia", registro.tipo_licencia)}
+                  {filaCampo("Categoría", registro.categoria)}
+                  {filaCampo("Puesto", registro.puesto)}
+                  {filaCampo("Unidad que maneja", registro.unidad_maneja)}
+                  {bloqueCamposExtra("licencia")}
                 </div>
               </Seccion>
             )}
 
             {/* Información laboral */}
             <Seccion icono={<IconoSeccion path={<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></>} />} titulo="Información laboral">
-              <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
-                {registro.tipo_personal !== "administrativo" && <div className="pl-0 pr-4">{campoBox("Cuenta", registro.cuenta)}</div>}
-                {!esSoloConsulta && <div className="pl-4 border-l border-[var(--gray-200)] first:border-l-0 first:pl-0">{campoBox("Sueldo ofertado", registro.sueldo_ofertado)}</div>}
-                <div className="pl-4 border-l border-[var(--gray-200)] first:border-l-0 first:pl-0">{campoBox("Radio asignado", registro.radio_asignado)}</div>
+              <div className="border border-[var(--gray-200)] rounded-xl px-4">
+                {registro.tipo_personal !== "administrativo" && filaCampo("Cuenta", registro.cuenta)}
+                {!esSoloConsulta && filaCampo("Sueldo ofertado", registro.sueldo_ofertado)}
+                {filaCampo("Radio asignado", registro.radio_asignado)}
+                {bloqueCamposExtra("informacion_laboral")}
               </div>
             </Seccion>
 
@@ -311,6 +370,7 @@ export default function DetalleExpedientePage() {
                   ))}
                 </div>
               )}
+              <div className="mt-2 pt-1 border-t border-[var(--gray-100)]">{bloqueCamposExtra("cursos")}</div>
             </Seccion>
 
             {/* Indicadores de desempeño */}
@@ -332,6 +392,7 @@ export default function DetalleExpedientePage() {
                   </div>
                 ))}
               </div>
+              <div className="mt-2 pt-1 border-t border-[var(--gray-100)]">{bloqueCamposExtra("indicadores")}</div>
             </Seccion>
 
             {/* Documentos */}
@@ -362,6 +423,9 @@ export default function DetalleExpedientePage() {
                         <p className="text-[13.5px] font-bold text-[var(--navy)] m-0 truncate">{d.nombre}</p>
                         <p className="text-[10.5px] text-[var(--gray-400)] m-0">Subido el {formatoFechaCorta(d.fecha)}</p>
                       </div>
+                      <span onClick={() => window.open(d.archivo, "_blank")} className="text-[var(--gray-400)] cursor-pointer shrink-0" title="Previsualizar">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></svg>
+                      </span>
                       <span onClick={() => descargarArchivo(d.archivo, d.nombre.endsWith(".pdf") ? d.nombre : `${d.nombre}.pdf`)} className="text-[var(--navy)] cursor-pointer shrink-0" title="Descargar">
                         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
                       </span>
@@ -372,6 +436,7 @@ export default function DetalleExpedientePage() {
                   ))}
                 </div>
               )}
+              <div className="mt-2 pt-1 border-t border-[var(--gray-100)]">{bloqueCamposExtra("documentos")}</div>
             </Seccion>
 
             {/* Notas adicionales */}

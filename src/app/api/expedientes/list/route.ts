@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
 
     const result = await pool.query(
       soloTms
-        ? `SELECT id, nombre, puesto, categoria, cuenta, rfc, curp, tipo_personal, fotografia FROM expedientes WHERE cuenta = 'TMS' ORDER BY nombre ASC`
-        : `SELECT id, nombre, puesto, categoria, cuenta, rfc, curp, tipo_personal, fotografia FROM expedientes ORDER BY nombre ASC`
+        ? `SELECT id, nombre, puesto, categoria, cuenta, rfc, curp, tipo_personal, estatus, asistencia, fotografia FROM expedientes WHERE cuenta = 'TMS' ORDER BY nombre ASC`
+        : `SELECT id, nombre, puesto, categoria, cuenta, rfc, curp, tipo_personal, estatus, asistencia, fotografia FROM expedientes ORDER BY nombre ASC`
     );
     return NextResponse.json({ ok: true, registros: result.rows });
   } catch (err: any) {

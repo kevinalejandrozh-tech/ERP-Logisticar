@@ -127,6 +127,7 @@ await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_asiste
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_puntualidad TEXT;`);
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_combustible TEXT;`);
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS indicador_incidencias TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS tipo_personal TEXT;`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,

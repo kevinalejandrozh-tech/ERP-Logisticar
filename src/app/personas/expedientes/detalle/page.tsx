@@ -100,6 +100,18 @@ export default function DetalleExpedientePage() {
     cargar();
   }, []);
 
+  const cambiarTipoPersonal = async (tipo: "administrativo" | "operador") => {
+    if (!registro) return;
+    setRegistro({ ...registro, tipo_personal: tipo });
+    try {
+      const res = await fetch("/api/expedientes/tipo-personal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id, tipo_personal: tipo }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      alert("No se pudo actualizar el tipo de personal.");
+      cargar();
+    }
+  };
+
   const eliminar = async () => {
     if (!registro || !confirm(`¿Eliminar el expediente de ${registro.nombre}? Esta acción no se puede deshacer.`)) return;
     try {
@@ -202,7 +214,21 @@ export default function DetalleExpedientePage() {
                 )}
                 <div className="flex-1 min-w-[200px]">
                   <h2 className="text-[21px] font-bold text-[var(--navy)] m-0 mb-1 uppercase leading-tight">{registro.nombre}</h2>
-                  <p className="text-[12.5px] text-[var(--gray-400)] m-0 mb-3">Fecha de ingreso: {formatoFechaLarga(registro.fecha_ingreso)}</p>
+                  <p className="text-[12.5px] text-[var(--gray-400)] m-0 mb-2.5">Fecha de ingreso: {formatoFechaLarga(registro.fecha_ingreso)}</p>
+                  <div className="flex items-center gap-2.5 mb-3 flex-wrap">
+                    <select
+                      value={registro.tipo_personal || "operador"}
+                      onChange={(e) => cambiarTipoPersonal(e.target.value as "administrativo" | "operador")}
+                      disabled={esSoloConsulta}
+                      className="border border-[var(--gray-200)] rounded-lg px-3 py-1.5 text-[12px] font-bold text-[var(--navy)] bg-white disabled:opacity-60"
+                    >
+                      <option value="operador">Operador</option>
+                      <option value="administrativo">Administrativo</option>
+                    </select>
+                    {registro.tipo_personal === "administrativo" && registro.puesto && (
+                      <span className="text-[12.5px] font-semibold text-[var(--blue)]">{registro.puesto}</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2">
                     {!esSoloConsulta && (
                       <>
@@ -231,24 +257,26 @@ export default function DetalleExpedientePage() {
             </Seccion>
 
             {/* Licencia y operación */}
-            <Seccion
-              icono={<IconoSeccion path={<><circle cx="12" cy="12" r="9" /><path d="M12 3v6M12 15v6M3 12h6M15 12h6" /></>} />}
-              titulo="Licencia y operación"
-            >
-              <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
-                <div className="pl-0 pr-4">{campoBox("Tipo de licencia", registro.tipo_licencia)}</div>
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Categoría", registro.categoria)}</div>
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Puesto", registro.puesto)}</div>
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Unidad que maneja", registro.unidad_maneja)}</div>
-              </div>
-            </Seccion>
+            {registro.tipo_personal !== "administrativo" && (
+              <Seccion
+                icono={<IconoSeccion path={<><circle cx="12" cy="12" r="9" /><path d="M12 3v6M12 15v6M3 12h6M15 12h6" /></>} />}
+                titulo="Licencia y operación"
+              >
+                <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
+                  <div className="pl-0 pr-4">{campoBox("Tipo de licencia", registro.tipo_licencia)}</div>
+                  <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Categoría", registro.categoria)}</div>
+                  <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Puesto", registro.puesto)}</div>
+                  <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Unidad que maneja", registro.unidad_maneja)}</div>
+                </div>
+              </Seccion>
+            )}
 
             {/* Información laboral */}
             <Seccion icono={<IconoSeccion path={<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></>} />} titulo="Información laboral">
               <div className="border border-[var(--gray-200)] rounded-xl p-4 flex flex-wrap">
-                <div className="pl-0 pr-4">{campoBox("Cuenta", registro.cuenta)}</div>
-                {!esSoloConsulta && <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Sueldo ofertado", registro.sueldo_ofertado)}</div>}
-                <div className="pl-4 border-l border-[var(--gray-200)]">{campoBox("Radio asignado", registro.radio_asignado)}</div>
+                {registro.tipo_personal !== "administrativo" && <div className="pl-0 pr-4">{campoBox("Cuenta", registro.cuenta)}</div>}
+                {!esSoloConsulta && <div className="pl-4 border-l border-[var(--gray-200)] first:border-l-0 first:pl-0">{campoBox("Sueldo ofertado", registro.sueldo_ofertado)}</div>}
+                <div className="pl-4 border-l border-[var(--gray-200)] first:border-l-0 first:pl-0">{campoBox("Radio asignado", registro.radio_asignado)}</div>
               </div>
             </Seccion>
 
@@ -384,7 +412,7 @@ export default function DetalleExpedientePage() {
 
       {editando && registro && (
         <ExpedienteFormModal
-          inicial={{ ...registro, fecha_ingreso: registro.fecha_ingreso ? registro.fecha_ingreso.slice(0, 10) : "" }}
+          inicial={{ ...registro, fecha_ingreso: registro.fecha_ingreso ? registro.fecha_ingreso.slice(0, 10) : "", tipo_personal: registro.tipo_personal || "operador" }}
           onCancelar={() => setEditando(false)}
           onGuardado={() => {
             setEditando(false);

@@ -25,6 +25,7 @@ export type ExpedienteData = {
   indicador_puntualidad: string;
   indicador_combustible: string;
   indicador_incidencias: string;
+  tipo_personal: string;
 };
 
 export const EXPEDIENTE_VACIO: ExpedienteData = {
@@ -47,6 +48,7 @@ export const EXPEDIENTE_VACIO: ExpedienteData = {
   indicador_puntualidad: "",
   indicador_combustible: "",
   indicador_incidencias: "",
+  tipo_personal: "operador",
 };
 
 const OPCIONES_UNIDAD = ["1.5 a 3.5 TON", "TOR / RAB"];
@@ -147,7 +149,16 @@ export default function ExpedienteFormModal({
               )}
             </div>
           </label>
-          <div className="flex-1">{campoTexto("nombre", "Nombre completo")}</div>
+          <div className="flex-1">
+            {campoTexto("nombre", "Nombre completo")}
+            <div className="mt-3">
+              <label className="block text-[12px] font-bold text-[var(--navy)] mb-1.5">Tipo de personal</label>
+              <select value={datos.tipo_personal} onChange={(e) => set("tipo_personal", e.target.value)} className="w-full sm:w-[220px] border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]">
+                <option value="operador">Operador</option>
+                <option value="administrativo">Administrativo</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         <p className="text-[11px] font-bold text-[var(--blue)] uppercase tracking-wide mb-2.5">Datos personales</p>

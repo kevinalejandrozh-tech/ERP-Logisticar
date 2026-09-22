@@ -24,6 +24,7 @@ const CAMPOS_TEXTO = [
   "indicador_puntualidad",
   "indicador_combustible",
   "indicador_incidencias",
+  "tipo_personal",
 ] as const;
 const CAMPOS_JSON = ["documentos", "notas", "cursos"] as const;
 

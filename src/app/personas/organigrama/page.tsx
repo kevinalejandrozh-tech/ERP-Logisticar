@@ -196,8 +196,8 @@ export default function OrganigramaPage() {
         <PageHeader
           titulo="Organigrama"
           subtitulo="Arrastra para acomodar recuadros, textos y líneas. Los cambios se guardan automáticamente."
-          backHref="/personas"
-          backLabel="Personas"
+          backHref="/personas/expedientes"
+          backLabel="Expedientes"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="9" y="3" width="6" height="4" rx="1" /><rect x="2" y="14" width="6" height="4" rx="1" /><rect x="16" y="14" width="6" height="4" rx="1" /><path d="M12 7v4M12 11H5v3M12 11h7v3" /></svg>}
         />
 

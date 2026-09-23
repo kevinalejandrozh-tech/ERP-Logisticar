@@ -23,6 +23,7 @@ const PREFIJOS_PERMITIDOS_SUPERVISOR = [
   "/", // solo la página exacta "/", no cubre subrutas (ver comprobación abajo)
   "/unidades",
   "/personas/expedientes",
+  "/personas/organigrama",
   "/api/unidades",
   "/api/expedientes",
   "/api/capacitaciones/ultimas-por-nombre",
@@ -32,6 +33,7 @@ const PREFIJOS_PERMITIDOS_SUPERVISOR = [
   "/api/asistencia-diaria",
   "/api/cuadro-basico",
   "/api/areas-personal",
+  "/api/organigrama",
 ];
 
 function rutaPermitidaParaSupervisor(pathname: string): boolean {

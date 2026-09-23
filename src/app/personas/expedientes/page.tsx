@@ -178,6 +178,10 @@ export default function ExpedientesPage() {
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M9 15l2 2 4-4" /></svg>
               Asistencia diaria
             </Link>
+            <Link href="/personas/organigrama" className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold no-underline">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><rect x="9" y="3" width="6" height="4" rx="1" /><rect x="2" y="14" width="6" height="4" rx="1" /><rect x="16" y="14" width="6" height="4" rx="1" /><path d="M12 7v4M12 11H5v3M12 11h7v3" /></svg>
+              Organigrama
+            </Link>
             <div className="relative flex-1 min-w-[200px]">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.2" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
                 <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />

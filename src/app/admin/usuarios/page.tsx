@@ -59,7 +59,7 @@ export default function GestionUsuariosPage() {
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
-      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 pt-6 pb-16">
+      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10 pb-16">
         <PageHeader
           titulo="Gestión de usuarios"
           subtitulo="Cuentas con acceso al sistema, roles y permisos."

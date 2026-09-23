@@ -23,13 +23,6 @@ type ExpedienteResumen = {
   motivo_baja: string | null;
   fotografia: string | null;
 };
-type UltimaEvaluacion = { capacitacion: string; aciertos: number; fecha: string };
-
-declare global {
-  interface Window {
-    QRious: any;
-  }
-}
 function cargarQRiousLib(): Promise<void> {
   return new Promise((resolve, reject) => {
     if (window.QRious) {
@@ -44,24 +37,18 @@ function cargarQRiousLib(): Promise<void> {
   });
 }
 
-function colorAciertos(aciertos: number): string {
-  if (aciertos >= 80) return "text-[var(--green)] bg-[rgba(33,168,102,0.12)]";
-  if (aciertos >= 60) return "text-[var(--amber)] bg-[rgba(242,177,52,0.14)]";
-  return "text-[var(--red)] bg-[rgba(226,65,44,0.12)]";
-}
-
 export default function ExpedientesPage() {
   const router = useRouter();
   const [registros, setRegistros] = useState<ExpedienteResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [qrExpediente, setQrExpediente] = useState<ExpedienteResumen | null>(null);
-  const [ultimasEvaluaciones, setUltimasEvaluaciones] = useState<Record<string, UltimaEvaluacion>>({});
   const [busqueda, setBusqueda] = useState("");
   const [filtroAbierto, setFiltroAbierto] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "administrativo" | "operador">("todos");
   const [filtroCuenta, setFiltroCuenta] = useState<"todas" | "TMS" | "KN">("todas");
   const [filtroEstatus, setFiltroEstatus] = useState<"todos" | "activo" | "baja">("todos");
+  const [agruparPor, setAgruparPor] = useState<"ninguno" | "puesto" | "area" | "categoria">("ninguno");
   const [bajaExpediente, setBajaExpediente] = useState<ExpedienteResumen | null>(null);
   const [motivoBaja, setMotivoBaja] = useState("");
   const [guardandoBaja, setGuardandoBaja] = useState(false);
@@ -85,6 +72,21 @@ export default function ExpedientesPage() {
   });
 
   const totalActivos = registros.filter((r) => (r.estatus_laboral || "Activo") !== "Baja").length;
+
+  const etiquetaCategoria = (r: ExpedienteResumen) => (r.tipo_personal === "administrativo" ? "Administrativo" : "Operador");
+  const grupos: { etiqueta: string; items: ExpedienteResumen[] }[] = (() => {
+    if (agruparPor === "ninguno") return [{ etiqueta: "", items: registrosFiltrados }];
+    const obtenerClave = agruparPor === "puesto" ? (r: ExpedienteResumen) => r.puesto : agruparPor === "area" ? (r: ExpedienteResumen) => r.area : etiquetaCategoria;
+    const mapa = new Map<string, ExpedienteResumen[]>();
+    registrosFiltrados.forEach((r) => {
+      const clave = obtenerClave(r)?.trim() || "Sin asignar";
+      if (!mapa.has(clave)) mapa.set(clave, []);
+      mapa.get(clave)!.push(r);
+    });
+    return Array.from(mapa.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([etiqueta, items]) => ({ etiqueta, items }));
+  })();
   const porcentajeCumplimiento = totalCuadroBasico > 0 ? Math.round((totalActivos / totalCuadroBasico) * 100) : 0;
 
   const cargar = async () => {
@@ -107,10 +109,6 @@ export default function ExpedientesPage() {
   useEffect(() => {
     cargar();
     cargarCuadroBasico();
-    fetch("/api/capacitaciones/ultimas-por-nombre", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setUltimasEvaluaciones(d.porNombre || {}))
-      .catch(() => {});
   }, []);
   useRefrescarAlEnfocar(cargar);
 
@@ -192,6 +190,16 @@ export default function ExpedientesPage() {
                 className="w-full border border-[var(--gray-200)] rounded-lg pl-9 pr-3 py-2.5 text-[13px]"
               />
             </div>
+            <select
+              value={agruparPor}
+              onChange={(e) => setAgruparPor(e.target.value as any)}
+              className={`border rounded-lg px-3.5 py-2.5 text-[13px] font-bold bg-white ${agruparPor !== "ninguno" ? "border-[var(--blue)] text-[var(--blue)]" : "border-[var(--gray-200)] text-[var(--navy)]"}`}
+            >
+              <option value="ninguno">Sin agrupar</option>
+              <option value="puesto">Agrupar por Puesto</option>
+              <option value="area">Agrupar por Área</option>
+              <option value="categoria">Agrupar por Categoría</option>
+            </select>
             <div className="relative">
               <button
                 type="button"
@@ -260,77 +268,67 @@ export default function ExpedientesPage() {
           )}
 
           {!cargando && registrosFiltrados.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-              {registrosFiltrados.map((r) => {
-                const evaluacion = ultimasEvaluaciones[r.nombre.trim().toLowerCase()];
-                const esBaja = (r.estatus_laboral || "Activo") === "Baja";
-                return (
-                  <div key={r.id} className={`relative bg-white border rounded-2xl p-4 hover:border-[var(--blue)] transition-colors ${esBaja ? "border-[var(--red)]/30 opacity-70" : "border-[var(--gray-200)]"}`}>
-                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
-                      {!esBaja && (
-                        <span
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setBajaExpediente(r);
-                            setMotivoBaja("");
-                          }}
-                          title="Dar de baja"
-                          className="w-7 h-7 rounded-lg bg-[var(--gray-100)] hover:bg-[rgba(226,65,44,0.12)] flex items-center justify-center cursor-pointer"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
-                        </span>
-                      )}
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setQrExpediente(r);
-                        }}
-                        title="Ver código QR"
-                        className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
-                          <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
-                          <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
-                        </svg>
-                      </span>
+            <div className="flex flex-col gap-6">
+              {grupos.map((grupo) => (
+                <div key={grupo.etiqueta || "todos"}>
+                  {agruparPor !== "ninguno" && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <h3 className="text-[13px] font-bold text-[var(--navy)] uppercase tracking-wide m-0">{grupo.etiqueta}</h3>
+                      <span className="text-[11px] font-bold text-[var(--gray-400)] bg-[var(--gray-100)] rounded-full px-2 py-0.5">{grupo.items.length}</span>
                     </div>
-                    {esBaja && <span className="absolute top-2.5 left-2.5 text-[9px] font-bold uppercase tracking-wide text-white bg-[var(--red)] rounded-full px-2 py-0.5 z-10">Baja</span>}
-                    <button type="button" onClick={() => router.push(`/personas/expedientes/detalle?id=${r.id}`)} className={`w-full text-left flex gap-3 ${esBaja ? "mt-4" : ""}`}>
-                      {r.fotografia ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={r.fotografia} alt={r.nombre} className="w-14 h-14 rounded-xl object-cover shrink-0 border border-[var(--gray-200)]" />
-                      ) : (
-                        <div className="w-14 h-14 rounded-xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                    {grupo.items.map((r) => {
+                      const esBaja = (r.estatus_laboral || "Activo") === "Baja";
+                      return (
+                        <div key={r.id} className={`relative bg-white border rounded-2xl p-3.5 hover:border-[var(--blue)] transition-colors ${esBaja ? "border-[var(--red)]/30 opacity-70" : "border-[var(--gray-200)]"}`}>
+                          <div className="flex items-center gap-3">
+                            <button type="button" onClick={() => router.push(`/personas/expedientes/detalle?id=${r.id}`)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
+                              {r.fotografia ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img src={r.fotografia} alt={r.nombre} className="w-12 h-12 rounded-xl object-cover shrink-0 border border-[var(--gray-200)]" />
+                              ) : (
+                                <div className="w-12 h-12 rounded-xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 leading-tight truncate">{r.nombre}</p>
+                                {r.puesto && <p className="text-[11px] font-semibold text-[var(--blue)] m-0 truncate">{r.puesto}</p>}
+                                {esBaja && <span className="inline-block mt-0.5 text-[8.5px] font-bold uppercase tracking-wide text-white bg-[var(--red)] rounded-full px-1.5 py-0.5">Baja</span>}
+                              </div>
+                            </button>
+                            <div className="flex flex-col items-center gap-1.5 shrink-0">
+                              <span
+                                onClick={() => setQrExpediente(r)}
+                                title="Ver código QR"
+                                className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer"
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                                  <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                                  <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
+                                </svg>
+                              </span>
+                              {!esBaja && (
+                                <span
+                                  onClick={() => {
+                                    setBajaExpediente(r);
+                                    setMotivoBaja("");
+                                  }}
+                                  title="Dar de baja"
+                                  className="w-7 h-7 rounded-lg bg-[var(--gray-100)] hover:bg-[rgba(226,65,44,0.12)] flex items-center justify-center cursor-pointer"
+                                >
+                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                      <div className="flex-1 min-w-0 pr-5">
-                        <p className="text-[13px] font-bold text-[var(--navy)] m-0 leading-tight truncate">{r.nombre}</p>
-                        {r.puesto && <p className="text-[11px] text-[var(--gray-400)] m-0 mb-1.5 truncate">{r.puesto}</p>}
-                        <p className="text-[10.5px] text-[var(--text)] m-0 leading-[1.6]">
-                          No. Empleado: <span className="font-semibold">{String(r.id).padStart(6, "0")}</span>
-                        </p>
-                        {r.curp && (
-                          <p className="text-[10.5px] text-[var(--text)] m-0 leading-[1.6] truncate">
-                            CURP: <span className="font-semibold">{r.curp}</span>
-                          </p>
-                        )}
-                        {r.rfc && (
-                          <p className="text-[10.5px] text-[var(--text)] m-0 leading-[1.6] truncate">
-                            RFC: <span className="font-semibold">{r.rfc}</span>
-                          </p>
-                        )}
-                        {esBaja && r.motivo_baja && <p className="text-[10px] text-[var(--red)] m-0 mt-1 truncate">Motivo: {r.motivo_baja}</p>}
-                        {!esBaja && evaluacion && (
-                          <span className={`inline-block mt-1.5 text-[9.5px] font-bold rounded-full px-2 py-0.5 ${colorAciertos(evaluacion.aciertos)}`} title={`Última evaluación: ${evaluacion.capacitacion}`}>
-                            {Math.round(evaluacion.aciertos)}% · {evaluacion.capacitacion}
-                          </span>
-                        )}
-                      </div>
-                    </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
           )}
         </div>

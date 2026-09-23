@@ -59,6 +59,19 @@ datos JSONB NOT NULL,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE unidades ADD COLUMN IF NOT EXISTS imagen TEXT;`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS unidades_revisiones (
+id SERIAL PRIMARY KEY,
+eco TEXT NOT NULL,
+fecha TIMESTAMPTZ NOT NULL DEFAULT now(),
+resultados JSONB NOT NULL DEFAULT '{}'::jsonb,
+observaciones TEXT,
+realizado_por TEXT,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`CREATE INDEX IF NOT EXISTS idx_unidades_revisiones_eco_fecha ON unidades_revisiones (eco, fecha DESC);`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS mochilas (
 id SERIAL PRIMARY KEY,

@@ -48,7 +48,7 @@ export default function ExpedientesPage() {
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "administrativo" | "operador">("todos");
   const [filtroCuenta, setFiltroCuenta] = useState<"todas" | "TMS" | "KN">("todas");
   const [filtroEstatus, setFiltroEstatus] = useState<"todos" | "activo" | "baja">("todos");
-  const [agruparPor, setAgruparPor] = useState<"ninguno" | "puesto" | "area" | "categoria">("ninguno");
+  const [agruparPor, setAgruparPor] = useState<"ninguno" | "puesto" | "area" | "categoria">("area");
   const [bajaExpediente, setBajaExpediente] = useState<ExpedienteResumen | null>(null);
   const [motivoBaja, setMotivoBaja] = useState("");
   const [guardandoBaja, setGuardandoBaja] = useState(false);

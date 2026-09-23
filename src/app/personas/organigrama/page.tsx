@@ -10,22 +10,48 @@ const CANVAS_H = 1400;
 type Caja = { id: string; x: number; y: number; w: number; h: number; texto: string; color: string };
 type Texto = { id: string; x: number; y: number; texto: string };
 type Linea = { id: string; x1: number; y1: number; x2: number; y2: number };
-type Datos = { cajas: Caja[]; textos: Texto[]; lineas: Linea[] };
+type PersonaOrg = { id: string; x: number; y: number; expedienteId: number; nombre: string; puesto: string | null; fotografia: string | null };
+type Datos = { cajas: Caja[]; textos: Texto[]; lineas: Linea[]; personas: PersonaOrg[] };
+type ExpedienteResumen = { id: number; nombre: string; puesto: string | null; fotografia: string | null };
 
 function nuevoId() {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+declare global {
+  interface Window {
+    QRious: any;
+  }
+}
+function cargarQRiousLib(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.QRious) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
+    document.body.appendChild(script);
+  });
+}
+
 type Arrastre =
   | { tipo: "caja"; id: string; offsetX: number; offsetY: number }
   | { tipo: "texto"; id: string; offsetX: number; offsetY: number }
+  | { tipo: "persona"; id: string; offsetX: number; offsetY: number }
   | { tipo: "resize"; id: string; startX: number; startY: number; startW: number; startH: number }
   | { tipo: "lineaInicio" | "lineaFin"; id: string };
 
 export default function OrganigramaPage() {
-  const [datos, setDatos] = useState<Datos>({ cajas: [], textos: [], lineas: [] });
+  const [datos, setDatos] = useState<Datos>({ cajas: [], textos: [], lineas: [], personas: [] });
   const [cargando, setCargando] = useState(true);
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [insertarAbierto, setInsertarAbierto] = useState(false);
+  const [expedientes, setExpedientes] = useState<ExpedienteResumen[]>([]);
+  const [busquedaInsertar, setBusquedaInsertar] = useState("");
+  const [qrPersona, setQrPersona] = useState<PersonaOrg | null>(null);
   const arrastreRef = useRef<Arrastre | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -33,7 +59,7 @@ export default function OrganigramaPage() {
     fetch("/api/organigrama", { cache: "no-store" })
       .then((res) => res.json())
       .then((data) => {
-        if (data.ok) setDatos({ cajas: data.datos.cajas || [], textos: data.datos.textos || [], lineas: data.datos.lineas || [] });
+        if (data.ok) setDatos({ cajas: data.datos.cajas || [], textos: data.datos.textos || [], lineas: data.datos.lineas || [], personas: data.datos.personas || [] });
       })
       .finally(() => setCargando(false));
   }, []);
@@ -66,6 +92,33 @@ export default function OrganigramaPage() {
     const nueva: Linea = { id: nuevoId(), x1: 150, y1: 350, x2: 380, y2: 350 };
     actualizar((prev) => ({ ...prev, lineas: [...prev.lineas, nueva] }));
   };
+  const abrirInsertar = () => {
+    setInsertarAbierto(true);
+    if (expedientes.length === 0) {
+      fetch("/api/expedientes/list", { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => setExpedientes(d.registros || []))
+        .catch(() => {});
+    }
+  };
+  const insertarPersona = (e: ExpedienteResumen) => {
+    const nueva: PersonaOrg = { id: nuevoId(), x: 140, y: 140, expedienteId: e.id, nombre: e.nombre, puesto: e.puesto, fotografia: e.fotografia };
+    actualizar((prev) => ({ ...prev, personas: [...prev.personas, nueva] }));
+    setInsertarAbierto(false);
+  };
+  const eliminarPersona = (id: string) => actualizar((prev) => ({ ...prev, personas: prev.personas.filter((p) => p.id !== id) }));
+
+  useEffect(() => {
+    if (!qrPersona) return;
+    cargarQRiousLib()
+      .then(() => {
+        const canvas = document.getElementById("qr-organigrama-modal") as HTMLCanvasElement | null;
+        if (canvas) {
+          new window.QRious({ element: canvas, value: `${window.location.origin}/personas/expedientes/detalle?id=${qrPersona.expedienteId}`, size: 190, level: "M" });
+        }
+      })
+      .catch(() => {});
+  }, [qrPersona]);
   const eliminarCaja = (id: string) => actualizar((prev) => ({ ...prev, cajas: prev.cajas.filter((c) => c.id !== id) }));
   const eliminarTexto = (id: string) => actualizar((prev) => ({ ...prev, textos: prev.textos.filter((t) => t.id !== id) }));
   const eliminarLinea = (id: string) => actualizar((prev) => ({ ...prev, lineas: prev.lineas.filter((l) => l.id !== id) }));
@@ -89,6 +142,10 @@ export default function OrganigramaPage() {
     (e.target as Element).setPointerCapture(e.pointerId);
     arrastreRef.current = { tipo: "texto", id: t.id, offsetX: e.clientX - t.x, offsetY: e.clientY - t.y };
   };
+  const iniciarPersona = (e: React.PointerEvent, p: PersonaOrg) => {
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    arrastreRef.current = { tipo: "persona", id: p.id, offsetX: e.clientX - p.x, offsetY: e.clientY - p.y };
+  };
   const iniciarPuntoLinea = (e: React.PointerEvent, id: string, punto: "lineaInicio" | "lineaFin") => {
     e.stopPropagation();
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -108,6 +165,10 @@ export default function OrganigramaPage() {
       const x = Math.max(0, e.clientX - a.offsetX);
       const y = Math.max(0, e.clientY - a.offsetY);
       setDatos((prev) => ({ ...prev, textos: prev.textos.map((t) => (t.id === a.id ? { ...t, x, y } : t)) }));
+    } else if (a.tipo === "persona") {
+      const x = Math.max(0, e.clientX - a.offsetX);
+      const y = Math.max(0, e.clientY - a.offsetY);
+      setDatos((prev) => ({ ...prev, personas: prev.personas.map((p) => (p.id === a.id ? { ...p, x, y } : p)) }));
     } else if (a.tipo === "resize") {
       const w = Math.max(80, a.startW + (e.clientX - a.startX));
       const h = Math.max(44, a.startH + (e.clientY - a.startY));
@@ -141,6 +202,10 @@ export default function OrganigramaPage() {
         />
 
         <div className="flex flex-wrap gap-2.5 mb-4">
+          <button type="button" onClick={abrirInsertar} className="flex items-center gap-1.5 bg-[var(--blue)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="9" cy="7" r="4" /><path d="M2 21v-2a4 4 0 014-4h6a4 4 0 014 4v2" /><path d="M19 8v6M22 11h-6" /></svg>
+            Insertar
+          </button>
           <button type="button" onClick={agregarCaja} className="flex items-center gap-1.5 bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="5" width="18" height="14" rx="2" /></svg>
             + Recuadro
@@ -153,7 +218,7 @@ export default function OrganigramaPage() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M5 19L19 5" /></svg>
             + Línea
           </button>
-          <span className="text-[11px] text-[var(--gray-400)] self-center ml-2">Doble clic en un recuadro/texto para editarlo · arrastra la esquina inferior derecha del recuadro para cambiar su tamaño</span>
+          <span className="text-[11px] text-[var(--gray-400)] self-center ml-2">Doble clic en un recuadro/texto para editarlo · arrastra la esquina inferior derecha del recuadro para cambiar su tamaño · pasa el cursor sobre una línea para mover sus extremos</span>
         </div>
 
         <div className="bg-white rounded-[18px] shadow-[0_1px_3px_rgba(22,33,92,0.06)] overflow-auto" style={{ maxHeight: "75vh" }}>
@@ -182,17 +247,19 @@ export default function OrganigramaPage() {
                 <div key={l.id}>
                   <div
                     onPointerDown={(e) => iniciarPuntoLinea(e, l.id, "lineaInicio")}
-                    className="absolute w-3.5 h-3.5 rounded-full bg-[var(--navy)] border-2 border-white cursor-grab shadow"
-                    style={{ left: l.x1 - 7, top: l.y1 - 7 }}
+                    className="absolute w-4 h-4 rounded-full bg-[var(--navy)] border-2 border-white cursor-grab shadow opacity-0 hover:opacity-70 transition-opacity"
+                    style={{ left: l.x1 - 8, top: l.y1 - 8 }}
+                    title="Arrastra para mover el inicio de la línea"
                   />
                   <div
                     onPointerDown={(e) => iniciarPuntoLinea(e, l.id, "lineaFin")}
-                    className="absolute w-3.5 h-3.5 rounded-full bg-[var(--navy)] border-2 border-white cursor-grab shadow"
-                    style={{ left: l.x2 - 7, top: l.y2 - 7 }}
+                    className="absolute w-4 h-4 rounded-full bg-[var(--navy)] border-2 border-white cursor-grab shadow opacity-0 hover:opacity-70 transition-opacity"
+                    style={{ left: l.x2 - 8, top: l.y2 - 8 }}
+                    title="Arrastra para mover el final de la línea"
                   />
                   <span
                     onClick={() => eliminarLinea(l.id)}
-                    className="absolute text-[var(--red)] cursor-pointer bg-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow"
+                    className="absolute text-[var(--gray-400)] hover:text-[var(--red)] cursor-pointer bg-white rounded-full w-4 h-4 items-center justify-center text-[10px] shadow flex opacity-50 hover:opacity-100 transition-opacity"
                     style={{ left: (l.x1 + l.x2) / 2 - 8, top: (l.y1 + l.y2) / 2 - 8 }}
                     title="Eliminar línea"
                   >
@@ -276,10 +343,112 @@ export default function OrganigramaPage() {
                   />
                 </div>
               ))}
+
+              {datos.personas.map((p) => (
+                <div
+                  key={p.id}
+                  onPointerDown={(e) => iniciarPersona(e, p)}
+                  className="absolute bg-white border border-[var(--gray-200)] rounded-2xl p-3 shadow-md cursor-grab group"
+                  style={{ left: p.x, top: p.y, width: 230 }}
+                >
+                  <div className="flex items-center gap-3">
+                    {p.fotografia ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={p.fotografia} alt={p.nombre} className="w-12 h-12 rounded-xl object-cover shrink-0 border border-[var(--gray-200)]" draggable={false} />
+                    ) : (
+                      <div className="w-12 h-12 rounded-xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 leading-tight truncate">{p.nombre}</p>
+                      {p.puesto && <p className="text-[11px] font-semibold text-[var(--blue)] m-0 truncate">{p.puesto}</p>}
+                    </div>
+                    <div className="flex flex-col items-center gap-1.5 shrink-0">
+                      <span
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => setQrPersona(p)}
+                        title="Ver código QR"
+                        className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                          <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                          <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
+                        </svg>
+                      </span>
+                      <span
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onClick={() => eliminarPersona(p.id)}
+                        title="Quitar del organigrama"
+                        className="w-7 h-7 rounded-lg bg-[var(--gray-100)] hover:bg-[rgba(226,65,44,0.12)] flex items-center justify-center cursor-pointer"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
       </div>
+
+      {insertarAbierto && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setInsertarAbierto(false)}>
+          <div className="bg-white rounded-2xl w-[420px] max-w-full max-h-[80vh] flex flex-col shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-[var(--gray-200)]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[15px] font-bold text-[var(--navy)] m-0">Insertar del expediente</h3>
+                <span onClick={() => setInsertarAbierto(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">✕</span>
+              </div>
+              <input
+                type="text"
+                autoFocus
+                value={busquedaInsertar}
+                onChange={(e) => setBusquedaInsertar(e.target.value)}
+                placeholder="Buscar por nombre o puesto..."
+                className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13px]"
+              />
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {expedientes.length === 0 && <p className="text-[12.5px] text-[var(--gray-400)] text-center py-6">Cargando expedientes...</p>}
+              {expedientes
+                .filter((e) => !busquedaInsertar.trim() || e.nombre.toLowerCase().includes(busquedaInsertar.trim().toLowerCase()) || (e.puesto || "").toLowerCase().includes(busquedaInsertar.trim().toLowerCase()))
+                .map((e) => (
+                  <button key={e.id} type="button" onClick={() => insertarPersona(e)} className="w-full text-left px-2.5 py-2.5 rounded-lg hover:bg-[var(--gray-100)] flex items-center gap-3">
+                    {e.fotografia ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={e.fotografia} alt={e.nombre} className="w-9 h-9 rounded-lg object-cover shrink-0 border border-[var(--gray-200)]" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 truncate">{e.nombre}</p>
+                      {e.puesto && <p className="text-[10.5px] text-[var(--gray-400)] m-0 truncate">{e.puesto}</p>}
+                    </div>
+                  </button>
+                ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {qrPersona && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setQrPersona(null)}>
+          <div className="bg-white rounded-2xl p-6 text-center shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[13.5px] font-bold text-[var(--navy)] mb-1">{qrPersona.nombre}</p>
+            <p className="text-[11.5px] text-[var(--gray-400)] mb-4">Escanea para consultar el expediente</p>
+            <div className="w-[210px] h-[210px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-4 p-2.5">
+              <canvas id="qr-organigrama-modal" />
+            </div>
+            <button type="button" onClick={() => setQrPersona(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -310,7 +310,7 @@ export default function DetalleExpedientePage() {
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
-      <div className="max-w-[840px] mx-auto px-4 sm:px-6 md:px-10 pt-6 md:pt-10">
+      <div className="max-w-[1100px] mx-auto px-4 sm:px-6 md:px-10 pt-6 md:pt-10">
         <PageHeader
           titulo="Expediente"
           subtitulo="Consulta, descarga o edita la información del colaborador."

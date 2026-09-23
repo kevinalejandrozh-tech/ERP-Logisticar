@@ -7,7 +7,7 @@ const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 export default function ControlViajesPage() {
   return (
     <div className="min-h-screen bg-[#eef1f6]">
-      <div className="max-w-[1200px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
         <PageHeader
           titulo="Control de Viajes"
           subtitulo="Administra los gastos, viáticos y documentos relacionados con los viajes."

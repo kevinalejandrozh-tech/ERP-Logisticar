@@ -348,30 +348,30 @@ export default function OrganigramaPage() {
                 <div
                   key={p.id}
                   onPointerDown={(e) => iniciarPersona(e, p)}
-                  className="absolute bg-white border border-[var(--gray-200)] rounded-2xl p-3 shadow-md cursor-grab group"
-                  style={{ left: p.x, top: p.y, width: 230 }}
+                  className="absolute bg-white border border-[var(--gray-200)] rounded-xl p-2 shadow-md cursor-grab group"
+                  style={{ left: p.x, top: p.y, width: 300 }}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2.5">
                     {p.fotografia ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={p.fotografia} alt={p.nombre} className="w-12 h-12 rounded-xl object-cover shrink-0 border border-[var(--gray-200)]" draggable={false} />
+                      <img src={p.fotografia} alt={p.nombre} className="w-10 h-10 rounded-lg object-cover shrink-0 border border-[var(--gray-200)]" draggable={false} />
                     ) : (
-                      <div className="w-12 h-12 rounded-xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
+                      <div className="w-10 h-10 rounded-lg bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 leading-tight truncate">{p.nombre}</p>
                       {p.puesto && <p className="text-[11px] font-semibold text-[var(--blue)] m-0 truncate">{p.puesto}</p>}
                     </div>
-                    <div className="flex flex-col items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       <span
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={() => setQrPersona(p)}
                         title="Ver código QR"
-                        className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer"
+                        className="w-[26px] h-[26px] rounded-md bg-[var(--gray-100)] flex items-center justify-center cursor-pointer"
                       >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
                           <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
                           <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
                         </svg>
@@ -380,9 +380,9 @@ export default function OrganigramaPage() {
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={() => eliminarPersona(p.id)}
                         title="Quitar del organigrama"
-                        className="w-7 h-7 rounded-lg bg-[var(--gray-100)] hover:bg-[rgba(226,65,44,0.12)] flex items-center justify-center cursor-pointer"
+                        className="w-[26px] h-[26px] rounded-md bg-[var(--gray-100)] hover:bg-[rgba(226,65,44,0.12)] flex items-center justify-center cursor-pointer"
                       >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
                       </span>
                     </div>
                   </div>
@@ -412,7 +412,11 @@ export default function OrganigramaPage() {
             </div>
             <div className="flex-1 overflow-y-auto p-2">
               {expedientes.length === 0 && <p className="text-[12.5px] text-[var(--gray-400)] text-center py-6">Cargando expedientes...</p>}
+              {expedientes.length > 0 && expedientes.filter((e) => !datos.personas.some((p) => p.expedienteId === e.id)).length === 0 && (
+                <p className="text-[12.5px] text-[var(--gray-400)] text-center py-6">Ya insertaste a todo el personal en el lienzo.</p>
+              )}
               {expedientes
+                .filter((e) => !datos.personas.some((p) => p.expedienteId === e.id))
                 .filter((e) => !busquedaInsertar.trim() || e.nombre.toLowerCase().includes(busquedaInsertar.trim().toLowerCase()) || (e.puesto || "").toLowerCase().includes(busquedaInsertar.trim().toLowerCase()))
                 .map((e) => (
                   <button key={e.id} type="button" onClick={() => insertarPersona(e)} className="w-full text-left px-2.5 py-2.5 rounded-lg hover:bg-[var(--gray-100)] flex items-center gap-3">

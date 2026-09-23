@@ -1,9 +1,11 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import ExpedienteFormModal from "@/components/ExpedienteFormModal";
+import CuadroBasicoModal from "@/components/CuadroBasicoModal";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
@@ -16,6 +18,9 @@ type ExpedienteResumen = {
   rfc: string | null;
   curp: string | null;
   tipo_personal: string | null;
+  area: string | null;
+  estatus_laboral: string | null;
+  motivo_baja: string | null;
   fotografia: string | null;
 };
 type UltimaEvaluacion = { capacitacion: string; aciertos: number; fecha: string };
@@ -56,9 +61,19 @@ export default function ExpedientesPage() {
   const [filtroAbierto, setFiltroAbierto] = useState(false);
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "administrativo" | "operador">("todos");
   const [filtroCuenta, setFiltroCuenta] = useState<"todas" | "TMS" | "KN">("todas");
+  const [filtroEstatus, setFiltroEstatus] = useState<"todos" | "activo" | "baja">("todos");
+  const [bajaExpediente, setBajaExpediente] = useState<ExpedienteResumen | null>(null);
+  const [motivoBaja, setMotivoBaja] = useState("");
+  const [guardandoBaja, setGuardandoBaja] = useState(false);
+  const [cuadroBasicoAbierto, setCuadroBasicoAbierto] = useState(false);
+  const [totalCuadroBasico, setTotalCuadroBasico] = useState(0);
 
-  const filtrosActivos = filtroTipo !== "todos" || filtroCuenta !== "todas";
+  const filtrosActivos = filtroTipo !== "todos" || filtroCuenta !== "todas" || filtroEstatus !== "todos";
   const registrosFiltrados = registros.filter((r) => {
+    const esBaja = (r.estatus_laboral || "Activo") === "Baja";
+    if (filtroEstatus === "activo" && esBaja) return false;
+    if (filtroEstatus === "baja" && !esBaja) return false;
+    if (filtroEstatus === "todos" && esBaja && !busqueda.trim()) return false; // ocultas por defecto salvo búsqueda explícita
     if (filtroTipo !== "todos" && (r.tipo_personal || "operador") !== filtroTipo) return false;
     if (filtroCuenta !== "todas" && r.cuenta !== filtroCuenta) return false;
     if (busqueda.trim()) {
@@ -69,9 +84,12 @@ export default function ExpedientesPage() {
     return true;
   });
 
+  const totalActivos = registros.filter((r) => (r.estatus_laboral || "Activo") !== "Baja").length;
+  const porcentajeCumplimiento = totalCuadroBasico > 0 ? Math.round((totalActivos / totalCuadroBasico) * 100) : 0;
+
   const cargar = async () => {
     try {
-      const res = await fetch("/api/expedientes/list", { cache: "no-store" });
+      const res = await fetch("/api/expedientes/list?incluirBaja=true", { cache: "no-store" });
       const data = await res.json();
       setRegistros(data.registros || []);
     } catch {
@@ -80,8 +98,15 @@ export default function ExpedientesPage() {
       setCargando(false);
     }
   };
+  const cargarCuadroBasico = () => {
+    fetch("/api/cuadro-basico", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setTotalCuadroBasico((d.filas || []).length))
+      .catch(() => {});
+  };
   useEffect(() => {
     cargar();
+    cargarCuadroBasico();
     fetch("/api/capacitaciones/ultimas-por-nombre", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setUltimasEvaluaciones(d.porNombre || {}))
@@ -101,6 +126,22 @@ export default function ExpedientesPage() {
       .catch(() => {});
   }, [qrExpediente]);
 
+  const confirmarBaja = async () => {
+    if (!bajaExpediente || !motivoBaja.trim()) return;
+    setGuardandoBaja(true);
+    try {
+      const res = await fetch("/api/expedientes/baja", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: bajaExpediente.id, motivo_baja: motivoBaja.trim() }) });
+      if (!res.ok) throw new Error();
+      setRegistros((prev) => prev.map((r) => (r.id === bajaExpediente.id ? { ...r, estatus_laboral: "Baja", motivo_baja: motivoBaja.trim() } : r)));
+      setBajaExpediente(null);
+      setMotivoBaja("");
+    } catch {
+      alert("No se pudo dar de baja.");
+    } finally {
+      setGuardandoBaja(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#eef1f6]">
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
@@ -112,12 +153,33 @@ export default function ExpedientesPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
         />
 
+        <div className="flex flex-wrap items-center gap-3 mb-5">
+          <div className="bg-white border border-[var(--gray-200)] rounded-xl px-4 py-2.5 flex items-center gap-4">
+            <div className="text-center">
+              <p className="text-[17px] font-bold text-[var(--navy)] m-0 leading-none">{totalActivos}</p>
+              <p className="text-[9px] text-[var(--gray-400)] uppercase tracking-wide m-0 mt-0.5">Laborando</p>
+            </div>
+            <div className="w-px h-8 bg-[var(--gray-200)]" />
+            <div className="text-center">
+              <p className={`text-[17px] font-bold m-0 leading-none ${porcentajeCumplimiento >= 90 ? "text-[var(--green)]" : porcentajeCumplimiento >= 70 ? "text-[var(--amber)]" : "text-[var(--red)]"}`}>{porcentajeCumplimiento}%</p>
+              <p className="text-[9px] text-[var(--gray-400)] uppercase tracking-wide m-0 mt-0.5">Cumpl. cuadro básico</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setCuadroBasicoAbierto(true)} className="text-[12px] font-bold text-[var(--blue)] underline decoration-dotted">
+            Cuadro Básico
+          </button>
+        </div>
+
         <div className="bg-white rounded-[18px] p-4 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="flex flex-wrap items-center gap-2.5 mb-5">
             <button type="button" onClick={() => setModalAbierto(true)} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
               Agregar / editar registro
             </button>
+            <Link href="/personas/expedientes/asistencia" className="flex items-center gap-2 bg-[var(--green)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold no-underline">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M9 15l2 2 4-4" /></svg>
+              Asistencia diaria
+            </Link>
             <div className="relative flex-1 min-w-[200px]">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.2" className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
                 <circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" />
@@ -145,6 +207,14 @@ export default function ExpedientesPage() {
                   <div onClick={() => setFiltroAbierto(false)} className="fixed inset-0 z-40" />
                   <div className="absolute right-0 top-11 bg-white border border-[var(--gray-200)] rounded-xl shadow-lg w-[220px] z-50 p-4 flex flex-col gap-3.5">
                     <div>
+                      <label className="block text-[10.5px] font-bold text-[var(--navy)] uppercase tracking-wide mb-1.5">Estatus</label>
+                      <select value={filtroEstatus} onChange={(e) => setFiltroEstatus(e.target.value as any)} className="w-full border border-[var(--gray-200)] rounded-lg px-2.5 py-2 text-[12.5px] bg-white">
+                        <option value="todos">Todos</option>
+                        <option value="activo">Activo</option>
+                        <option value="baja">Baja</option>
+                      </select>
+                    </div>
+                    <div>
                       <label className="block text-[10.5px] font-bold text-[var(--navy)] uppercase tracking-wide mb-1.5">Tipo de personal</label>
                       <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value as any)} className="w-full border border-[var(--gray-200)] rounded-lg px-2.5 py-2 text-[12.5px] bg-white">
                         <option value="todos">Todos</option>
@@ -166,6 +236,7 @@ export default function ExpedientesPage() {
                         onClick={() => {
                           setFiltroTipo("todos");
                           setFiltroCuenta("todas");
+                          setFiltroEstatus("todos");
                         }}
                         className="text-[11.5px] font-bold text-[var(--red)] text-left"
                       >
@@ -192,27 +263,44 @@ export default function ExpedientesPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {registrosFiltrados.map((r) => {
                 const evaluacion = ultimasEvaluaciones[r.nombre.trim().toLowerCase()];
+                const esBaja = (r.estatus_laboral || "Activo") === "Baja";
                 return (
-                  <div key={r.id} className="relative bg-white border border-[var(--gray-200)] rounded-2xl p-4 hover:border-[var(--blue)] transition-colors">
-                    <span
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setQrExpediente(r);
-                      }}
-                      title="Ver código QR"
-                      className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer z-10"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
-                        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
-                        <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
-                      </svg>
-                    </span>
-                    <button type="button" onClick={() => router.push(`/personas/expedientes/detalle?id=${r.id}`)} className="w-full text-left flex gap-3">
+                  <div key={r.id} className={`relative bg-white border rounded-2xl p-4 hover:border-[var(--blue)] transition-colors ${esBaja ? "border-[var(--red)]/30 opacity-70" : "border-[var(--gray-200)]"}`}>
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 z-10">
+                      {!esBaja && (
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setBajaExpediente(r);
+                            setMotivoBaja("");
+                          }}
+                          title="Dar de baja"
+                          className="w-7 h-7 rounded-lg bg-[var(--gray-100)] hover:bg-[rgba(226,65,44,0.12)] flex items-center justify-center cursor-pointer"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#e2412c" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                        </span>
+                      )}
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setQrExpediente(r);
+                        }}
+                        title="Ver código QR"
+                        className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                          <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                          <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
+                        </svg>
+                      </span>
+                    </div>
+                    {esBaja && <span className="absolute top-2.5 left-2.5 text-[9px] font-bold uppercase tracking-wide text-white bg-[var(--red)] rounded-full px-2 py-0.5 z-10">Baja</span>}
+                    <button type="button" onClick={() => router.push(`/personas/expedientes/detalle?id=${r.id}`)} className={`w-full text-left flex gap-3 ${esBaja ? "mt-4" : ""}`}>
                       {r.fotografia ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={r.fotografia} alt={r.nombre} className="w-14 h-14 rounded-full object-cover shrink-0 border border-[var(--gray-200)]" />
+                        <img src={r.fotografia} alt={r.nombre} className="w-14 h-14 rounded-xl object-cover shrink-0 border border-[var(--gray-200)]" />
                       ) : (
-                        <div className="w-14 h-14 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                        <div className="w-14 h-14 rounded-xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
                           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
                         </div>
                       )}
@@ -232,7 +320,8 @@ export default function ExpedientesPage() {
                             RFC: <span className="font-semibold">{r.rfc}</span>
                           </p>
                         )}
-                        {evaluacion && (
+                        {esBaja && r.motivo_baja && <p className="text-[10px] text-[var(--red)] m-0 mt-1 truncate">Motivo: {r.motivo_baja}</p>}
+                        {!esBaja && evaluacion && (
                           <span className={`inline-block mt-1.5 text-[9.5px] font-bold rounded-full px-2 py-0.5 ${colorAciertos(evaluacion.aciertos)}`} title={`Última evaluación: ${evaluacion.capacitacion}`}>
                             {Math.round(evaluacion.aciertos)}% · {evaluacion.capacitacion}
                           </span>
@@ -270,6 +359,41 @@ export default function ExpedientesPage() {
             </button>
           </div>
         </div>
+      )}
+
+      {bajaExpediente && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setBajaExpediente(null)}>
+          <div className="bg-white rounded-2xl p-6 w-[400px] max-w-full shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-bold text-[var(--navy)] mb-1">Dar de baja</h3>
+            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">{bajaExpediente.nombre}</p>
+            <label className="block text-[11.5px] font-bold text-[var(--navy)] mb-1.5">Motivo de baja</label>
+            <textarea
+              value={motivoBaja}
+              onChange={(e) => setMotivoBaja(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder="Escribe el motivo..."
+              className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13px] mb-4 resize-none"
+            />
+            <div className="flex gap-2.5 justify-end">
+              <button type="button" onClick={() => setBajaExpediente(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cancelar
+              </button>
+              <button type="button" onClick={confirmarBaja} disabled={!motivoBaja.trim() || guardandoBaja} className="bg-[var(--red)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                {guardandoBaja ? "Guardando..." : "Dar de baja"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cuadroBasicoAbierto && (
+        <CuadroBasicoModal
+          onCerrar={() => {
+            setCuadroBasicoAbierto(false);
+            cargarCuadroBasico();
+          }}
+        />
       )}
     </div>
   );

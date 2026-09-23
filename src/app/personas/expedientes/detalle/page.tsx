@@ -9,6 +9,8 @@ const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 type Documento = { nombre: string; archivo: string; fecha: string };
 type Nota = { texto: string; fecha: string };
 type CampoExtra = { label: string; valor: string };
+type CursoAsignado = { capacitacion_id: number; titulo: string };
+type CapacitacionCatalogo = { id: number; titulo: string };
 
 type ExpedienteCompleto = ExpedienteData & {
   id: number;
@@ -16,6 +18,7 @@ type ExpedienteCompleto = ExpedienteData & {
   documentos: Documento[];
   notas: Nota[];
   campos_extra: Record<string, CampoExtra[]>;
+  cursos_asignados: CursoAsignado[];
 };
 
 function formatoFechaLarga(iso: string | null) {
@@ -23,6 +26,14 @@ function formatoFechaLarga(iso: string | null) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
+}
+function calcularDiasLaborando(iso: string | null): number | null {
+  if (!iso) return null;
+  const inicio = new Date(iso);
+  if (isNaN(inicio.getTime())) return null;
+  const hoy = new Date();
+  const dias = Math.floor((hoy.getTime() - inicio.getTime()) / 86400000);
+  return dias >= 0 ? dias : null;
 }
 function formatoFechaCorta(iso: string) {
   const d = new Date(iso);
@@ -80,6 +91,10 @@ export default function DetalleExpedientePage() {
   const [error, setError] = useState("");
   const [editando, setEditando] = useState(false);
   const [subiendoDocumento, setSubiendoDocumento] = useState(false);
+  const [areas, setAreas] = useState<string[]>([]);
+  const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
+  const [evaluacionesPersona, setEvaluacionesPersona] = useState<Record<string, { aciertos: number; fecha: string }>>({});
+  const [asignarCursoAbierto, setAsignarCursoAbierto] = useState(false);
 
   const cargar = () => {
     const id = new URLSearchParams(window.location.search).get("id");
@@ -92,13 +107,26 @@ export default function DetalleExpedientePage() {
       .then((r) => r.json())
       .then((data) => {
         if (!data.ok) throw new Error(data.error || "No se encontró el expediente.");
-        setRegistro({ ...data.registro, documentos: data.registro.documentos || [], notas: data.registro.notas || [], cursos: data.registro.cursos || [], campos_extra: data.registro.campos_extra || {} });
+        const reg = { ...data.registro, documentos: data.registro.documentos || [], notas: data.registro.notas || [], cursos: data.registro.cursos || [], campos_extra: data.registro.campos_extra || {}, cursos_asignados: data.registro.cursos_asignados || [] };
+        setRegistro(reg);
+        fetch(`/api/capacitaciones/por-persona?nombre=${encodeURIComponent(reg.nombre)}`, { cache: "no-store" })
+          .then((r) => r.json())
+          .then((d) => setEvaluacionesPersona(d.porCapacitacion || {}))
+          .catch(() => {});
       })
       .catch((err) => setError(err.message || "No se encontró el expediente."))
       .finally(() => setCargando(false));
   };
   useEffect(() => {
     cargar();
+    fetch("/api/areas-personal", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setAreas(d.areas || []))
+      .catch(() => {});
+    fetch("/api/capacitaciones/catalogo/list", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setCatalogo((d.registros || []).map((c: any) => ({ id: c.id, titulo: c.titulo }))))
+      .catch(() => {});
   }, []);
 
   const cambiarTipoPersonal = async (tipo: "administrativo" | "operador") => {
@@ -109,6 +137,44 @@ export default function DetalleExpedientePage() {
       if (!res.ok) throw new Error();
     } catch {
       alert("No se pudo actualizar el tipo de personal.");
+      cargar();
+    }
+  };
+
+  const cambiarArea = async (area: string) => {
+    if (!registro) return;
+    setRegistro({ ...registro, area });
+    try {
+      const res = await fetch("/api/expedientes/area", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id, area }) });
+      if (!res.ok) throw new Error();
+    } catch {
+      alert("No se pudo actualizar el área.");
+      cargar();
+    }
+  };
+
+  const asignarCurso = async (capacitacion: CapacitacionCatalogo) => {
+    if (!registro) return;
+    if (registro.cursos_asignados.some((c) => c.capacitacion_id === capacitacion.id)) {
+      setAsignarCursoAbierto(false);
+      return;
+    }
+    const nuevos = [...registro.cursos_asignados, { capacitacion_id: capacitacion.id, titulo: capacitacion.titulo }];
+    setRegistro({ ...registro, cursos_asignados: nuevos });
+    setAsignarCursoAbierto(false);
+    try {
+      await fetch("/api/expedientes/cursos-asignados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id, cursos_asignados: nuevos }) });
+    } catch {
+      cargar();
+    }
+  };
+  const quitarCursoAsignado = async (idx: number) => {
+    if (!registro) return;
+    const nuevos = registro.cursos_asignados.filter((_, i) => i !== idx);
+    setRegistro({ ...registro, cursos_asignados: nuevos });
+    try {
+      await fetch("/api/expedientes/cursos-asignados", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id, cursos_asignados: nuevos }) });
+    } catch {
       cargar();
     }
   };
@@ -240,6 +306,8 @@ export default function DetalleExpedientePage() {
     );
   };
 
+  const diasLaborando = registro ? calcularDiasLaborando(registro.fecha_ingreso) : null;
+
   return (
     <div className="min-h-screen bg-[#eef1f6]">
       <div className="max-w-[840px] mx-auto px-4 sm:px-6 md:px-10 pt-6 md:pt-10">
@@ -261,15 +329,19 @@ export default function DetalleExpedientePage() {
               <div className="flex items-start gap-4 flex-wrap">
                 {registro.fotografia ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={registro.fotografia} alt={registro.nombre} className="w-[92px] h-[92px] rounded-full object-cover border border-[var(--gray-200)] shrink-0" />
+                  <img src={registro.fotografia} alt={registro.nombre} className="w-[92px] h-[92px] rounded-2xl object-cover border border-[var(--gray-200)] shrink-0" />
                 ) : (
-                  <div className="w-[92px] h-[92px] rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+                  <div className="w-[92px] h-[92px] rounded-2xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
                     <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>
                   </div>
                 )}
                 <div className="flex-1 min-w-[200px]">
-                  <h2 className="text-[21px] font-bold text-[var(--navy)] m-0 mb-1 uppercase leading-tight">{registro.nombre}</h2>
-                  <p className="text-[12.5px] text-[var(--gray-400)] m-0 mb-2.5">Fecha de ingreso: {formatoFechaLarga(registro.fecha_ingreso)}</p>
+                  <h2 className="text-[21px] font-bold text-[var(--navy)] m-0 mb-0.5 uppercase leading-tight">{registro.nombre}</h2>
+                  {registro.puesto && <p className="text-[13px] font-semibold text-[var(--blue)] m-0 mb-1.5">{registro.puesto}</p>}
+                  <p className="text-[12.5px] text-[var(--gray-400)] m-0 mb-3">
+                    Fecha de ingreso: {formatoFechaLarga(registro.fecha_ingreso)}
+                    {diasLaborando !== null && <span className="font-semibold text-[var(--navy)]"> · {diasLaborando} día{diasLaborando === 1 ? "" : "s"} laborando</span>}
+                  </p>
                   <div className="flex items-center gap-2.5 mb-3 flex-wrap">
                     <select
                       value={registro.tipo_personal || "operador"}
@@ -280,9 +352,19 @@ export default function DetalleExpedientePage() {
                       <option value="operador">Operador</option>
                       <option value="administrativo">Administrativo</option>
                     </select>
-                    {registro.tipo_personal === "administrativo" && registro.puesto && (
-                      <span className="text-[12.5px] font-semibold text-[var(--blue)]">{registro.puesto}</span>
-                    )}
+                    <select
+                      value={registro.area || ""}
+                      onChange={(e) => cambiarArea(e.target.value)}
+                      disabled={esSoloConsulta}
+                      className="border border-[var(--gray-200)] rounded-lg px-3 py-1.5 text-[12px] font-semibold text-[var(--navy)] bg-white disabled:opacity-60"
+                    >
+                      <option value="">Sin área</option>
+                      {areas.map((a) => (
+                        <option key={a} value={a}>
+                          {a}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="flex items-center gap-2">
                     {!esSoloConsulta && (
@@ -302,15 +384,26 @@ export default function DetalleExpedientePage() {
               </div>
             </div>
 
-            {/* Datos personales */}
-            <Seccion icono={<IconoSeccion path={<><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></>} />} titulo="Datos personales">
-              <div className="border border-[var(--gray-200)] rounded-xl px-4">
-                {filaCampo("RFC", registro.rfc)}
-                {filaCampo("CURP", registro.curp)}
-                {filaCampo("NSS", registro.nss)}
-                {bloqueCamposExtra("datos_personales")}
-              </div>
-            </Seccion>
+            {/* Datos personales + Información laboral, en la misma línea */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Seccion icono={<IconoSeccion path={<><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></>} />} titulo="Datos personales">
+                <div className="border border-[var(--gray-200)] rounded-xl px-4">
+                  {filaCampo("RFC", registro.rfc)}
+                  {filaCampo("CURP", registro.curp)}
+                  {filaCampo("NSS", registro.nss)}
+                  {bloqueCamposExtra("datos_personales")}
+                </div>
+              </Seccion>
+
+              <Seccion icono={<IconoSeccion path={<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></>} />} titulo="Información laboral">
+                <div className="border border-[var(--gray-200)] rounded-xl px-4">
+                  {registro.tipo_personal !== "administrativo" && filaCampo("Cuenta", registro.cuenta)}
+                  {!esSoloConsulta && filaCampo("Sueldo ofertado", registro.sueldo_ofertado)}
+                  {filaCampo("Radio asignado", registro.radio_asignado)}
+                  {bloqueCamposExtra("informacion_laboral")}
+                </div>
+              </Seccion>
+            </div>
 
             {/* Licencia y operación */}
             {registro.tipo_personal !== "administrativo" && (
@@ -328,47 +421,79 @@ export default function DetalleExpedientePage() {
               </Seccion>
             )}
 
-            {/* Información laboral */}
-            <Seccion icono={<IconoSeccion path={<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></>} />} titulo="Información laboral">
-              <div className="border border-[var(--gray-200)] rounded-xl px-4">
-                {registro.tipo_personal !== "administrativo" && filaCampo("Cuenta", registro.cuenta)}
-                {!esSoloConsulta && filaCampo("Sueldo ofertado", registro.sueldo_ofertado)}
-                {filaCampo("Radio asignado", registro.radio_asignado)}
-                {bloqueCamposExtra("informacion_laboral")}
-              </div>
-            </Seccion>
-
             {/* Cursos */}
             <Seccion
               icono={<IconoSeccion path={<><path d="M22 10L12 5 2 10l10 5 10-5z" /><path d="M6 12v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5" /></>} />}
               titulo="Cursos"
               subtitulo="Cursos de capacitación del colaborador."
+              accion={
+                !esSoloConsulta && (
+                  <button type="button" onClick={() => setAsignarCursoAbierto(true)} className="flex items-center gap-1.5 bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-3.5 py-2 text-[12.5px] font-bold shrink-0">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+                    Asignar curso
+                  </button>
+                )
+              }
             >
-              {registro.cursos.length === 0 ? (
+              {registro.cursos_asignados.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                  {registro.cursos_asignados.map((c, i) => {
+                    const evalua = evaluacionesPersona[c.titulo];
+                    return (
+                      <div key={i} className="relative border border-[var(--gray-200)] rounded-xl p-3.5 text-center">
+                        {!esSoloConsulta && (
+                          <span onClick={() => quitarCursoAsignado(i)} className="absolute top-2 right-2 text-[var(--gray-400)] hover:text-[var(--red)] cursor-pointer">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M18 6L6 18M6 6l12 12" /></svg>
+                          </span>
+                        )}
+                        <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-1.5">{c.titulo}</p>
+                        {evalua ? (
+                          <>
+                            <p className={`text-[22px] font-bold m-0 mb-2.5 ${evalua.aciertos >= 80 ? "text-[var(--green)]" : evalua.aciertos >= 60 ? "text-[var(--amber)]" : "text-[var(--red)]"}`}>{Math.round(evalua.aciertos)}%</p>
+                            <span className="inline-block w-full rounded-lg py-2 text-[12px] font-bold border border-[var(--gray-200)] text-[var(--gray-400)]">Evaluación completada</span>
+                          </>
+                        ) : (
+                          <a
+                            href={`/personas/capacitaciones/tomar?id=${c.capacitacion_id}&nombre=${encodeURIComponent(registro.nombre)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-block w-full rounded-lg py-2 text-[12px] font-bold no-underline bg-[var(--blue)] text-white"
+                          >
+                            Iniciar Evaluación
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {registro.cursos.length === 0 && registro.cursos_asignados.length === 0 ? (
                 <p className="text-[12.5px] text-[var(--gray-400)] m-0">Sin cursos registrados.</p>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {registro.cursos.map((c: Curso, i: number) => (
-                    <div key={i} className="border border-[var(--gray-200)] rounded-xl p-3.5 text-center">
-                      <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-1.5">{c.nombre}</p>
-                      <p className="text-[22px] font-bold text-[var(--navy)] m-0 mb-2.5">{c.resultado || "—"}</p>
-                      {c.enlace ? (
-                        <a
-                          href={c.enlace}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`inline-block w-full rounded-lg py-2 text-[12px] font-bold no-underline ${
-                            /no iniciad/i.test(c.resultado) ? "bg-[var(--blue)] text-white" : "border border-[var(--blue)] text-[var(--blue)]"
-                          }`}
-                        >
-                          {/no iniciad/i.test(c.resultado) ? "Iniciar curso" : "Ver resultados"}
-                        </a>
-                      ) : (
-                        <span className="inline-block w-full rounded-lg py-2 text-[12px] font-bold border border-[var(--gray-200)] text-[var(--gray-400)]">Sin enlace</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                registro.cursos.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {registro.cursos.map((c: Curso, i: number) => (
+                      <div key={i} className="border border-[var(--gray-200)] rounded-xl p-3.5 text-center">
+                        <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-1.5">{c.nombre}</p>
+                        <p className="text-[22px] font-bold text-[var(--navy)] m-0 mb-2.5">{c.resultado || "—"}</p>
+                        {c.enlace ? (
+                          <a
+                            href={c.enlace}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`inline-block w-full rounded-lg py-2 text-[12px] font-bold no-underline ${
+                              /no iniciad/i.test(c.resultado) ? "bg-[var(--blue)] text-white" : "border border-[var(--blue)] text-[var(--blue)]"
+                            }`}
+                          >
+                            {/no iniciad/i.test(c.resultado) ? "Iniciar curso" : "Ver resultados"}
+                          </a>
+                        ) : (
+                          <span className="inline-block w-full rounded-lg py-2 text-[12px] font-bold border border-[var(--gray-200)] text-[var(--gray-400)]">Sin enlace</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
               )}
               <div className="mt-2 pt-1 border-t border-[var(--gray-100)]">{bloqueCamposExtra("cursos")}</div>
             </Seccion>
@@ -475,7 +600,7 @@ export default function DetalleExpedientePage() {
 
       {editando && registro && (
         <ExpedienteFormModal
-          inicial={{ ...registro, fecha_ingreso: registro.fecha_ingreso ? registro.fecha_ingreso.slice(0, 10) : "", tipo_personal: registro.tipo_personal || "operador" }}
+          inicial={{ ...registro, fecha_ingreso: registro.fecha_ingreso ? registro.fecha_ingreso.slice(0, 10) : "", tipo_personal: registro.tipo_personal || "operador", area: registro.area || "" }}
           onCancelar={() => setEditando(false)}
           onGuardado={() => {
             setEditando(false);
@@ -483,6 +608,35 @@ export default function DetalleExpedientePage() {
             cargar();
           }}
         />
+      )}
+
+      {asignarCursoAbierto && registro && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setAsignarCursoAbierto(false)}>
+          <div className="bg-white rounded-2xl w-[420px] max-w-full max-h-[80vh] flex flex-col shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--gray-200)]">
+              <h3 className="text-[15px] font-bold text-[var(--navy)] m-0">Asignar curso</h3>
+              <span onClick={() => setAsignarCursoAbierto(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">✕</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {catalogo.length === 0 && <p className="text-[12.5px] text-[var(--gray-400)] text-center py-6">No hay capacitaciones en el catálogo.</p>}
+              {catalogo.map((c) => {
+                const yaAsignado = registro.cursos_asignados.some((a) => a.capacitacion_id === c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => asignarCurso(c)}
+                    disabled={yaAsignado}
+                    className="w-full text-left px-3.5 py-3 rounded-lg text-[13px] font-semibold text-[var(--navy)] hover:bg-[var(--gray-100)] disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-between gap-2"
+                  >
+                    {c.titulo}
+                    {yaAsignado && <span className="text-[10px] font-bold text-[var(--gray-400)] uppercase shrink-0">Asignado</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

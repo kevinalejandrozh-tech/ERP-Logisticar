@@ -58,7 +58,12 @@ export default function TomarCapacitacionPage() {
   useEffect(() => {
     fetch("/api/expedientes/list", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d) => setNombresExpedientes((d.registros || []).map((e: { nombre: string }) => e.nombre).sort()))
+      .then((d) => {
+        const nombres = (d.registros || []).map((e: { nombre: string }) => e.nombre).sort();
+        setNombresExpedientes(nombres);
+        const nombreUrl = new URLSearchParams(window.location.search).get("nombre");
+        if (nombreUrl && nombres.includes(nombreUrl)) setNombre(nombreUrl);
+      })
       .catch(() => {});
   }, []);
 

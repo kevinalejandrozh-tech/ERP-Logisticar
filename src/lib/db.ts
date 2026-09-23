@@ -143,6 +143,49 @@ await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS tipo_personal TE
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS estatus TEXT NOT NULL DEFAULT 'Disponible';`);
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS asistencia BOOLEAN NOT NULL DEFAULT false;`);
 await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS campos_extra JSONB NOT NULL DEFAULT '{}'::jsonb;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS estatus_laboral TEXT NOT NULL DEFAULT 'Activo';`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS motivo_baja TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS fecha_baja TIMESTAMPTZ;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS area TEXT;`);
+await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS cursos_asignados JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS cuadro_basico (
+  id SERIAL PRIMARY KEY,
+  categoria TEXT,
+  puesto TEXT,
+  area TEXT,
+  jefe_directo TEXT,
+  subordinacion TEXT,
+  descripcion_puesto TEXT,
+  actividades_diarias TEXT,
+  orden INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+`);
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS areas_personal (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL UNIQUE
+);
+`);
+const areasExistentes = await p.query(`SELECT COUNT(*)::int AS n FROM areas_personal`);
+if (areasExistentes.rows[0].n === 0) {
+  const areasBase = ["Atención a Clientes", "Liquidaciones", "Recursos humanos", "Monitoreo", "Mantenimiento", "Compras", "Almacén", "Gerencia Operativa", "Operaciones"];
+  const valores = areasBase.map((_, i) => `($${i + 1})`).join(", ");
+  await p.query(`INSERT INTO areas_personal (nombre) VALUES ${valores} ON CONFLICT DO NOTHING`, areasBase);
+}
+
+await p.query(`
+CREATE TABLE IF NOT EXISTS asistencia_diaria (
+  id SERIAL PRIMARY KEY,
+  expediente_id INTEGER NOT NULL REFERENCES expedientes(id) ON DELETE CASCADE,
+  fecha DATE NOT NULL,
+  presente BOOLEAN NOT NULL DEFAULT false,
+  UNIQUE(expediente_id, fecha)
+);
+`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS ordenes_servicio (
 id SERIAL PRIMARY KEY,

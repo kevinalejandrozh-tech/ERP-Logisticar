@@ -26,7 +26,12 @@ const PREFIJOS_PERMITIDOS_SUPERVISOR = [
   "/api/unidades",
   "/api/expedientes",
   "/api/capacitaciones/ultimas-por-nombre",
+  "/api/capacitaciones/por-persona",
+  "/api/capacitaciones/catalogo/list",
   "/api/sistema/almacenamiento",
+  "/api/asistencia-diaria",
+  "/api/cuadro-basico",
+  "/api/areas-personal",
 ];
 
 function rutaPermitidaParaSupervisor(pathname: string): boolean {

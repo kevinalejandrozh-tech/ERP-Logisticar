@@ -6,18 +6,12 @@ import MenuCard from "@/components/MenuCard";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 const OPCIONES_EMPRESA = ["Logisticar", "Fleetlogis"];
-const OPCIONES_ESTATUS = ["En ruta", "Descanso viaje", "Disponible"];
-
-type PersonaResumen = { id: number; nombre: string; puesto: string | null; estatus: string; asistencia: boolean };
 
 export default function PersonasPage() {
   const [credencialAbierta, setCredencialAbierta] = useState(false);
   const [operadores, setOperadores] = useState<string[]>([]);
   const [cOperador, setCOperador] = useState("");
   const [cEmpresa, setCEmpresa] = useState(OPCIONES_EMPRESA[0]);
-  const [listaAbierta, setListaAbierta] = useState(false);
-  const [personas, setPersonas] = useState<PersonaResumen[]>([]);
-  const [cargandoLista, setCargandoLista] = useState(false);
 
   useEffect(() => {
     fetch("/api/operadores/list", { cache: "no-store" })
@@ -33,43 +27,6 @@ export default function PersonasPage() {
     setCEmpresa(OPCIONES_EMPRESA[0]);
     setCredencialAbierta(true);
   };
-
-  const abrirLista = () => {
-    setListaAbierta(true);
-    setCargandoLista(true);
-    fetch("/api/expedientes/list", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setPersonas((d.registros || []).map((p: any) => ({ id: p.id, nombre: p.nombre, puesto: p.puesto, estatus: p.estatus || "Disponible", asistencia: !!p.asistencia }))))
-      .catch(() => setPersonas([]))
-      .finally(() => setCargandoLista(false));
-  };
-
-  const cambiarEstatus = async (id: number, estatus: string) => {
-    const asistenciaCalculada = estatus === "Disponible" ? false : true;
-    setPersonas((prev) => prev.map((p) => (p.id === id ? { ...p, estatus, asistencia: asistenciaCalculada } : p)));
-    try {
-      const res = await fetch("/api/expedientes/asistencia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, estatus }) });
-      const data = await res.json();
-      if (!res.ok) throw new Error();
-      setPersonas((prev) => prev.map((p) => (p.id === id ? { ...p, asistencia: data.asistencia } : p)));
-    } catch {
-      alert("No se pudo actualizar el estatus.");
-      abrirLista();
-    }
-  };
-
-  const alternarAsistencia = async (id: number, valor: boolean) => {
-    setPersonas((prev) => prev.map((p) => (p.id === id ? { ...p, asistencia: valor } : p)));
-    try {
-      const res = await fetch("/api/expedientes/asistencia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id, asistencia: valor }) });
-      if (!res.ok) throw new Error();
-    } catch {
-      alert("No se pudo actualizar la asistencia.");
-      abrirLista();
-    }
-  };
-
-  const porcentajeAsistencia = personas.length > 0 ? Math.round((personas.filter((p) => p.asistencia).length / personas.length) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
@@ -100,20 +57,13 @@ export default function PersonasPage() {
           </Link>
         </div>
 
-        <div className="flex flex-wrap gap-2.5 md:gap-3 mb-5">
-          <button type="button" onClick={abrirLista} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M7 15l2 2 4-4" /></svg>
-            Lista de personas
-          </button>
-        </div>
-
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-5">
             <MenuCard
-              onClick={abrirLista}
+              href="/personas/expedientes/asistencia"
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M9 15l2 2 4-4" /></svg>}
-              titulo="Registrar asistencia"
-              descripcion="Registra entradas, salidas y asistencia del personal."
+              titulo="Asistencia diaria"
+              descripcion="Registra la asistencia diaria del personal."
             />
             <MenuCard
               href="/personas/mochilas-covid"
@@ -191,76 +141,6 @@ export default function PersonasPage() {
               </button>
               <button type="button" className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
                 Generar credencial
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {listaAbierta && (
-        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50" onClick={() => setListaAbierta(false)}>
-          <div className="bg-white rounded-2xl w-[640px] max-w-[94%] p-6 sm:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-[17px] font-bold text-[var(--navy)] m-0">Lista de personas</h3>
-              <span onClick={() => setListaAbierta(false)} className="text-[var(--gray-400)] cursor-pointer text-lg leading-none">✕</span>
-            </div>
-            <p className="text-[12px] text-[var(--gray-400)] mb-4">
-              &quot;En ruta&quot; y &quot;Descanso viaje&quot; cuentan asistencia automáticamente. Con &quot;Disponible&quot; puedes marcarla manualmente.
-            </p>
-
-            <div className="inline-flex items-center gap-2 bg-[var(--blue-light)] text-[var(--blue)] rounded-full px-4 py-1.5 text-[12.5px] font-bold mb-4">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
-              Asistencia: {porcentajeAsistencia}%
-            </div>
-
-            {cargandoLista && <p className="text-center text-[13px] text-[var(--gray-400)] py-8">Cargando...</p>}
-            {!cargandoLista && personas.length === 0 && <p className="text-center text-[13px] text-[var(--gray-400)] py-8">No hay personas registradas.</p>}
-
-            {!cargandoLista && personas.length > 0 && (
-              <div className="overflow-x-auto max-h-[50vh] overflow-y-auto">
-                <table className="w-full border-collapse min-w-[480px]">
-                  <thead>
-                    <tr>
-                      {["Nombre", "Puesto", "Estatus", "Asistencia"].map((h) => (
-                        <th key={h} className="sticky top-0 bg-white text-left text-[10.5px] uppercase tracking-wide text-[var(--gray-400)] px-2.5 py-2 border-b border-[var(--gray-200)]">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {personas.map((p) => (
-                      <tr key={p.id} className="border-b border-[var(--gray-100)] last:border-0">
-                        <td className="px-2.5 py-2.5 text-[12.5px] font-semibold text-[var(--navy)]">{p.nombre}</td>
-                        <td className="px-2.5 py-2.5 text-[12px] text-[var(--gray-400)]">{p.puesto || "—"}</td>
-                        <td className="px-2.5 py-2.5">
-                          <select value={p.estatus} onChange={(e) => cambiarEstatus(p.id, e.target.value)} className="border border-[var(--gray-200)] rounded-md px-2 py-1 text-[11.5px] bg-white">
-                            {OPCIONES_ESTATUS.map((op) => (
-                              <option key={op} value={op}>
-                                {op}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-2.5 py-2.5 text-center">
-                          <input
-                            type="checkbox"
-                            checked={p.asistencia}
-                            disabled={p.estatus !== "Disponible"}
-                            onChange={(e) => alternarAsistencia(p.id, e.target.checked)}
-                            className="w-4 h-4 accent-[var(--green)] disabled:opacity-50"
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <div className="flex justify-end mt-5">
-              <button type="button" onClick={() => setListaAbierta(false)} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
-                Cerrar
               </button>
             </div>
           </div>

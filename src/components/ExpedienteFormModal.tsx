@@ -17,6 +17,7 @@ export type ExpedienteData = {
   tipo_licencia: string;
   fecha_ingreso: string;
   cuenta: string;
+  area: string;
   sueldo_ofertado: string;
   radio_asignado: string;
   fotografia: string;
@@ -40,6 +41,7 @@ export const EXPEDIENTE_VACIO: ExpedienteData = {
   tipo_licencia: "",
   fecha_ingreso: "",
   cuenta: "",
+  area: "",
   sueldo_ofertado: "",
   radio_asignado: "",
   fotografia: "",

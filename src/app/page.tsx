@@ -144,6 +144,13 @@ icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><line x1="12" y1=
 titulo="Compras"
 descripcion="Accede al apartado para la gestión y seguimiento de compras."
 />
+
+<MenuCard
+href="/inventario"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
+titulo="Control de inventario"
+descripcion="Registra equipos y mobiliario de la empresa, genera su QR y consulta su información."
+/>
 </>
 )}
 

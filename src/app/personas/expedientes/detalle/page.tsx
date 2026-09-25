@@ -21,16 +21,23 @@ type ExpedienteCompleto = ExpedienteData & {
   cursos_asignados: CursoAsignado[];
 };
 
+// fecha_ingreso es una columna DATE (sin hora). El driver pg la entrega como medianoche en la zona
+// horaria del servidor (UTC en Vercel), y al leerla en el navegador (UTC-6) retrocedía un día.
+// Se toma solo la parte AAAA-MM-DD y se construye la fecha en hora local.
+function parsearFechaLocal(iso: string | null): Date | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+  return isNaN(d.getTime()) ? null : d;
+}
 function formatoFechaLarga(iso: string | null) {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
+  const d = parsearFechaLocal(iso);
+  if (!d) return "—";
   return d.toLocaleDateString("es-MX", { day: "2-digit", month: "long", year: "numeric" });
 }
 function calcularDiasLaborando(iso: string | null): number | null {
-  if (!iso) return null;
-  const inicio = new Date(iso);
-  if (isNaN(inicio.getTime())) return null;
+  const inicio = parsearFechaLocal(iso);
+  if (!inicio) return null;
   const hoy = new Date();
   const dias = Math.floor((hoy.getTime() - inicio.getTime()) / 86400000);
   return dias >= 0 ? dias : null;

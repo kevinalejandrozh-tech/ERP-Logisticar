@@ -147,7 +147,7 @@ export default function ExpedienteFormModal({
       <label className="block text-[12px] font-bold text-[var(--navy)] mb-1.5">{etiqueta}</label>
       <input
         type={tipo}
-        value={datos[campo] as string}
+        value={(datos[campo] as string) ?? ""}
         onChange={(e) => set(campo, e.target.value as any)}
         className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
       />

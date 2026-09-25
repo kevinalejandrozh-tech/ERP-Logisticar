@@ -9,6 +9,8 @@ const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
 export default function Home() {
 const sesion = useSesion();
 const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
+const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
+const rolEtiqueta = sesion.rol === "sysadmin" ? "Sysadmin" : sesion.rol === "supervisor_tms" ? "Supervisor TMS" : "";
 const cerrarSesion = async () => {
 await fetch("/api/auth/logout", { method: "POST" });
 window.location.href = "/login";
@@ -22,10 +24,30 @@ if (d.ok) setAlmacenamiento({ porcentaje: d.porcentaje, mbUsados: d.mbUsados, mb
 })
 .catch(() => {});
 }, []);
+// Menú lateral (celular): bloquea el scroll de fondo, cierra con Escape y al pasar a pantalla mediana o mayor
+useEffect(() => {
+if (!menuMovilAbierto) return;
+const overflowPrevio = document.body.style.overflow;
+document.body.style.overflow = "hidden";
+const alPresionarTecla = (e: KeyboardEvent) => {
+if (e.key === "Escape") setMenuMovilAbierto(false);
+};
+const mq = window.matchMedia("(min-width: 768px)");
+const alCambiarTamano = () => {
+if (mq.matches) setMenuMovilAbierto(false);
+};
+window.addEventListener("keydown", alPresionarTecla);
+mq.addEventListener("change", alCambiarTamano);
+return () => {
+document.body.style.overflow = overflowPrevio;
+window.removeEventListener("keydown", alPresionarTecla);
+mq.removeEventListener("change", alCambiarTamano);
+};
+}, [menuMovilAbierto]);
 return (
 <div className="min-h-screen bg-[#eef1f6]">
 <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
-<div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 md:mb-7">
+<div className="flex flex-row items-center justify-between gap-4 mb-6 md:mb-7">
 <div className="flex items-center gap-2.5 md:gap-3.5">
 <Logo size={38} />
 <div>
@@ -33,7 +55,17 @@ return (
 <p className="text-[11.5px] md:text-[13px] text-[var(--gray-400)] m-0">Transportes Logisticar</p>
 </div>
 </div>
-<div className="flex items-center gap-3 md:gap-5">
+<button
+type="button"
+onClick={() => setMenuMovilAbierto(true)}
+aria-label="Abrir menú"
+aria-expanded={menuMovilAbierto}
+aria-controls="menu-lateral-movil"
+className="md:hidden w-10 h-10 shrink-0 flex items-center justify-center bg-white border border-[var(--gray-200)] rounded-lg"
+>
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
+</button>
+<div className="hidden md:flex items-center gap-3 md:gap-5">
 <div className="hidden sm:flex items-center gap-2 bg-white border border-[var(--gray-200)] rounded-lg px-3.5 py-2.5 w-full sm:w-[200px] md:w-[260px] text-[var(--gray-400)] text-[13.5px]">
 <svg width="16" height="16" viewBox="0 0 24 24" {...sw} stroke="#9aa1b0"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
 Buscar...
@@ -83,6 +115,70 @@ Cerrar sesión
 <svg className="hidden sm:block shrink-0" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3 2 2 0 11-2.8-2.8 1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9 2 2 0 112.8-2.8 1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3 2 2 0 112.8 2.8 1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1h.1a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
 </div>
 </div>
+<div className={`md:hidden fixed inset-0 z-[10000] ${menuMovilAbierto ? "" : "pointer-events-none"}`} aria-hidden={!menuMovilAbierto}>
+<div onClick={() => setMenuMovilAbierto(false)} className={`absolute inset-0 bg-[rgba(22,33,92,0.45)] transition-opacity duration-200 ${menuMovilAbierto ? "opacity-100" : "opacity-0"}`} />
+<aside
+id="menu-lateral-movil"
+role="dialog"
+aria-modal="true"
+aria-label="Menú de usuario"
+className={`absolute right-0 top-0 h-full w-[85%] max-w-[320px] bg-white shadow-xl flex flex-col transition-transform duration-200 ${menuMovilAbierto ? "translate-x-0" : "translate-x-full"}`}
+>
+<div className="flex items-center justify-between px-4 py-3.5 border-b border-[var(--gray-200)]">
+<span className="font-display text-[15px] font-bold text-[var(--navy)]">Menú</span>
+<button type="button" onClick={() => setMenuMovilAbierto(false)} aria-label="Cerrar menú" className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--gray-100)]">
+<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2" strokeLinecap="round"><path d="M18 6L6 18M6 6l12 12" /></svg>
+</button>
+</div>
+<div className="flex-1 overflow-y-auto">
+<div className="flex items-center gap-3 px-4 py-4 border-b border-[var(--gray-200)]">
+<div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
+<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>
+</div>
+<div className="min-w-0 leading-tight">
+<p className="text-[14px] font-bold text-[var(--navy)] m-0 truncate">{sesion.nombre || "..."}</p>
+{rolEtiqueta && <p className="text-[11px] text-[var(--gray-400)] m-0 mt-0.5">{rolEtiqueta}</p>}
+{sesion.correo && <p className="text-[11.5px] text-[var(--gray-400)] m-0 mt-0.5 truncate">{sesion.correo}</p>}
+</div>
+</div>
+<div className="px-4 py-4 border-b border-[var(--gray-200)]">
+<div className="flex items-center gap-2 bg-white border border-[var(--gray-200)] rounded-lg px-3.5 py-2.5 text-[var(--gray-400)] text-[13.5px]">
+<svg width="16" height="16" viewBox="0 0 24 24" {...sw} stroke="#9aa1b0"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
+Buscar...
+</div>
+</div>
+{almacenamiento && (
+<div className="px-4 py-4 border-b border-[var(--gray-200)]">
+<div className="flex items-center justify-between mb-2">
+<div className="flex items-center gap-2">
+<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2"><path d="M20 16.58A5 5 0 0018 7h-1.26A8 8 0 104 15.25" /><path d="M12 12v9M9 18l3 3 3-3" /></svg>
+<span className="text-[12px] font-semibold text-[var(--navy)]">Almacenamiento en la nube</span>
+</div>
+<span className="text-[11px] font-bold text-[var(--gray-400)]">{almacenamiento.porcentaje.toFixed(0)}%</span>
+</div>
+<div className="w-full h-[6px] bg-[var(--gray-200)] rounded-full overflow-hidden">
+<div className="h-full rounded-full" style={{ width: `${Math.min(100, almacenamiento.porcentaje)}%`, backgroundColor: almacenamiento.porcentaje > 85 ? "var(--red)" : almacenamiento.porcentaje > 60 ? "var(--amber)" : "var(--blue)" }} />
+</div>
+<p className="text-[10.5px] text-[var(--gray-400)] m-0 mt-1.5">{`${almacenamiento.mbUsados.toFixed(1)} MB de ${almacenamiento.mbLimite.toFixed(0)} MB usados`}</p>
+</div>
+)}
+{sesion.rol === "sysadmin" && (
+<div className="py-2 border-b border-[var(--gray-200)]">
+<Link href="/admin/usuarios" onClick={() => setMenuMovilAbierto(false)} className="flex items-center gap-3 px-4 py-3 text-[13.5px] text-[var(--navy)] font-semibold no-underline hover:bg-[var(--gray-100)]">
+<svg width="18" height="18" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" /><circle cx="17.5" cy="9" r="2.4" /><path d="M15 14c2.6.2 5 2.1 5 6" /></svg>
+Gestión de usuarios
+</Link>
+</div>
+)}
+</div>
+<div className="p-4 border-t border-[var(--gray-200)]">
+<button type="button" onClick={cerrarSesion} className="w-full flex items-center justify-center gap-2 rounded-lg border border-[var(--red)] text-[var(--red)] font-bold text-[13.5px] py-3 hover:bg-[var(--gray-100)]">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="var(--red)" strokeWidth="2" strokeLinecap="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+Cerrar sesión
+</button>
+</div>
+</aside>
+</div>
 <div className="flex flex-wrap gap-2.5 md:gap-3.5 mb-6">
 {sesion.rol !== "supervisor_tms" && (
 <>
@@ -100,6 +196,7 @@ Menú del día
 <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[18px]">
 <MenuCard
+compactoMovil
 href="/unidades"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
 titulo="Unidades"
@@ -107,6 +204,7 @@ descripcion="Administra y consulta la información de las unidades."
 />
 {sesion.rol === "supervisor_tms" ? (
 <MenuCard
+compactoMovil
 href="/personas/expedientes"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
 titulo="Expedientes"
@@ -115,30 +213,35 @@ descripcion="Consulta los expedientes del personal (cuenta TMS)."
 ) : (
 <>
 <MenuCard
+compactoMovil
 href="/personas"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" /><circle cx="17.5" cy="9" r="2.4" /><path d="M15 14c2.6.2 5 2.1 5 6" /></svg>}
 titulo="Personas"
 descripcion="Gestiona la información del personal del sistema."
 />
 <MenuCard
+compactoMovil
 href="/buzon-sugerencias"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M12 2C7 2 3 5 3 9c0 2.4 1.4 4.5 3.5 5.8V21l4-2.2c.5.1 1 .2 1.5.2 5 0 9-3 9-7s-4-7-9-7z" /></svg>}
 titulo="Buzón de sugerencias e ideas de mejora"
 descripcion="Comparte o consulta sugerencias e ideas de mejora del equipo, vía código QR."
 />
 <MenuCard
+compactoMovil
 href="/control-viajes"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
 titulo="Control de Viajes"
 descripcion="Tabla libre: agrega columnas y filas, y edita directamente."
 />
 <MenuCard
+compactoMovil
 href="/checklist/elegir"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 12l2.5 2.5L16 9" /></svg>}
 titulo="Check List Diario de Unidades"
 descripcion="Inspección diaria de unidades. Consulta los registros guardados desde la misma página."
 />
 <MenuCard
+compactoMovil
 href="/compras"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
 titulo="Compras"

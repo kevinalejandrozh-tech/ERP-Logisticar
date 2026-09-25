@@ -16,6 +16,7 @@ type Revision = {
   resultados: Resultados;
   observaciones: string | null;
   realizado_por: string | null;
+  kilometraje?: number | null;
 };
 
 const ZONA = "America/Mexico_City";
@@ -60,7 +61,18 @@ const CHECKLIST: { titulo: string; nota?: string; items: string[] }[] = [
     items: ["Póliza de Seguro Vigente", "Tarjeta de Circulación", "Certificado de Verificación", "Hojas de Descanso de Operador"],
   },
 ];
-const TOTAL_PUNTOS = CHECKLIST.reduce((n, b) => n + b.items.length, 0);
+// Checklists adicionales (se abren en recuadro desde los botones debajo de la fotografía).
+// Se guardan junto con la revisión, en el mismo JSON de resultados.
+const CHECKLIST_EXTRA: { titulo: string; nota?: string; items: string[] }[] = [
+  { titulo: "Neumáticos", items: ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "Refacción"] },
+  {
+    titulo: "Luces",
+    items: ["Altas", "Bajas", "Cuartos", "Direccionales", "Intermitentes", "Stop", "Navegación", "Reversa", "Alarma reversa"],
+  },
+  { titulo: "Carrocería", items: ["Frente", "Lateral izquierda", "Lateral derecha", "Atrás"] },
+];
+const CHECKLIST_TODOS = [...CHECKLIST, ...CHECKLIST_EXTRA];
+const TOTAL_PUNTOS = CHECKLIST_TODOS.reduce((n, b) => n + b.items.length, 0);
 
 // ---------- Utilidades ----------
 function mensajeError(err: unknown, porDefecto: string) {
@@ -178,6 +190,8 @@ export default function UnidadesPage() {
   const [checks, setChecks] = useState<Record<string, Record<string, boolean>>>({});
   const [observaciones, setObservaciones] = useState<Record<string, string>>({});
   const [guardandoRevision, setGuardandoRevision] = useState(false);
+  const [kilometrajes, setKilometrajes] = useState<Record<string, string>>({}); // borrador por ECO
+  const [extraAbierto, setExtraAbierto] = useState<string | null>(null); // título del checklist adicional abierto
 
   // Ficha completa (modal)
   const [fichaAbierta, setFichaAbierta] = useState(false);
@@ -265,7 +279,10 @@ export default function UnidadesPage() {
   const ecoActual = actual?.["ECO"] || "";
   const imagenActual = ecoActual ? imagenes[ecoActual] : undefined;
   const ultimaActual = ecoActual ? ultimas[ecoActual] : undefined;
-  const hayCambios = !!ecoActual && (Object.keys(checks[ecoActual] || {}).length > 0 || !!observaciones[ecoActual]?.trim());
+  const hayCambios =
+    !!ecoActual &&
+    (Object.keys(checks[ecoActual] || {}).length > 0 || !!observaciones[ecoActual]?.trim() || !!kilometrajes[ecoActual]?.trim());
+  const bloqueExtra = CHECKLIST_EXTRA.find((b) => b.titulo === extraAbierto) || null;
 
   const mover = useCallback(
     (dir: 1 | -1) => {
@@ -280,7 +297,7 @@ export default function UnidadesPage() {
   // Navegación con flechas del teclado (solo sin modales abiertos)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (fichaAbierta || histAbierto) return;
+      if (fichaAbierta || histAbierto || extraAbierto) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
       if (e.key === "ArrowRight") mover(1);
@@ -288,7 +305,7 @@ export default function UnidadesPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [mover, fichaAbierta, histAbierto]);
+  }, [mover, fichaAbierta, histAbierto, extraAbierto]);
 
   // ---------- Checklist rápido ----------
   // Valor mostrado: borrador > última revisión guardada > true
@@ -308,12 +325,19 @@ export default function UnidadesPage() {
       return copia;
     });
     setObservaciones((prev) => ({ ...prev, [eco]: "" }));
+    setKilometrajes((prev) => ({ ...prev, [eco]: "" }));
   };
 
   const guardarRevision = async () => {
     if (!ecoActual || soloConsulta) return;
+    const kmTexto = (kilometrajes[ecoActual] || "").trim();
+    const kilometraje = kmTexto === "" ? null : Number(kmTexto);
+    if (kilometraje !== null && (!Number.isInteger(kilometraje) || kilometraje < 0)) {
+      alert("El kilometraje debe ser un número entero no negativo.");
+      return;
+    }
     const resultados: Resultados = {};
-    for (const bloque of CHECKLIST) {
+    for (const bloque of CHECKLIST_TODOS) {
       resultados[bloque.titulo] = {};
       for (const item of bloque.items) resultados[bloque.titulo][item] = estaActivo(ecoActual, bloque.titulo, item);
     }
@@ -325,7 +349,7 @@ export default function UnidadesPage() {
         await fetch("/api/unidades/revisiones", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eco: ecoActual, resultados, observaciones: observaciones[ecoActual] || "" }),
+          body: JSON.stringify({ eco: ecoActual, resultados, observaciones: observaciones[ecoActual] || "", kilometraje }),
         })
       );
       const registro: Revision = data.registro;
@@ -408,8 +432,9 @@ export default function UnidadesPage() {
             ECO: r.eco,
             Unidad: nombrePorEco[r.eco] || "",
             "Puntos en orden": `${contarCumplidos(r.resultados).ok}/${contarCumplidos(r.resultados).total}`,
+            Kilometraje: r.kilometraje != null ? String(r.kilometraje) : "",
           };
-          for (const bloque of CHECKLIST) {
+          for (const bloque of CHECKLIST_TODOS) {
             for (const item of bloque.items) {
               const v = r.resultados?.[bloque.titulo]?.[item];
               fila[`${bloque.titulo} - ${item}`] = v === undefined ? "" : v ? "OK" : "FALLA";
@@ -718,6 +743,52 @@ export default function UnidadesPage() {
                   </button>
                 </div>
 
+                {/* Kilometraje + checklists adicionales */}
+                <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
+                  <div className="w-full sm:w-auto">
+                    <label htmlFor="kilometraje-actual" className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">
+                      Kilometraje actual
+                    </label>
+                    <div className="flex items-center border border-[var(--gray-200)] rounded-lg overflow-hidden bg-white w-full sm:w-[240px]">
+                      <input
+                        id="kilometraje-actual"
+                        type="number"
+                        inputMode="numeric"
+                        min={0}
+                        step={1}
+                        value={kilometrajes[ecoActual] || ""}
+                        onChange={(e) => setKilometrajes((prev) => ({ ...prev, [ecoActual]: e.target.value }))}
+                        disabled={soloConsulta}
+                        placeholder={ultimaActual?.kilometraje != null ? `Último: ${ultimaActual.kilometraje.toLocaleString("es-MX")}` : "Ej. 125000"}
+                        className="flex-1 min-w-0 px-3 py-2 text-[12.5px] outline-none disabled:bg-[var(--gray-100)]"
+                      />
+                      <span className="px-3 py-2 text-[11.5px] font-bold text-[var(--gray-400)] bg-[var(--gray-100)] border-l border-[var(--gray-200)]">km</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {CHECKLIST_EXTRA.map((bloque) => {
+                      const fallas = bloque.items.filter((item) => !estaActivo(ecoActual, bloque.titulo, item)).length;
+                      return (
+                        <button
+                          key={bloque.titulo}
+                          type="button"
+                          onClick={() => setExtraAbierto(bloque.titulo)}
+                          className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[var(--navy)] bg-white border border-[var(--gray-200)] rounded-lg px-3.5 py-2 hover:bg-[var(--gray-100)]"
+                        >
+                          {bloque.titulo}
+                          <span
+                            className={`rounded-md px-1.5 py-0.5 text-[10.5px] font-bold ${
+                              fallas === 0 ? "bg-[#dcf5e8] text-[#137a4a]" : "bg-[#fde4e0] text-[var(--red)]"
+                            }`}
+                          >
+                            {bloque.items.length - fallas}/{bloque.items.length}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 {/* Checklist */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 items-stretch">
                   {CHECKLIST.map((bloque) => {
@@ -927,6 +998,60 @@ export default function UnidadesPage() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===================== CHECKLIST ADICIONAL (MODAL) ===================== */}
+      {bloqueExtra && actual && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-50" onClick={() => setExtraAbierto(null)}>
+          <div
+            className="bg-white rounded-2xl w-[980px] max-w-[95%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)] max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+              <div>
+                <h3 className="text-[18px] font-bold text-[var(--navy)] m-0">
+                  {ecoActual} · {actual["Unidad"] || "Sin nombre"}
+                </h3>
+                <p className="text-[12px] text-[var(--gray-400)] m-0">Checklist de {bloqueExtra.titulo.toLowerCase()}</p>
+              </div>
+              <button type="button" onClick={() => setExtraAbierto(null)} aria-label="Cerrar" className="text-[var(--gray-400)] hover:text-[var(--navy)] p-1">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 6l12 12M18 6L6 18" /></svg>
+              </button>
+            </div>
+
+            <div className="bg-[#d9d9d9] rounded-lg p-2.5 flex flex-col min-w-0">
+              <h4 className="text-center text-[14px] font-semibold text-[#333] m-0">{bloqueExtra.titulo}</h4>
+              {bloqueExtra.nota && <p className="text-[10px] leading-snug text-[#444] mt-0.5 mb-0">- {bloqueExtra.nota}</p>}
+              <div className="grid gap-1.5 mt-2 auto-rows-fr grid-cols-2">
+                {bloqueExtra.items.map((item) => (
+                  <div key={item} className="bg-[#f2f2f2] rounded-md pl-2 pr-1.5 py-1.5 min-h-[40px] grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
+                    <span lang="es" className="min-w-0 text-[10.5px] leading-tight text-[#222] break-words hyphens-auto">
+                      {item}
+                    </span>
+                    <Toggle
+                      activo={estaActivo(ecoActual, bloqueExtra.titulo, item)}
+                      onChange={() => alternar(ecoActual, bloqueExtra.titulo, item)}
+                      etiqueta={`${bloqueExtra.titulo}: ${item}`}
+                      deshabilitado={soloConsulta}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-[10.5px] text-[var(--gray-400)] mt-2 mb-0">
+              {soloConsulta
+                ? "* Se muestra la última revisión guardada. Tu usuario es de solo consulta."
+                : "* Los cambios se guardan junto con la revisión al presionar \"Guardar revisión\"."}
+            </p>
+
+            <div className="flex flex-wrap gap-2.5 justify-end mt-6">
+              <button type="button" onClick={() => setExtraAbierto(null)} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
             </div>
           </div>
         </div>
@@ -1143,7 +1268,7 @@ function FilaRevision({
         <tr className="bg-[var(--gray-100)] border-b border-[var(--gray-200)]">
           <td colSpan={7} className="px-3 pb-3 pt-1">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2.5">
-              {CHECKLIST.map((bloque) => (
+              {CHECKLIST_TODOS.map((bloque) => (
                 <div key={bloque.titulo} className="bg-white border border-[var(--gray-200)] rounded-lg p-2.5">
                   <p className="text-[12px] font-bold text-[var(--navy)] m-0 mb-1.5">{bloque.titulo}</p>
                   <ul className="m-0 p-0 list-none space-y-1">
@@ -1162,6 +1287,11 @@ function FilaRevision({
                 </div>
               ))}
             </div>
+            {revision.kilometraje != null && (
+              <p className="text-[12px] text-[var(--text)] mt-2.5 mb-0">
+                <b className="text-[var(--navy)]">Kilometraje:</b> {Number(revision.kilometraje).toLocaleString("es-MX")} km
+              </p>
+            )}
             {revision.observaciones && (
               <p className="text-[12px] text-[var(--text)] mt-2.5 mb-0 break-words">
                 <b className="text-[var(--navy)]">Observaciones:</b> {revision.observaciones}

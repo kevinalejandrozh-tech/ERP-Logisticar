@@ -71,6 +71,7 @@ realizado_por TEXT,
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE unidades_revisiones ADD COLUMN IF NOT EXISTS kilometraje INTEGER;`);
 await p.query(`CREATE INDEX IF NOT EXISTS idx_unidades_revisiones_eco_fecha ON unidades_revisiones (eco, fecha DESC);`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS mochilas (

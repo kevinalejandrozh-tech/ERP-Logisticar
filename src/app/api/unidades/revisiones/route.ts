@@ -64,7 +64,7 @@ const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
 await ensureSchema();
 const pool = getPool();
 const result = await pool.query(
-`SELECT id, eco, fecha, resultados, observaciones, realizado_por
+`SELECT id, eco, fecha, resultados, observaciones, realizado_por, kilometraje
 FROM unidades_revisiones
 ${where}
 ORDER BY fecha DESC, id DESC
@@ -94,6 +94,15 @@ typeof body?.observaciones === "string" && body.observaciones.trim()
 ? body.observaciones.trim().slice(0, MAX_OBSERVACIONES)
 : null;
 
+let kilometraje: number | null = null;
+if (body?.kilometraje !== undefined && body?.kilometraje !== null && body?.kilometraje !== "") {
+const km = Number(body.kilometraje);
+if (!Number.isInteger(km) || km < 0 || km > 2147483647) {
+return NextResponse.json({ error: "El kilometraje debe ser un número entero no negativo." }, { status: 400 });
+}
+kilometraje = km;
+}
+
 const token = req.cookies.get(COOKIE_SESION)?.value;
 const sesion = token ? await verificarTokenSesion(token) : null;
 const realizadoPor = sesion?.nombre || null;
@@ -105,10 +114,10 @@ if (existe.rowCount === 0) {
 return NextResponse.json({ error: `No existe la unidad ${eco}.` }, { status: 404 });
 }
 const result = await pool.query(
-`INSERT INTO unidades_revisiones (eco, fecha, resultados, observaciones, realizado_por)
-VALUES ($1, now(), $2, $3, $4)
-RETURNING id, eco, fecha, resultados, observaciones, realizado_por`,
-[eco, JSON.stringify(body.resultados), observaciones, realizadoPor]
+`INSERT INTO unidades_revisiones (eco, fecha, resultados, observaciones, realizado_por, kilometraje)
+VALUES ($1, now(), $2, $3, $4, $5)
+RETURNING id, eco, fecha, resultados, observaciones, realizado_por, kilometraje`,
+[eco, JSON.stringify(body.resultados), observaciones, realizadoPor, kilometraje]
 );
 return NextResponse.json({ ok: true, registro: result.rows[0] });
 } catch (err: unknown) {

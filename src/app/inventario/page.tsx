@@ -1,13 +1,16 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
+import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import {
   CAMPOS_GENERALES,
-  CATEGORIAS_INVENTARIO,
   ESTADOS_INVENTARIO,
+  camposActivos,
   obtenerCategoria,
   type CampoInventario,
+  type CategoriaInventarioBD,
   type EquipoInventario,
   type EstadoInventario,
 } from "@/lib/inventarioData";
@@ -33,35 +36,26 @@ function cargarQRiousLib(): Promise<void> {
   });
 }
 
-const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
+function urlConsulta(folio: string): string {
+  return `${window.location.origin}/inventario/consulta?folio=${encodeURIComponent(folio)}`;
+}
 
-// ⚠️ TEMPORAL: datos de ejemplo mientras se construye el backend (/api/inventario).
-const EQUIPOS_EJEMPLO: EquipoInventario[] = [
-  {
-    id: 1,
-    folio: "LAP-0001",
-    categoria: "laptop",
-    estado: "Activo",
-    datos: { nombre: "Laptop Tráfico", marca: "Dell", modelo: "Latitude 5420", numero_serie: "8H2KXY3", area: "Operaciones", ubicacion: "Oficina planta alta", responsable: "Juan Pérez", procesador: "Intel Core i7-1185G7", ram_gb: "16", almacenamiento_gb: "512", tipo_almacenamiento: "SSD", sistema_operativo: "Windows 11 Pro", pantalla_pulgadas: "14" },
-    created_at: "2026-09-20",
-  },
-  {
-    id: 2,
-    folio: "ESC-0001",
-    categoria: "escritorio",
-    estado: "Activo",
-    datos: { nombre: "Escritorio Gerencia", marca: "Offiho", area: "Administración", ubicacion: "Gerencia", responsable: "María López", material: "Melamina", medidas: "150 x 70 x 75", color: "Nogal", cajones: "3" },
-    created_at: "2026-09-21",
-  },
-  {
-    id: 3,
-    folio: "IMP-0001",
-    categoria: "impresora",
-    estado: "En reparación",
-    datos: { nombre: "Impresora Recepción", marca: "HP", modelo: "LaserJet M428", area: "Recepción", ubicacion: "Planta baja", tipo_impresion: "Multifuncional", a_color: "No", conexion: "Red / Ethernet" },
-    created_at: "2026-09-22",
-  },
-];
+function escaparHtml(texto: string): string {
+  return texto.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
+}
+
+async function obtenerInventario(): Promise<{ categorias: CategoriaInventarioBD[]; equipos: EquipoInventario[] }> {
+  const [resCat, resEq] = await Promise.all([
+    fetch("/api/inventario/categorias?todas=1", { cache: "no-store" }),
+    fetch("/api/inventario/equipos", { cache: "no-store" }),
+  ]);
+  const [dataCat, dataEq] = await Promise.all([resCat.json(), resEq.json()]);
+  if (!resCat.ok || !dataCat.ok) throw new Error(dataCat.error || "No se pudieron cargar las categorías.");
+  if (!resEq.ok || !dataEq.ok) throw new Error(dataEq.error || "No se pudieron cargar los equipos.");
+  return { categorias: dataCat.registros, equipos: dataEq.registros };
+}
+
+const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 const COLOR_ESTADO: Record<EstadoInventario, { bg: string; fg: string }> = {
   Activo: { bg: "#e6f6ee", fg: "var(--green)" },
@@ -101,7 +95,11 @@ function Campo({ campo, valor, onChange }: { campo: CampoInventario; valor: stri
 }
 
 export default function InventarioPage() {
-  const [equipos, setEquipos] = useState<EquipoInventario[]>(EQUIPOS_EJEMPLO);
+  const [categorias, setCategorias] = useState<CategoriaInventarioBD[]>([]);
+  const [equipos, setEquipos] = useState<EquipoInventario[]>([]);
+  const [cargando, setCargando] = useState(true);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+
   const [busqueda, setBusqueda] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
@@ -112,9 +110,35 @@ export default function InventarioPage() {
   const [estadoNuevo, setEstadoNuevo] = useState<EstadoInventario>("Activo");
   const [datosNuevos, setDatosNuevos] = useState<Record<string, string>>({});
   const [errorForm, setErrorForm] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
-  // Modal detalle / QR
+  // Modal detalle
   const [equipoSeleccionado, setEquipoSeleccionado] = useState<EquipoInventario | null>(null);
+  const [estadoEditado, setEstadoEditado] = useState<EstadoInventario>("Activo");
+  const [guardandoEstado, setGuardandoEstado] = useState(false);
+  const [mensajeEstado, setMensajeEstado] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+
+  // Carga categorías (incluidas las desactivadas, para mostrar su nombre) y equipos.
+  const cargar = useCallback(() => {
+    obtenerInventario()
+      .then(({ categorias, equipos }) => {
+        setCategorias(categorias);
+        setEquipos(equipos);
+        setErrorCarga(null);
+      })
+      .catch((err: unknown) => setErrorCarga(err instanceof Error ? err.message : "No se pudo cargar el inventario."))
+      .finally(() => setCargando(false));
+  }, []);
+
+  useEffect(() => {
+    cargar();
+  }, [cargar]);
+  useRefrescarAlEnfocar(() => {
+    cargar();
+  });
+
+  const categoriasActivas = useMemo(() => categorias.filter((c) => c.activa), [categorias]);
+  const nombreCategoria = useCallback((clave: string) => obtenerCategoria(clave, categorias)?.nombre || clave, [categorias]);
 
   const equiposFiltrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -134,30 +158,30 @@ export default function InventarioPage() {
     return t;
   }, [equipos]);
 
-  // Pinta los QR pequeños de cada tarjeta
+  // QR pequeños de cada tarjeta
   useEffect(() => {
     if (equiposFiltrados.length === 0) return;
     cargarQRiousLib()
       .then(() => {
-        const origen = window.location.origin;
         equiposFiltrados.forEach((e) => {
           const canvas = document.getElementById(`qr-inv-${e.id}`) as HTMLCanvasElement | null;
-          if (canvas) new window.QRious({ element: canvas, value: `${origen}/inventario/detalle?folio=${e.folio}`, size: 64, level: "M" });
+          if (canvas) new window.QRious({ element: canvas, value: urlConsulta(e.folio), size: 64, level: "M" });
         });
       })
       .catch(() => {});
   }, [equiposFiltrados]);
 
-  // Pinta el QR grande del modal de detalle
+  // QR grande del detalle
+  const folioSeleccionado = equipoSeleccionado?.folio;
   useEffect(() => {
-    if (!equipoSeleccionado) return;
+    if (!folioSeleccionado) return;
     cargarQRiousLib()
       .then(() => {
         const canvas = document.getElementById("qr-inv-detalle") as HTMLCanvasElement | null;
-        if (canvas) new window.QRious({ element: canvas, value: `${window.location.origin}/inventario/detalle?folio=${equipoSeleccionado.folio}`, size: 180, level: "M" });
+        if (canvas) new window.QRious({ element: canvas, value: urlConsulta(folioSeleccionado), size: 180, level: "M" });
       })
       .catch(() => {});
-  }, [equipoSeleccionado]);
+  }, [folioSeleccionado]);
 
   const abrirAgregar = () => {
     setCategoriaNueva("");
@@ -169,55 +193,97 @@ export default function InventarioPage() {
 
   const cambiarCategoria = (clave: string) => {
     // Al cambiar de categoría se descartan los campos específicos de la anterior (congruencia).
-    const generales: Record<string, string> = {};
-    CAMPOS_GENERALES.forEach((c) => {
-      if (datosNuevos[c.clave]) generales[c.clave] = datosNuevos[c.clave];
+    const conservados: Record<string, string> = {};
+    [...CAMPOS_GENERALES.map((c) => c.clave), "notas"].forEach((k) => {
+      if (datosNuevos[k]) conservados[k] = datosNuevos[k];
     });
-    setDatosNuevos(generales);
+    setDatosNuevos(conservados);
     setCategoriaNueva(clave);
   };
 
-  const guardarEquipo = () => {
-    const categoria = obtenerCategoria(categoriaNueva);
+  const abrirDetalle = (equipo: EquipoInventario) => {
+    setEquipoSeleccionado(equipo);
+    setEstadoEditado(equipo.estado);
+    setMensajeEstado(null);
+  };
+
+  const guardarEquipo = async () => {
+    const categoria = obtenerCategoria(categoriaNueva, categoriasActivas);
     if (!categoria) return setErrorForm("Selecciona una categoría.");
-    const faltantes = [...CAMPOS_GENERALES, ...categoria.campos].filter((c) => c.requerido && !datosNuevos[c.clave]?.trim());
+    const faltantes = [...CAMPOS_GENERALES, ...camposActivos(categoria)].filter((c) => c.requerido && !datosNuevos[c.clave]?.trim());
     if (faltantes.length > 0) return setErrorForm(`Completa: ${faltantes.map((c) => c.etiqueta).join(", ")}.`);
 
-    // TEMPORAL: el folio y el id los generará el backend.
-    const consecutivo = equipos.filter((e) => e.categoria === categoria.clave).length + 1;
-    const nuevo: EquipoInventario = {
-      id: Date.now(),
-      folio: `${categoria.prefijo}-${String(consecutivo).padStart(4, "0")}`,
-      categoria: categoria.clave,
-      estado: estadoNuevo,
-      datos: datosNuevos,
-      created_at: new Date().toISOString().slice(0, 10),
-    };
-    setEquipos((prev) => [nuevo, ...prev]);
-    setModalAgregar(false);
-    setEquipoSeleccionado(nuevo);
+    setGuardando(true);
+    setErrorForm(null);
+    try {
+      const res = await fetch("/api/inventario/equipos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categoria: categoria.clave, estado: estadoNuevo, datos: datosNuevos }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar el equipo.");
+      const nuevo: EquipoInventario = data.registro;
+      setEquipos((prev) => [nuevo, ...prev]);
+      setModalAgregar(false);
+      abrirDetalle(nuevo);
+    } catch (err) {
+      setErrorForm(err instanceof Error ? err.message : "No se pudo guardar el equipo.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const guardarEstado = async () => {
+    if (!equipoSeleccionado || estadoEditado === equipoSeleccionado.estado) return;
+    setGuardandoEstado(true);
+    setMensajeEstado(null);
+    try {
+      const res = await fetch("/api/inventario/equipos/estado", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: equipoSeleccionado.id, estado: estadoEditado }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo cambiar el estado.");
+      const actualizado: EquipoInventario = data.registro;
+      setEquipos((prev) => prev.map((e) => (e.id === actualizado.id ? actualizado : e)));
+      setEquipoSeleccionado(actualizado);
+      setMensajeEstado({ tipo: "ok", texto: "Estado actualizado." });
+    } catch (err) {
+      setMensajeEstado({ tipo: "error", texto: err instanceof Error ? err.message : "No se pudo cambiar el estado." });
+    } finally {
+      setGuardandoEstado(false);
+    }
   };
 
   const imprimirEtiqueta = (equipo: EquipoInventario) => {
     const canvas = document.getElementById("qr-inv-detalle") as HTMLCanvasElement | null;
     if (!canvas) return;
     const img = canvas.toDataURL("image/png");
-    const cat = obtenerCategoria(equipo.categoria)?.nombre || "";
     const w = window.open("", "_blank", "width=420,height=520");
     if (!w) return alert("Permite las ventanas emergentes para imprimir la etiqueta.");
-    w.document.write(`<!doctype html><html><head><title>Etiqueta ${equipo.folio}</title>
+    w.document.write(`<!doctype html><html><head><title>Etiqueta ${escaparHtml(equipo.folio)}</title>
       <style>body{font-family:Segoe UI,sans-serif;display:flex;justify-content:center;padding:20px}
       .et{border:2px solid #16215c;border-radius:10px;padding:14px 18px;text-align:center;width:240px}
       h1{font-size:18px;margin:8px 0 2px;color:#16215c}p{margin:2px 0;font-size:12px;color:#444}
       small{display:block;margin-top:6px;font-size:10px;color:#888}</style></head>
       <body><div class="et"><img src="${img}" width="180" height="180"/>
-      <h1>${equipo.folio}</h1><p><b>${equipo.datos.nombre || ""}</b></p><p>${cat}</p>
+      <h1>${escaparHtml(equipo.folio)}</h1><p><b>${escaparHtml(equipo.datos.nombre || "")}</b></p><p>${escaparHtml(nombreCategoria(equipo.categoria))}</p>
       <small>Transportes Logisticar · Control de inventario</small></div>
       <script>window.onload=()=>{window.print();}</script></body></html>`);
     w.document.close();
   };
 
-  const categoriaSeleccionada = obtenerCategoria(categoriaNueva);
+  const categoriaSeleccionada = obtenerCategoria(categoriaNueva, categoriasActivas);
+  const categoriaDetalle = equipoSeleccionado ? obtenerCategoria(equipoSeleccionado.categoria, categorias) : undefined;
+  // En el detalle se muestran los campos activos y también los desactivados que tengan información.
+  const camposDetalle = equipoSeleccionado
+    ? [
+        ...CAMPOS_GENERALES.filter((c) => c.clave !== "nombre"),
+        ...(categoriaDetalle?.campos || []).filter((c) => c.activo !== false || equipoSeleccionado.datos[c.clave]),
+      ]
+    : [];
 
   return (
     <div className="min-h-screen bg-[#eef1f6] flex flex-col">
@@ -244,8 +310,8 @@ export default function InventarioPage() {
           ))}
         </div>
 
-        {/* Barra de filtros */}
-        <div className="bg-white rounded-[18px] p-4 sm:p-5 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5 flex flex-col md:flex-row gap-3 md:items-center">
+        {/* Barra de filtros y acciones */}
+        <div className="bg-white rounded-[18px] p-4 sm:p-5 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5 flex flex-col lg:flex-row gap-3 lg:items-center">
           <input
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
@@ -254,8 +320,11 @@ export default function InventarioPage() {
           />
           <select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13px] bg-white">
             <option value="">Todas las categorías</option>
-            {CATEGORIAS_INVENTARIO.map((c) => (
-              <option key={c.clave} value={c.clave}>{c.nombre}</option>
+            {categorias.map((c) => (
+              <option key={c.clave} value={c.clave}>
+                {c.nombre}
+                {c.activa ? "" : " (desactivada)"}
+              </option>
             ))}
           </select>
           <select value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)} className="border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13px] bg-white">
@@ -264,35 +333,50 @@ export default function InventarioPage() {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
-          <button type="button" onClick={abrirAgregar} className="flex items-center justify-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold whitespace-nowrap">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
-            Agregar equipo
-          </button>
+          <div className="flex gap-2.5">
+            <Link href="/inventario/categorias" className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-4 py-2.5 text-[13px] font-bold whitespace-nowrap no-underline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+              Categorías
+            </Link>
+            <button type="button" onClick={abrirAgregar} disabled={cargando || categoriasActivas.length === 0} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold whitespace-nowrap disabled:opacity-50">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+              Agregar equipo
+            </button>
+          </div>
         </div>
 
         {/* Tarjetas de equipos */}
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <h3 className="text-[15px] font-bold text-[var(--navy)] m-0 mb-4">Equipos registrados ({equiposFiltrados.length})</h3>
-          {equiposFiltrados.length === 0 ? (
-            <p className="text-[13px] text-[var(--gray-400)] py-8 text-center">No hay equipos que coincidan. Usa &quot;Agregar equipo&quot; para registrar el primero.</p>
+          {cargando ? (
+            <p className="text-[13px] text-[var(--gray-400)] py-8 text-center">Cargando inventario…</p>
+          ) : errorCarga ? (
+            <div className="py-8 text-center">
+              <p className="text-[13px] text-[var(--red)] font-semibold mb-3">{errorCarga}</p>
+              <button type="button" onClick={() => cargar()} className="px-4 py-2 rounded-lg text-[12.5px] font-bold text-[var(--navy)] bg-[var(--gray-100)]">Reintentar</button>
+            </div>
+          ) : equiposFiltrados.length === 0 ? (
+            <p className="text-[13px] text-[var(--gray-400)] py-8 text-center">
+              {equipos.length === 0 ? "Aún no hay equipos registrados. Usa \"Agregar equipo\" para registrar el primero." : "No hay equipos que coincidan con la búsqueda o los filtros."}
+            </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 md:gap-5">
               {equiposFiltrados.map((e) => (
                 <button
                   key={e.id}
                   type="button"
-                  onClick={() => setEquipoSeleccionado(e)}
+                  onClick={() => abrirDetalle(e)}
                   className="text-left bg-white border border-[var(--gray-200)] rounded-2xl p-4 hover:border-[var(--blue)] transition-colors flex gap-3.5"
                 >
                   <div className="w-[76px] h-[76px] shrink-0 rounded-xl border border-[var(--gray-200)] flex items-center justify-center p-1.5">
                     <canvas id={`qr-inv-${e.id}`} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10.5px] font-bold text-[var(--blue)] m-0">{e.folio} · {obtenerCategoria(e.categoria)?.nombre}</p>
+                    <p className="text-[10.5px] font-bold text-[var(--blue)] m-0 truncate">{e.folio} · {nombreCategoria(e.categoria)}</p>
                     <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0 mb-1 truncate">{e.datos.nombre}</h4>
                     <p className="text-[11.5px] text-[var(--gray-400)] m-0 truncate">{[e.datos.marca, e.datos.modelo].filter(Boolean).join(" ") || "—"}</p>
                     <p className="text-[11.5px] text-[var(--gray-400)] m-0 truncate">{e.datos.responsable || "Sin responsable"}</p>
-                    <span className="inline-block mt-1.5 text-[10.5px] font-bold rounded-full px-2 py-0.5" style={{ backgroundColor: COLOR_ESTADO[e.estado].bg, color: COLOR_ESTADO[e.estado].fg }}>
+                    <span className="inline-block mt-1.5 text-[10.5px] font-bold rounded-full px-2 py-0.5" style={{ backgroundColor: COLOR_ESTADO[e.estado]?.bg, color: COLOR_ESTADO[e.estado]?.fg }}>
                       {e.estado}
                     </span>
                   </div>
@@ -305,7 +389,7 @@ export default function InventarioPage() {
 
       {/* Modal: agregar equipo */}
       {modalAgregar && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => setModalAgregar(false)}>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => !guardando && setModalAgregar(false)}>
           <div className="bg-white rounded-2xl w-full max-w-[760px] max-h-[92vh] overflow-y-auto p-5 md:p-7" onClick={(ev) => ev.stopPropagation()}>
             <h3 className="text-[17px] font-bold text-[var(--navy)] m-0 mb-1">Agregar equipo al inventario</h3>
             <p className="text-[12px] text-[var(--gray-400)] m-0 mb-5">Elige la categoría: solo se mostrarán los campos que le corresponden.</p>
@@ -315,7 +399,7 @@ export default function InventarioPage() {
                 <span className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Categoría <span className="text-[var(--red)]">*</span></span>
                 <select value={categoriaNueva} onChange={(e) => cambiarCategoria(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] bg-white">
                   <option value="">Selecciona…</option>
-                  {CATEGORIAS_INVENTARIO.map((c) => (
+                  {categoriasActivas.map((c) => (
                     <option key={c.clave} value={c.clave}>{c.nombre}</option>
                   ))}
                 </select>
@@ -338,11 +422,11 @@ export default function InventarioPage() {
                     <Campo key={c.clave} campo={c} valor={datosNuevos[c.clave] || ""} onChange={(v) => setDatosNuevos((p) => ({ ...p, [c.clave]: v }))} />
                   ))}
                 </div>
-                {categoriaSeleccionada.campos.length > 0 && (
+                {camposActivos(categoriaSeleccionada).length > 0 && (
                   <>
                     <p className="text-[11px] uppercase tracking-wide font-bold text-[var(--gray-400)] mb-2">Especificaciones de {categoriaSeleccionada.nombre}</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-5">
-                      {categoriaSeleccionada.campos.map((c) => (
+                      {camposActivos(categoriaSeleccionada).map((c) => (
                         <Campo key={c.clave} campo={c} valor={datosNuevos[c.clave] || ""} onChange={(v) => setDatosNuevos((p) => ({ ...p, [c.clave]: v }))} />
                       ))}
                     </div>
@@ -358,16 +442,18 @@ export default function InventarioPage() {
             {errorForm && <p className="text-[12.5px] text-[var(--red)] font-semibold mb-3">{errorForm}</p>}
 
             <div className="flex justify-end gap-2.5">
-              <button type="button" onClick={() => setModalAgregar(false)} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)]">Cancelar</button>
-              <button type="button" onClick={guardarEquipo} className="px-5 py-2 rounded-lg text-[13px] font-bold text-white bg-[var(--navy)]">Guardar y generar QR</button>
+              <button type="button" disabled={guardando} onClick={() => setModalAgregar(false)} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)] disabled:opacity-50">Cancelar</button>
+              <button type="button" disabled={guardando} onClick={guardarEquipo} className="px-5 py-2 rounded-lg text-[13px] font-bold text-white bg-[var(--navy)] disabled:opacity-50">
+                {guardando ? "Guardando…" : "Guardar y generar QR"}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: detalle + QR */}
+      {/* Modal: detalle + QR + cambio de estado */}
       {equipoSeleccionado && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => setEquipoSeleccionado(null)}>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => !guardandoEstado && setEquipoSeleccionado(null)}>
           <div className="bg-white rounded-2xl w-full max-w-[720px] max-h-[92vh] overflow-y-auto p-5 md:p-7" onClick={(ev) => ev.stopPropagation()}>
             <div className="flex flex-col sm:flex-row gap-5">
               <div className="flex flex-col items-center shrink-0">
@@ -381,24 +467,53 @@ export default function InventarioPage() {
                 </button>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-[var(--blue)] m-0">{obtenerCategoria(equipoSeleccionado.categoria)?.nombre}</p>
-                <h3 className="text-[18px] font-bold text-[var(--navy)] m-0 mb-1">{equipoSeleccionado.datos.nombre}</h3>
-                <span className="inline-block text-[11px] font-bold rounded-full px-2.5 py-0.5 mb-4" style={{ backgroundColor: COLOR_ESTADO[equipoSeleccionado.estado].bg, color: COLOR_ESTADO[equipoSeleccionado.estado].fg }}>
-                  {equipoSeleccionado.estado}
-                </span>
+                <p className="text-[11px] font-bold text-[var(--blue)] m-0">{nombreCategoria(equipoSeleccionado.categoria)}</p>
+                <h3 className="text-[18px] font-bold text-[var(--navy)] m-0 mb-3 break-words">{equipoSeleccionado.datos.nombre}</h3>
+
+                {/* Cambio de estado */}
+                <div className="bg-[var(--gray-100)] rounded-xl p-3 mb-4">
+                  <span className="block text-[11px] uppercase tracking-wide font-bold text-[var(--gray-400)] mb-1.5">Estado del equipo</span>
+                  <div className="flex gap-2">
+                    <select
+                      value={estadoEditado}
+                      onChange={(e) => {
+                        setEstadoEditado(e.target.value as EstadoInventario);
+                        setMensajeEstado(null);
+                      }}
+                      className="flex-1 border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] font-semibold bg-white"
+                      style={{ color: COLOR_ESTADO[estadoEditado]?.fg }}
+                    >
+                      {ESTADOS_INVENTARIO.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={guardarEstado}
+                      disabled={guardandoEstado || estadoEditado === equipoSeleccionado.estado}
+                      className="px-4 py-2 rounded-lg text-[12.5px] font-bold text-white bg-[var(--navy)] disabled:opacity-40"
+                    >
+                      {guardandoEstado ? "Guardando…" : "Guardar"}
+                    </button>
+                  </div>
+                  {mensajeEstado && (
+                    <p className={`text-[12px] font-semibold m-0 mt-1.5 ${mensajeEstado.tipo === "ok" ? "text-[var(--green)]" : "text-[var(--red)]"}`}>{mensajeEstado.texto}</p>
+                  )}
+                </div>
+
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 m-0">
-                  {[...CAMPOS_GENERALES.filter((c) => c.clave !== "nombre"), ...(obtenerCategoria(equipoSeleccionado.categoria)?.campos || [])].map((c) => (
+                  {camposDetalle.map((c) => (
                     <div key={c.clave}>
                       <dt className="text-[10.5px] uppercase tracking-wide text-[var(--gray-400)]">{c.etiqueta}</dt>
                       <dd className="text-[13px] font-semibold text-[var(--navy)] m-0 break-words">{equipoSeleccionado.datos[c.clave] || "—"}</dd>
                     </div>
                   ))}
                 </dl>
-                {equipoSeleccionado.datos.notas && <p className="text-[12.5px] text-[var(--text)] mt-3 bg-[var(--gray-100)] rounded-lg p-2.5">{equipoSeleccionado.datos.notas}</p>}
+                {equipoSeleccionado.datos.notas && <p className="text-[12.5px] text-[var(--text)] mt-3 bg-[var(--gray-100)] rounded-lg p-2.5 whitespace-pre-wrap">{equipoSeleccionado.datos.notas}</p>}
               </div>
             </div>
             <div className="flex justify-end mt-5">
-              <button type="button" onClick={() => setEquipoSeleccionado(null)} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)]">Cerrar</button>
+              <button type="button" disabled={guardandoEstado} onClick={() => setEquipoSeleccionado(null)} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)] disabled:opacity-50">Cerrar</button>
             </div>
           </div>
         </div>

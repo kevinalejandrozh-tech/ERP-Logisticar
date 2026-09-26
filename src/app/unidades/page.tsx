@@ -43,13 +43,18 @@ const CHECKLIST: { titulo: string; nota?: string; items: string[] }[] = [
     nota: "Todos los comandos deben registrarse en la plataforma",
     items: [
       "Clima / Aire Acondicionado",
-      "STOP / Luces traseras",
-      "Luces delanteras (Bajas)",
-      "Sonido al entrar Reversa",
-      "Luces delanteras (Altas)",
       "Plumas del Limpiaparabrisas",
-      "Luces Intermitentes",
-      "Sirenas de Emergencia",
+      "Luces Altas",
+      "Luces Bajas",
+      "Cuartos",
+      "Direccionales",
+      "Intermitentes",
+      "STOP / Luces traseras",
+      "Luces de Navegación",
+      "Luces de Reversa",
+      "Alarma de Reversa",
+      "Luz Interior",
+      "Claxon",
     ],
   },
   {
@@ -65,10 +70,6 @@ const CHECKLIST: { titulo: string; nota?: string; items: string[] }[] = [
 // Se guardan junto con la revisión, en el mismo JSON de resultados.
 const CHECKLIST_EXTRA: { titulo: string; nota?: string; items: string[] }[] = [
   { titulo: "Neumáticos", items: ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "Refacción"] },
-  {
-    titulo: "Luces",
-    items: ["Altas", "Bajas", "Cuartos", "Direccionales", "Intermitentes", "Stop", "Navegación", "Reversa", "Alarma reversa"],
-  },
   { titulo: "Carrocería", items: ["Frente", "Lateral izquierda", "Lateral derecha", "Atrás"] },
 ];
 const CHECKLIST_TODOS = [...CHECKLIST, ...CHECKLIST_EXTRA];
@@ -79,7 +80,7 @@ function mensajeError(err: unknown, porDefecto: string) {
   return err instanceof Error && err.message ? err.message : porDefecto;
 }
 
-// Clave por bloque + punto (hay puntos con el mismo nombre en bloques distintos, p. ej. "Sirenas de Emergencia").
+// Clave por bloque + punto (evita choques si dos bloques llegan a tener un punto con el mismo nombre).
 const clavePunto = (bloque: string, item: string) => `${bloque}::${item}`;
 
 function hoyLocal() {

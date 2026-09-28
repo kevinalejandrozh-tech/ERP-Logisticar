@@ -17,7 +17,9 @@ type Revision = {
   observaciones: string | null;
   realizado_por: string | null;
   kilometraje?: number | null;
+  neumaticos?: Record<string, Llanta | string> | null; // { P1: { folio, mm }, ..., PR: { folio, mm } }
 };
+type Llanta = { folio?: string; mm?: number | null };
 
 const ZONA = "America/Mexico_City";
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
@@ -69,11 +71,84 @@ const CHECKLIST: { titulo: string; nota?: string; items: string[] }[] = [
 // Checklists adicionales (se abren en recuadro desde los botones debajo de la fotografía).
 // Se guardan junto con la revisión, en el mismo JSON de resultados.
 const CHECKLIST_EXTRA: { titulo: string; nota?: string; items: string[] }[] = [
-  { titulo: "Neumáticos", items: ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "P10", "Refacción"] },
   { titulo: "Carrocería", items: ["Frente", "Lateral izquierda", "Lateral derecha", "Atrás"] },
 ];
 const CHECKLIST_TODOS = [...CHECKLIST, ...CHECKLIST_EXTRA];
 const TOTAL_PUNTOS = CHECKLIST_TODOS.reduce((n, b) => n + b.items.length, 0);
+
+// Neumáticos: las posiciones dependen del tipo de unidad (se detecta por el nombre de la unidad).
+// Cada posición lleva un folio individual por llanta y su profundidad de dibujo en MM; PR = llanta de refacción.
+// Semáforo por MM: < rojo = crítico (alerta en todo el panel) · rojo ≤ mm < amarillo · amarillo ≤ mm < verde · ≥ verde.
+type LimitesMM = { rojo: number; amarillo: number; verde: number; max: number };
+type TipoNeumaticos = { tipo: string; patron: RegExp; posiciones: string[]; mm: LimitesMM };
+const posicionesLlantas = (n: number) => [...Array.from({ length: n }, (_, i) => `P${i + 1}`), "PR"];
+const TIPOS_NEUMATICOS: TipoNeumaticos[] = [
+  { tipo: "Transporter", patron: /transporter/i, posiciones: posicionesLlantas(4), mm: { rojo: 2, amarillo: 3, verde: 4, max: 9.2 } },
+  { tipo: "Sprinter", patron: /sprinter/i, posiciones: posicionesLlantas(4), mm: { rojo: 2, amarillo: 3, verde: 4, max: 11 } },
+  { tipo: "Delivery", patron: /delivery/i, posiciones: posicionesLlantas(6), mm: { rojo: 2, amarillo: 3, verde: 4, max: 11 } },
+  { tipo: "Torthon", patron: /torth?on/i, posiciones: posicionesLlantas(10), mm: { rojo: 4, amarillo: 5, verde: 6, max: 18 } },
+];
+const POSICIONES_EXPORTAR = posicionesLlantas(10);
+const MAX_FOLIO = 40;
+const MM_RE = /^\d{0,2}(\.\d{0,2})?$/; // decimal positivo, hasta 2 decimales (sin signo negativo)
+
+function tipoNeumaticos(registro: RegistroUnidad | null) {
+  if (!registro) return null;
+  const texto = `${registro["Unidad"] || ""} ${registro["Modelo/Tipo"] || ""}`;
+  return TIPOS_NEUMATICOS.find((t) => t.patron.test(texto)) || null;
+}
+
+type Semaforo = "critico" | "rojo" | "amarillo" | "verde";
+function semaforoMM(mm: number, lim: LimitesMM): Semaforo {
+  if (mm < lim.rojo) return "critico";
+  if (mm < lim.amarillo) return "rojo";
+  if (mm < lim.verde) return "amarillo";
+  return "verde";
+}
+const ESTILO_SEMAFORO: Record<Semaforo, { borde: string; chip: string; etiqueta: string }> = {
+  critico: { borde: "border-[#ff1a1a] shadow-[0_0_0_3px_rgba(255,26,26,0.35),0_0_14px_rgba(255,26,26,0.55)]", chip: "bg-[#ff1a1a] text-white", etiqueta: "Crítico" },
+  rojo: { borde: "border-[var(--red)]", chip: "bg-[#fde4e0] text-[var(--red)]", etiqueta: "Rojo" },
+  amarillo: { borde: "border-[var(--amber)]", chip: "bg-[#fdf1d6] text-[#9a6a00]", etiqueta: "Amarillo" },
+  verde: { borde: "border-[var(--green)]", chip: "bg-[#dcf5e8] text-[#137a4a]", etiqueta: "Verde" },
+};
+
+// Acepta el formato nuevo { folio, mm } y el anterior (solo folio como texto).
+function leerLlanta(valor: Llanta | string | undefined | null): Llanta {
+  if (!valor) return {};
+  if (typeof valor === "string") return { folio: valor, mm: null };
+  return valor;
+}
+const formatoMM = (mm: number) => `${mm.toLocaleString("es-MX", { maximumFractionDigits: 2 })} mm`;
+
+// Ficha técnica: las Sprinter manejan medida de llanta delantera y trasera en lugar de la medida STD.
+const CAMPO_MEDIDA_STD = "Medida STD de llantas";
+const CAMPOS_MEDIDA_SPRINTER = ["Medida llantas delanteras", "Medida llantas traseras"];
+function camposFicha(registro: RegistroUnidad) {
+  return tipoNeumaticos(registro)?.tipo === "Sprinter"
+    ? CAMPOS_UNIDAD.flatMap((c) => (c === CAMPO_MEDIDA_STD ? CAMPOS_MEDIDA_SPRINTER : [c]))
+    : CAMPOS_UNIDAD;
+}
+
+// Animación del panel principal cuando alguna llanta está por debajo del mínimo permitido.
+const CSS_ALERTA = `
+@keyframes llantas-parpadeo {
+  0%, 100% { border-color: #ff1a1a; box-shadow: 0 0 10px 2px rgba(255, 26, 26, 0.45); }
+  50% { border-color: #ff8a8a; box-shadow: 0 0 34px 10px rgba(255, 26, 26, 0.9); }
+}
+.llantas-alerta-critica { animation: llantas-parpadeo 0.9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .llantas-alerta-critica { animation: none; box-shadow: 0 0 24px 6px rgba(255, 26, 26, 0.75); }
+}
+`;
+
+function IconoAviso({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+      <path d="M12 9v4M12 17h.01" />
+    </svg>
+  );
+}
 
 // ---------- Utilidades ----------
 function mensajeError(err: unknown, porDefecto: string) {
@@ -193,6 +268,8 @@ export default function UnidadesPage() {
   const [guardandoRevision, setGuardandoRevision] = useState(false);
   const [kilometrajes, setKilometrajes] = useState<Record<string, string>>({}); // borrador por ECO
   const [extraAbierto, setExtraAbierto] = useState<string | null>(null); // título del checklist adicional abierto
+  const [folios, setFolios] = useState<Record<string, Record<string, string>>>({}); // borrador de folios de llantas por ECO
+  const [mms, setMms] = useState<Record<string, Record<string, string>>>({}); // borrador de MM de llantas por ECO
 
   // Ficha completa (modal)
   const [fichaAbierta, setFichaAbierta] = useState(false);
@@ -282,7 +359,13 @@ export default function UnidadesPage() {
   const ultimaActual = ecoActual ? ultimas[ecoActual] : undefined;
   const hayCambios =
     !!ecoActual &&
-    (Object.keys(checks[ecoActual] || {}).length > 0 || !!observaciones[ecoActual]?.trim() || !!kilometrajes[ecoActual]?.trim());
+    (Object.keys(checks[ecoActual] || {}).length > 0 ||
+      Object.keys(folios[ecoActual] || {}).length > 0 ||
+      Object.keys(mms[ecoActual] || {}).length > 0 ||
+      !!observaciones[ecoActual]?.trim() ||
+      !!kilometrajes[ecoActual]?.trim());
+  const tipoLlantas = tipoNeumaticos(actual);
+  const tipoPorEco = useMemo(() => Object.fromEntries(registros.map((r) => [r["ECO"], tipoNeumaticos(r)])), [registros]);
   const bloqueExtra = CHECKLIST_EXTRA.find((b) => b.titulo === extraAbierto) || null;
 
   const mover = useCallback(
@@ -313,6 +396,33 @@ export default function UnidadesPage() {
   const estaActivo = (eco: string, bloque: string, item: string) =>
     checks[eco]?.[clavePunto(bloque, item)] ?? ultimas[eco]?.resultados?.[bloque]?.[item] ?? true;
 
+  // Folio mostrado: borrador > última revisión guardada > vacío
+  const folioMostrado = (eco: string, posicion: string) =>
+    folios[eco]?.[posicion] ?? leerLlanta(ultimas[eco]?.neumaticos?.[posicion]).folio ?? "";
+
+  // MM mostrado: borrador > última revisión guardada > vacío
+  const mmMostrado = (eco: string, posicion: string) => {
+    if (mms[eco]?.[posicion] !== undefined) return mms[eco][posicion];
+    const guardado = leerLlanta(ultimas[eco]?.neumaticos?.[posicion]).mm;
+    return guardado != null ? String(guardado) : "";
+  };
+
+  const cambiarMM = (eco: string, posicion: string, valor: string, limites: LimitesMM, tipo: string) => {
+    if (soloConsulta) return;
+    const texto = valor.replace(",", ".").trim();
+    if (!MM_RE.test(texto)) return; // solo números positivos con punto decimal
+    if (texto !== "" && texto !== "." && Number(texto) > limites.max) {
+      setAviso(`El valor máximo permitido para ${tipo} es ${limites.max} mm.`);
+      return;
+    }
+    setMms((prev) => ({ ...prev, [eco]: { ...prev[eco], [posicion]: texto } }));
+  };
+
+  const cambiarFolio = (eco: string, posicion: string, valor: string) => {
+    if (soloConsulta) return;
+    setFolios((prev) => ({ ...prev, [eco]: { ...prev[eco], [posicion]: valor.slice(0, MAX_FOLIO) } }));
+  };
+
   const alternar = (eco: string, bloque: string, item: string) => {
     if (soloConsulta) return;
     const actualValor = estaActivo(eco, bloque, item);
@@ -327,6 +437,16 @@ export default function UnidadesPage() {
     });
     setObservaciones((prev) => ({ ...prev, [eco]: "" }));
     setKilometrajes((prev) => ({ ...prev, [eco]: "" }));
+    setFolios((prev) => {
+      const copia = { ...prev };
+      delete copia[eco];
+      return copia;
+    });
+    setMms((prev) => {
+      const copia = { ...prev };
+      delete copia[eco];
+      return copia;
+    });
   };
 
   const guardarRevision = async () => {
@@ -342,6 +462,26 @@ export default function UnidadesPage() {
       resultados[bloque.titulo] = {};
       for (const item of bloque.items) resultados[bloque.titulo][item] = estaActivo(ecoActual, bloque.titulo, item);
     }
+    let neumaticos: Record<string, Llanta> | null = null;
+    if (tipoLlantas) {
+      neumaticos = {};
+      for (const posicion of tipoLlantas.posiciones) {
+        const mmTexto = mmMostrado(ecoActual, posicion).trim();
+        let mm: number | null = null;
+        if (mmTexto !== "") {
+          mm = Number(mmTexto);
+          if (!Number.isFinite(mm) || mm <= 0) {
+            alert(`El valor en MM de la llanta ${posicion} debe ser mayor a 0.`);
+            return;
+          }
+          if (mm > tipoLlantas.mm.max) {
+            alert(`El valor en MM de la llanta ${posicion} excede el máximo permitido (${tipoLlantas.mm.max} mm).`);
+            return;
+          }
+        }
+        neumaticos[posicion] = { folio: folioMostrado(ecoActual, posicion).trim(), mm };
+      }
+    }
     const { ok } = contarCumplidos(resultados);
     if (!confirm(`¿Guardar la revisión de ${ecoActual}? (${ok}/${TOTAL_PUNTOS} puntos en orden)`)) return;
     setGuardandoRevision(true);
@@ -350,7 +490,7 @@ export default function UnidadesPage() {
         await fetch("/api/unidades/revisiones", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eco: ecoActual, resultados, observaciones: observaciones[ecoActual] || "", kilometraje }),
+          body: JSON.stringify({ eco: ecoActual, resultados, observaciones: observaciones[ecoActual] || "", kilometraje, neumaticos }),
         })
       );
       const registro: Revision = data.registro;
@@ -364,6 +504,22 @@ export default function UnidadesPage() {
       setGuardandoRevision(false);
     }
   };
+
+  // ---------- Semáforo de llantas de la unidad actual ----------
+  const evaluacionLlantas = tipoLlantas
+    ? tipoLlantas.posiciones.map((posicion) => {
+        const texto = mmMostrado(ecoActual, posicion);
+        const mm = texto === "" || texto === "." ? NaN : Number(texto);
+        const valido = Number.isFinite(mm) && mm > 0;
+        return { posicion, mm: valido ? mm : null, estado: valido ? semaforoMM(mm, tipoLlantas.mm) : null };
+      })
+    : [];
+  const llantasCriticas = evaluacionLlantas.filter((l) => l.estado === "critico");
+  const llantasRojas = evaluacionLlantas.filter((l) => l.estado === "rojo");
+  const llantasAmarillas = evaluacionLlantas.filter((l) => l.estado === "amarillo");
+  const alertaCritica = llantasCriticas.length > 0;
+  const listaLlantas = (lista: { posicion: string; mm: number | null }[]) =>
+    lista.map((l) => `${l.posicion} (${l.mm != null ? formatoMM(l.mm) : "—"})`).join(" · ");
 
   // ---------- Historial ----------
   const consultarHistorial = async (filtros: { eco: string; desde: string; hasta: string }) => {
@@ -440,6 +596,11 @@ export default function UnidadesPage() {
               const v = r.resultados?.[bloque.titulo]?.[item];
               fila[`${bloque.titulo} - ${item}`] = v === undefined ? "" : v ? "OK" : "FALLA";
             }
+          }
+          for (const posicion of POSICIONES_EXPORTAR) {
+            const llanta = leerLlanta(r.neumaticos?.[posicion]);
+            fila[`Folio llanta ${posicion}`] = llanta.folio || "";
+            fila[`MM llanta ${posicion}`] = llanta.mm != null ? String(llanta.mm) : "";
           }
           fila["Observaciones"] = r.observaciones || "";
           fila["Realizó"] = r.realizado_por || "";
@@ -560,16 +721,21 @@ export default function UnidadesPage() {
 
   const exportar = () => {
     exportarExcel(`Unidades_${new Date().toISOString().slice(0, 10)}.xlsx`, [
-      { nombre: "Unidades", filas: registros.map((r) => Object.fromEntries(CAMPOS_UNIDAD.map((c) => [c, r[c] || ""]))) },
+      {
+        nombre: "Unidades",
+        filas: registros.map((r) => Object.fromEntries([...CAMPOS_UNIDAD, ...CAMPOS_MEDIDA_SPRINTER].map((c) => [c, r[c] || ""]))),
+      },
     ]);
   };
 
   const enEdicion = modo === "editar" || modo === "nuevo";
   const ecoFicha = valores["ECO"] || "";
   const fotoFicha = fotoNueva !== undefined ? fotoNueva : modo === "nuevo" ? null : imagenes[ecoFicha];
+  const camposActuales = camposFicha(valores);
 
   return (
     <div className="min-h-screen bg-[#eef1f6]">
+      <style>{CSS_ALERTA}</style>
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10 pb-10">
         <PageHeader
           titulo="Unidades"
@@ -661,7 +827,11 @@ export default function UnidadesPage() {
           </aside>
 
           {/* ===================== PANEL PRINCIPAL (75%) ===================== */}
-          <section className="lg:col-span-3 bg-white rounded-[18px] p-4 sm:p-5 md:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] border-2 border-[#8b5cf6]/70">
+          <section
+            className={`lg:col-span-3 bg-white rounded-[18px] p-4 sm:p-5 md:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] ${
+              actual && alertaCritica ? "border-[3px] border-[#ff1a1a] llantas-alerta-critica" : "border-2 border-[#8b5cf6]/70"
+            }`}
+          >
             {!actual ? (
               <div className="flex flex-col items-center justify-center text-center py-20 text-[var(--gray-400)] text-[13.5px]">
                 <IconoUnidad size={140} />
@@ -708,6 +878,36 @@ export default function UnidadesPage() {
                     </div>
                   </div>
                 </div>
+
+                {/* Avisos de llantas (semáforo en rojo o amarillo) */}
+                {tipoLlantas && (alertaCritica || llantasRojas.length > 0 || llantasAmarillas.length > 0) && (
+                  <div className="flex flex-col gap-1.5 mt-3" role="alert">
+                    {alertaCritica && (
+                      <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] font-bold bg-[#ff1a1a] text-white">
+                        <span className="mt-[1px] flex-none"><IconoAviso /></span>
+                        <span>
+                          ALERTA CRÍTICA: llanta(s) por debajo del mínimo permitido ({tipoLlantas.mm.rojo} mm) · {listaLlantas(llantasCriticas)}
+                        </span>
+                      </div>
+                    )}
+                    {llantasRojas.length > 0 && (
+                      <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold bg-[#fde4e0] text-[var(--red)] border border-[var(--red)]">
+                        <span className="mt-[1px] flex-none"><IconoAviso /></span>
+                        <span>
+                          Llantas en rojo ({tipoLlantas.mm.rojo}–{tipoLlantas.mm.amarillo} mm), programar cambio · {listaLlantas(llantasRojas)}
+                        </span>
+                      </div>
+                    )}
+                    {llantasAmarillas.length > 0 && (
+                      <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold bg-[#fdf1d6] text-[#9a6a00] border border-[var(--amber)]">
+                        <span className="mt-[1px] flex-none"><IconoAviso /></span>
+                        <span>
+                          Llantas en amarillo ({tipoLlantas.mm.amarillo}–{tipoLlantas.mm.verde} mm), dar seguimiento · {listaLlantas(llantasAmarillas)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Imagen + navegación */}
                 <div className="relative flex items-center justify-center h-[220px] sm:h-[260px] md:h-[300px] my-2">
@@ -792,6 +992,98 @@ export default function UnidadesPage() {
 
                 {/* Checklist */}
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 items-stretch">
+                  {/* Neumáticos (primero): posiciones según el tipo de unidad, con folio y MM por llanta */}
+                  <div className="bg-[#d9d9d9] rounded-lg p-2.5 flex flex-col min-w-0 md:col-span-2 xl:col-span-4">
+                    <h4 className="text-center text-[14px] font-semibold text-[#333] m-0">
+                      Neumáticos{tipoLlantas ? ` · ${tipoLlantas.tipo}` : ""}
+                    </h4>
+                    <p className="text-[10px] leading-snug text-[#444] mt-0.5 mb-0">
+                      -{" "}
+                      {tipoLlantas
+                        ? `Captura el folio y los MM de cada llanta (P1 a P${tipoLlantas.posiciones.length - 1} + PR refacción). Máximo ${tipoLlantas.mm.max} mm.`
+                        : "No se identificó el tipo de unidad (Transporter, Sprinter, Delivery o Torthon) para asignar posiciones de llantas."}
+                    </p>
+                    {tipoLlantas && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[10px] text-[#444]">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-[var(--red)]" /> {tipoLlantas.mm.rojo}–{tipoLlantas.mm.amarillo} mm
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-[var(--amber)]" /> {tipoLlantas.mm.amarillo}–{tipoLlantas.mm.verde} mm
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-[var(--green)]" /> {tipoLlantas.mm.verde} mm o más
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2.5 h-2.5 rounded-sm bg-[#ff1a1a]" /> Menos de {tipoLlantas.mm.rojo} mm: crítico
+                        </span>
+                        {ultimaActual && (
+                          <span className="ml-auto text-[#666]">
+                            Última revisión: {formatoFecha(ultimaActual.fecha)} {formatoHora(ultimaActual.fecha)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {tipoLlantas && (
+                      <div className="grid gap-1.5 mt-2 auto-rows-fr grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+                        {tipoLlantas.posiciones.map((posicion) => {
+                          const estado = evaluacionLlantas.find((l) => l.posicion === posicion)?.estado ?? null;
+                          const mmTexto = mmMostrado(ecoActual, posicion);
+                          const mmInvalido = mmTexto !== "" && !(Number(mmTexto) > 0);
+                          return (
+                            <div
+                              key={posicion}
+                              className={`bg-[#f2f2f2] rounded-lg pl-2 pr-1.5 py-1.5 min-h-[40px] flex flex-col gap-1 border-[5px] transition-colors ${
+                                estado ? ESTILO_SEMAFORO[estado].borde : mmInvalido ? "border-[var(--red)]" : "border-transparent"
+                              }`}
+                              title={estado ? `Semáforo: ${ESTILO_SEMAFORO[estado].etiqueta}` : undefined}
+                            >
+                              <div className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-1.5">
+                                <label
+                                  htmlFor={`folio-llanta-${posicion}`}
+                                  title={posicion === "PR" ? "Llanta de refacción" : `Posición ${posicion}`}
+                                  className="text-[10.5px] font-semibold leading-tight text-[#222]"
+                                >
+                                  {posicion}
+                                </label>
+                                <input
+                                  id={`folio-llanta-${posicion}`}
+                                  type="text"
+                                  value={folioMostrado(ecoActual, posicion)}
+                                  onChange={(e) => cambiarFolio(ecoActual, posicion, e.target.value)}
+                                  disabled={soloConsulta}
+                                  maxLength={MAX_FOLIO}
+                                  placeholder="Folio"
+                                  aria-label={`Folio de llanta ${posicion === "PR" ? "de refacción" : posicion}`}
+                                  className="w-full min-w-0 bg-white border border-[var(--gray-200)] rounded px-2 py-1 text-[11px] outline-none focus:border-[var(--blue)] disabled:bg-[var(--gray-100)]"
+                                />
+                              </div>
+                              <div className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-1.5">
+                                <label htmlFor={`mm-llanta-${posicion}`} className="text-[9.5px] font-semibold leading-tight text-[#555]">
+                                  MM
+                                </label>
+                                <div className="flex items-center min-w-0 bg-white border border-[var(--gray-200)] rounded overflow-hidden focus-within:border-[var(--blue)]">
+                                  <input
+                                    id={`mm-llanta-${posicion}`}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={mmTexto}
+                                    onChange={(e) => cambiarMM(ecoActual, posicion, e.target.value, tipoLlantas.mm, tipoLlantas.tipo)}
+                                    disabled={soloConsulta}
+                                    placeholder={`Máx. ${tipoLlantas.mm.max}`}
+                                    aria-label={`MM de llanta ${posicion === "PR" ? "de refacción" : posicion}`}
+                                    aria-invalid={mmInvalido}
+                                    className="flex-1 w-full min-w-0 px-2 py-1 text-[11px] outline-none disabled:bg-[var(--gray-100)]"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   {CHECKLIST.map((bloque) => {
                     const dosColumnas = bloque.items.length > 4;
                     return (
@@ -934,7 +1226,7 @@ export default function UnidadesPage() {
               {/* Datos */}
               {enEdicion ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
-                  {CAMPOS_UNIDAD.map((campo) => (
+                  {camposActuales.map((campo) => (
                     <div key={campo}>
                       <label className="block text-[12px] font-bold text-[var(--navy)] mb-1.5">{campo}</label>
                       <input
@@ -950,7 +1242,7 @@ export default function UnidadesPage() {
                 <div className="border border-[var(--gray-200)] rounded-xl overflow-hidden">
                   <table className="w-full border-collapse">
                     <tbody>
-                      {CAMPOS_UNIDAD.map((campo, i) => (
+                      {camposActuales.map((campo, i) => (
                         <tr key={campo} className={i % 2 === 0 ? "bg-white" : "bg-[var(--gray-100)]"}>
                           <th className="text-left text-[11px] uppercase tracking-wide text-[var(--navy)] font-bold px-3 py-2 w-[45%] align-top">{campo}</th>
                           <td className="px-3 py-2 text-[12.5px] break-words">{valores[campo] || "—"}</td>
@@ -1192,6 +1484,7 @@ export default function UnidadesPage() {
                             key={r.id}
                             revision={r}
                             unidad={nombrePorEco[r.eco] || "—"}
+                            tipoLlantas={tipoPorEco[r.eco] || null}
                             ok={ok}
                             total={total}
                             fallas={fallas}
@@ -1219,6 +1512,7 @@ export default function UnidadesPage() {
 function FilaRevision({
   revision,
   unidad,
+  tipoLlantas,
   ok,
   total,
   fallas,
@@ -1230,6 +1524,7 @@ function FilaRevision({
 }: {
   revision: Revision;
   unidad: string;
+  tipoLlantas: TipoNeumaticos | null;
   ok: number;
   total: number;
   fallas: number;
@@ -1239,6 +1534,17 @@ function FilaRevision({
   onVer: () => void;
   onEliminar: () => void;
 }) {
+  // Llantas de la revisión con su semáforo (según el tipo de unidad)
+  const llantas = Object.entries(revision.neumaticos || {})
+    .map(([posicion, valor]) => {
+      const llanta = leerLlanta(valor);
+      const estado = llanta.mm != null && llanta.mm > 0 && tipoLlantas ? semaforoMM(llanta.mm, tipoLlantas.mm) : null;
+      return { posicion, folio: llanta.folio || "", mm: llanta.mm ?? null, estado };
+    })
+    .filter((l) => l.folio || l.mm != null);
+  const peor = (["critico", "rojo", "amarillo"] as Semaforo[]).find((e) => llantas.some((l) => l.estado === e)) || null;
+  const cuentaPeor = peor ? llantas.filter((l) => l.estado === peor).length : 0;
+
   return (
     <>
       <tr className={`border-b border-[var(--gray-200)] hover:bg-[var(--gray-100)] ${separador ? "border-t-2 border-t-[var(--gray-400)]" : ""} ${expandido ? "bg-[var(--gray-100)]" : ""}`}>
@@ -1250,6 +1556,12 @@ function FilaRevision({
           <span className={`inline-block rounded-md px-2 py-0.5 text-[11px] font-bold ${fallas === 0 ? "bg-[#dcf5e8] text-[#137a4a]" : "bg-[#fde4e0] text-[var(--red)]"}`}>
             {ok}/{total} {fallas === 0 ? "OK" : `· ${fallas} falla(s)`}
           </span>
+          {peor && (
+            <span className={`inline-flex items-center gap-1 ml-1.5 rounded-md px-2 py-0.5 text-[11px] font-bold ${ESTILO_SEMAFORO[peor].chip}`}>
+              <IconoAviso size={11} />
+              {cuentaPeor} llanta(s) {peor === "critico" ? "crítica(s)" : `en ${ESTILO_SEMAFORO[peor].etiqueta.toLowerCase()}`}
+            </span>
+          )}
         </td>
         <td className="px-3 py-2.5 text-[12.5px] whitespace-nowrap">{revision.realizado_por || "—"}</td>
         <td className="px-3 py-2.5 whitespace-nowrap">
@@ -1288,6 +1600,25 @@ function FilaRevision({
                 </div>
               ))}
             </div>
+            {llantas.length > 0 && (
+              <div className="mt-2.5">
+                <p className="text-[12px] font-bold text-[var(--navy)] m-0 mb-1.5">Neumáticos</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {llantas.map((l) => (
+                    <span
+                      key={l.posicion}
+                      className={`inline-flex items-center gap-1.5 bg-white rounded-md border-2 px-2 py-1 text-[11px] ${
+                        l.estado ? ESTILO_SEMAFORO[l.estado].borde : "border-[var(--gray-200)]"
+                      }`}
+                    >
+                      <b className="text-[var(--navy)]">{l.posicion}</b>
+                      {l.folio && <span>Folio {l.folio}</span>}
+                      {l.mm != null && <span className="font-semibold">{formatoMM(l.mm)}</span>}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             {revision.kilometraje != null && (
               <p className="text-[12px] text-[var(--text)] mt-2.5 mb-0">
                 <b className="text-[var(--navy)]">Kilometraje:</b> {Number(revision.kilometraje).toLocaleString("es-MX")} km

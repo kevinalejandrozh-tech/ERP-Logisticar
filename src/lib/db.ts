@@ -74,6 +74,36 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 await p.query(`ALTER TABLE unidades_revisiones ADD COLUMN IF NOT EXISTS kilometraje INTEGER;`);
 await p.query(`ALTER TABLE unidades_revisiones ADD COLUMN IF NOT EXISTS neumaticos JSONB;`);
 await p.query(`CREATE INDEX IF NOT EXISTS idx_unidades_revisiones_eco_fecha ON unidades_revisiones (eco, fecha DESC);`);
+// Documentos PDF por unidad (tarjeta de circulación, póliza de seguro, verificación, ...).
+// Independientes de unidades_revisiones: se reemplazan cuando se sube un archivo nuevo,
+// no expiran ni se piden de nuevo en cada revisión (a diferencia del checklist/neumáticos).
+await p.query(`
+CREATE TABLE IF NOT EXISTS unidades_documentos (
+id SERIAL PRIMARY KEY,
+eco TEXT NOT NULL,
+tipo TEXT NOT NULL,
+nombre_archivo TEXT,
+contenido TEXT NOT NULL,
+cargado_por TEXT,
+fecha_carga TIMESTAMPTZ NOT NULL DEFAULT now(),
+UNIQUE (eco, tipo)
+);
+`);
+
+// Control de cambios de aceite por unidad (submódulo de Unidades). Un único registro
+// "vigente" por eco (no historial): se actualiza al capturar KM último cambio / KM actual.
+// Distinta de la tabla cambios_aceite (usada por Órdenes de Servicio), que es un listado
+// manual con filas independientes; no se comparten ni se modifican entre sí.
+await p.query(`
+CREATE TABLE IF NOT EXISTS unidades_aceite (
+eco TEXT PRIMARY KEY,
+km_ultimo_cambio INTEGER,
+fecha_ultimo_cambio TIMESTAMPTZ,
+km_actual INTEGER,
+actualizado_por TEXT,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS mochilas (
 id SERIAL PRIMARY KEY,

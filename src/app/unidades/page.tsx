@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { CAMPOS_UNIDAD } from "@/lib/unidadFormData";
 import { exportarExcel } from "@/lib/exportExcel";
@@ -20,8 +21,18 @@ type Revision = {
   neumaticos?: Record<string, Llanta | string> | null; // { P1: { folio, mm }, ..., PR: { folio, mm } }
 };
 type Llanta = { folio?: string; mm?: number | null };
+type DocumentoMeta = { nombre_archivo: string | null; cargado_por: string | null; fecha_carga: string };
 
 const ZONA = "America/Mexico_City";
+
+// Documentos PDF por unidad: independientes del checklist/revisión rápida — se guardan al
+// subirlos (no hace falta "Guardar revisión") y se conservan hasta que se reemplacen con otro archivo.
+const DOCUMENTOS_UNIDAD: { tipo: string; etiqueta: string }[] = [
+  { tipo: "tarjeta_circulacion", etiqueta: "Tarjeta de circulación" },
+  { tipo: "poliza_seguro", etiqueta: "Póliza de Seguro" },
+  { tipo: "verificacion", etiqueta: "Verificación" },
+];
+const MAX_PDF_MB = 4;
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 // Checklist rápido de unidad (se guarda en unidades_revisiones).
@@ -155,6 +166,10 @@ function mensajeError(err: unknown, porDefecto: string) {
   return err instanceof Error && err.message ? err.message : porDefecto;
 }
 
+function escaparHtml(t: string) {
+  return String(t || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 // Clave por bloque + punto (evita choques si dos bloques llegan a tener un punto con el mismo nombre).
 const clavePunto = (bloque: string, item: string) => `${bloque}::${item}`;
 
@@ -217,6 +232,189 @@ async function obtenerRevisiones(filtros: { eco?: string; desde?: string; hasta?
   return data.registros || [];
 }
 
+// Documentos PDF de la unidad: solo metadatos (nombre, fecha, quién lo subió); el contenido
+// se pide aparte (obtenerDocumentoPdf) hasta que el usuario da clic en "Descargar".
+async function obtenerDocumentos(eco: string): Promise<Record<string, DocumentoMeta>> {
+  const data = await leerJson(await fetch(`/api/unidades/documentos?eco=${encodeURIComponent(eco)}`, { cache: "no-store" }));
+  return data.documentos || {};
+}
+
+async function obtenerDocumentoPdf(eco: string, tipo: string): Promise<{ nombreArchivo: string; contenido: string }> {
+  const data = await leerJson(
+    await fetch(`/api/unidades/documentos/descargar?eco=${encodeURIComponent(eco)}&tipo=${encodeURIComponent(tipo)}`, { cache: "no-store" })
+  );
+  return { nombreArchivo: data.nombreArchivo, contenido: data.contenido };
+}
+
+async function subirDocumentoPdf(eco: string, tipo: string, nombreArchivo: string, contenido: string): Promise<DocumentoMeta> {
+  const data = await leerJson(
+    await fetch("/api/unidades/documentos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eco, tipo, nombreArchivo, contenido }),
+    })
+  );
+  return data.documento;
+}
+
+function leerArchivoComoDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const lector = new FileReader();
+    lector.onload = () => resolve(String(lector.result || ""));
+    lector.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    lector.readAsDataURL(file);
+  });
+}
+
+// Convierte un data URI ("data:application/pdf;base64,....") en un Blob para poder abrirlo
+// con window.open() como blob: URL. Los navegadores modernos bloquean la navegación directa
+// a una data: URL en una pestaña nueva, así que la previsualización necesita este paso.
+function dataUrlABlob(dataUrl: string): Blob {
+  const [encabezado, base64] = dataUrl.split(",");
+  const tipoMime = /data:(.*?);base64/.exec(encabezado)?.[1] || "application/pdf";
+  const binario = atob(base64 || "");
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return new Blob([bytes], { type: tipoMime });
+}
+
+// ---------- PDF de una revisión (misma identidad visual que el documento de Compras: logo +
+// "TRANSPORTES LOGISTICAR" + folio, sin jsPDF — ventana nueva con HTML + @media print + window.print(),
+// igual que el resto de documentos completos del sistema, p. ej. Check List Diario de Unidades). ----------
+function folioRevision(rev: Revision) {
+  return `REV-${rev.eco}-${diaLocal(rev.fecha).replace(/-/g, "")}-${rev.id}`;
+}
+
+function descargarPdfRevision(revision: Revision, unidad: string, tipoLlantas: TipoNeumaticos | null) {
+  const ventana = window.open("", "_blank", "width=900,height=700");
+  if (!ventana) {
+    alert("El navegador bloqueó la ventana de impresión. Habilita las ventanas emergentes para este sitio.");
+    return;
+  }
+  const { ok, total } = contarCumplidos(revision.resultados);
+  const fallas = total - ok;
+  const fecha = formatoFecha(revision.fecha);
+  const hora = formatoHora(revision.fecha);
+  const folio = folioRevision(revision);
+
+  const bloquesHtml = CHECKLIST_TODOS.map((bloque) => {
+    const filas = bloque.items
+      .map((item) => {
+        const v = revision.resultados?.[bloque.titulo]?.[item];
+        const estado = v === undefined ? '<span class="vacio">—</span>' : v ? '<span class="ok">OK</span>' : '<span class="malo">FALLA</span>';
+        return `<tr><td>${escaparHtml(item)}</td><td class="col-estado">${estado}</td></tr>`;
+      })
+      .join("");
+    return `<div class="bloque"><table><thead><tr><th colspan="2">${escaparHtml(bloque.titulo)}</th></tr></thead><tbody>${filas}</tbody></table></div>`;
+  }).join("");
+
+  const llantasHtml = Object.entries(revision.neumaticos || {})
+    .map(([posicion, valor]) => {
+      const llanta = leerLlanta(valor);
+      if (!llanta.folio && llanta.mm == null) return "";
+      const estado = llanta.mm != null && llanta.mm > 0 && tipoLlantas ? semaforoMM(llanta.mm, tipoLlantas.mm) : null;
+      const clase = estado ? `llanta-${estado}` : "";
+      return `<span class="llanta ${clase}"><b>${escaparHtml(posicion)}</b>${llanta.folio ? ` · Folio ${escaparHtml(llanta.folio)}` : ""}${
+        llanta.mm != null ? ` · ${escaparHtml(formatoMM(llanta.mm))}` : ""
+      }</span>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Revisión ${escaparHtml(folio)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #f4f5f8; color: #1c1c1c; }
+  .hoja { max-width: 820px; margin: 24px auto; background: #fff; padding: 32px 40px; }
+  .cab { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #e5e8ee; padding-bottom: 18px; gap: 12px; }
+  .cab .marca { display: flex; align-items: center; gap: 10px; }
+  .cab .marca img { width: 38px; height: 38px; object-fit: contain; }
+  .cab .marca span { font-size: 17px; font-weight: bold; color: #16215c; text-transform: uppercase; letter-spacing: 0.03em; }
+  .cab .folio { text-align: right; }
+  .cab .folio p { margin: 0; }
+  .cab .folio .fecha { color: #2f6fed; font-size: 13px; font-weight: 500; }
+  .cab .folio .num { font-size: 14px; font-weight: bold; color: #111; margin-top: 4px; }
+  h1.titulo { text-align: center; font-size: 17px; text-transform: uppercase; letter-spacing: 0.06em; color: #16215c; margin: 22px 0; }
+  .datos { border: 1px solid #e5e8ee; border-radius: 10px; overflow: hidden; margin-bottom: 20px; }
+  .datos table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .datos th { text-align: left; width: 45%; background: #fff; color: #16215c; text-transform: uppercase; font-size: 10.5px; font-weight: bold; padding: 8px 12px; vertical-align: top; }
+  .datos td { padding: 8px 12px; }
+  .datos tr:nth-child(even) { background: #f4f5f8; }
+  .resultado { display: inline-block; border-radius: 6px; padding: 2px 8px; font-size: 11px; font-weight: bold; }
+  .resultado.bien { background: #dcf5e8; color: #137a4a; }
+  .resultado.mal { background: #fde4e0; color: #e2412c; }
+  .bloques { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  .bloque table { width: 100%; border-collapse: collapse; border: 1px solid #e5e8ee; border-radius: 8px; overflow: hidden; font-size: 11.5px; }
+  .bloque th { background: #16215c; color: #fff; text-align: left; padding: 6px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .bloque td { padding: 5px 10px; border-top: 1px solid #e5e8ee; }
+  .bloque td.col-estado { text-align: right; width: 70px; }
+  .bloque tr:nth-child(even) td { background: #f4f5f8; }
+  .ok { color: #21a866; font-weight: bold; }
+  .malo { color: #e2412c; font-weight: bold; }
+  .vacio { color: #9aa1b0; }
+  .seccion-titulo { font-size: 12.5px; font-weight: bold; color: #16215c; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .llantas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+  .llanta { display: inline-flex; gap: 5px; border: 2px solid #e5e8ee; border-radius: 6px; padding: 4px 9px; font-size: 11px; background: #fff; }
+  .llanta-critico { border-color: #ff1a1a; }
+  .llanta-rojo { border-color: #e2412c; }
+  .llanta-amarillo { border-color: #f2b134; }
+  .llanta-verde { border-color: #21a866; }
+  .observaciones { font-size: 12.5px; margin-bottom: 28px; }
+  .barra { text-align: center; padding: 18px 0 6px; }
+  .barra button { padding: 10px 26px; font-size: 13px; font-weight: bold; background: #16215c; color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+  @media print {
+    body { background: #fff; }
+    .hoja { margin: 0; max-width: none; padding: 0; }
+    .barra { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="hoja">
+  <div class="cab">
+    <div class="marca">
+      <img src="/logo-transportes.png" alt="Transportes Logisticar" />
+      <span>Transportes Logisticar</span>
+    </div>
+    <div class="folio">
+      <p class="fecha">${escaparHtml(fecha)} · ${escaparHtml(hora)}</p>
+      <p class="num">Folio: ${escaparHtml(folio)}</p>
+    </div>
+  </div>
+
+  <h1 class="titulo">Checklist de Revisión de Unidad</h1>
+
+  <div class="datos">
+    <table>
+      <tbody>
+        <tr><th>ECO</th><td>${escaparHtml(revision.eco)}</td></tr>
+        <tr><th>Unidad</th><td>${escaparHtml(unidad || "—")}</td></tr>
+        <tr><th>Kilometraje</th><td>${revision.kilometraje != null ? `${Number(revision.kilometraje).toLocaleString("es-MX")} km` : "—"}</td></tr>
+        <tr><th>Resultado</th><td><span class="resultado ${fallas === 0 ? "bien" : "mal"}">${ok}/${total} ${fallas === 0 ? "OK" : `· ${fallas} falla(s)`}</span></td></tr>
+        <tr><th>Realizó</th><td>${escaparHtml(revision.realizado_por || "—")}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="bloques">${bloquesHtml}</div>
+
+  ${llantasHtml ? `<p class="seccion-titulo">Neumáticos</p><div class="llantas">${llantasHtml}</div>` : ""}
+
+  ${revision.observaciones ? `<p class="observaciones"><b>Observaciones:</b> ${escaparHtml(revision.observaciones)}</p>` : ""}
+</div>
+<div class="barra"><button id="btnImprimir">Imprimir / Guardar PDF</button></div>
+<script>document.getElementById("btnImprimir").addEventListener("click", function () { window.print(); });</script>
+</body>
+</html>`;
+  ventana.document.open();
+  ventana.document.write(html);
+  ventana.document.close();
+}
+
 // ---------- Componentes pequeños ----------
 function Toggle({ activo, onChange, etiqueta, deshabilitado }: { activo: boolean; onChange: () => void; etiqueta: string; deshabilitado?: boolean }) {
   return (
@@ -261,6 +459,13 @@ export default function UnidadesPage() {
   // Cachés por ECO (undefined = aún no se consulta)
   const [imagenes, setImagenes] = useState<Record<string, string | null>>({});
   const [ultimas, setUltimas] = useState<Record<string, Revision | null>>({});
+  const [documentos, setDocumentos] = useState<Record<string, Record<string, DocumentoMeta>>>({});
+
+  // Documentos PDF: se guardan de inmediato al subirlos (no forman parte del "Guardar revisión").
+  const [subiendoDoc, setSubiendoDoc] = useState<string | null>(null); // `${eco}::${tipo}` en curso
+  const [descargandoDoc, setDescargandoDoc] = useState<string | null>(null);
+  const inputDoc = useRef<HTMLInputElement>(null);
+  const tipoDocPendiente = useRef<string>("");
 
   // Borrador del checklist por unidad: { [eco]: { [bloque::item]: boolean } }
   const [checks, setChecks] = useState<Record<string, Record<string, boolean>>>({});
@@ -335,7 +540,14 @@ export default function UnidadesPage() {
         .catch(() => setUltimas((prev) => ({ ...prev, [eco]: null })))
         .finally(() => pedidos.current.delete(`rev:${eco}`));
     }
-  }, [seleccion, conImagen, imagenes, ultimas]);
+    if (documentos[eco] === undefined && !pedidos.current.has(`doc:${eco}`)) {
+      pedidos.current.add(`doc:${eco}`);
+      obtenerDocumentos(eco)
+        .then((docs) => setDocumentos((prev) => ({ ...prev, [eco]: docs })))
+        .catch(() => setDocumentos((prev) => ({ ...prev, [eco]: {} })))
+        .finally(() => pedidos.current.delete(`doc:${eco}`));
+    }
+  }, [seleccion, conImagen, imagenes, ultimas, documentos]);
 
   // Aviso temporal
   useEffect(() => {
@@ -502,6 +714,68 @@ export default function UnidadesPage() {
       alert(mensajeError(err, "No se pudo guardar la revisión."));
     } finally {
       setGuardandoRevision(false);
+    }
+  };
+
+  // ---------- Documentos PDF de la unidad (independientes de "Guardar revisión") ----------
+  const documentoMeta = (eco: string, tipo: string): DocumentoMeta | null => documentos[eco]?.[tipo] || null;
+
+  const pedirArchivoDoc = (tipo: string) => {
+    if (soloConsulta || !ecoActual) return;
+    tipoDocPendiente.current = tipo;
+    inputDoc.current?.click();
+  };
+
+  const manejarArchivoDoc = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    const tipo = tipoDocPendiente.current;
+    if (!file || !ecoActual || !tipo) return;
+    if (file.type !== "application/pdf") {
+      alert("Selecciona un archivo PDF.");
+      return;
+    }
+    if (file.size > MAX_PDF_MB * 1024 * 1024) {
+      alert(`El PDF no debe superar ${MAX_PDF_MB} MB.`);
+      return;
+    }
+    const eco = ecoActual;
+    const clave = `${eco}::${tipo}`;
+    setSubiendoDoc(clave);
+    try {
+      const contenido = await leerArchivoComoDataUrl(file);
+      const documento = await subirDocumentoPdf(eco, tipo, file.name, contenido);
+      setDocumentos((prev) => ({ ...prev, [eco]: { ...prev[eco], [tipo]: documento } }));
+      const etiqueta = DOCUMENTOS_UNIDAD.find((d) => d.tipo === tipo)?.etiqueta || tipo;
+      setAviso(`${etiqueta} actualizado(a) para ${eco}.`);
+    } catch (err) {
+      alert(mensajeError(err, "No se pudo subir el documento."));
+    } finally {
+      setSubiendoDoc(null);
+    }
+  };
+
+  // Abre el PDF en una pestaña nueva para previsualizarlo (visor nativo del navegador), en vez
+  // de forzar la descarga directa. Desde esa pestaña el usuario puede descargarlo o imprimirlo
+  // con los controles propios del visor — el mismo patrón que el PDF de revisiones.
+  const previsualizarDoc = async (tipo: string) => {
+    if (!ecoActual) return;
+    const eco = ecoActual;
+    const clave = `${eco}::${tipo}`;
+    setDescargandoDoc(clave);
+    try {
+      const { contenido } = await obtenerDocumentoPdf(eco, tipo);
+      const url = URL.createObjectURL(dataUrlABlob(contenido));
+      const ventana = window.open(url, "_blank");
+      if (!ventana) {
+        alert("El navegador bloqueó la ventana de previsualización. Habilita las ventanas emergentes para este sitio.");
+      }
+      // Se libera después de que la pestaña tuvo tiempo de cargar el PDF.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      alert(mensajeError(err, "No se pudo previsualizar el documento."));
+    } finally {
+      setDescargandoDoc(null);
     }
   };
 
@@ -775,6 +1049,14 @@ export default function UnidadesPage() {
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
                 Revisiones por día
               </button>
+              <Link
+                href="/unidades/revisiones-aceite"
+                className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-3.5 py-2.5 text-[12.5px] font-bold hover:bg-[var(--gray-100)]"
+                title="Control de cambios de aceite por unidad"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2c3 4 6 7.5 6 11a6 6 0 1 1-12 0c0-3.5 3-7 6-11Z" /></svg>
+                Revisiones de Aceite
+              </Link>
             </div>
 
             <input
@@ -942,6 +1224,50 @@ export default function UnidadesPage() {
                   >
                     <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round"><path d="M9 5l7 7-7 7" /></svg>
                   </button>
+                </div>
+
+                {/* Documentos PDF de la unidad (independientes del checklist: se conservan hasta reemplazarse) */}
+                <input ref={inputDoc} type="file" accept="application/pdf" className="hidden" onChange={manejarArchivoDoc} />
+                <div className="flex flex-wrap items-start justify-center gap-6 sm:gap-8 mb-4">
+                  {DOCUMENTOS_UNIDAD.map((doc) => {
+                    const cargandoDocs = documentos[ecoActual] === undefined;
+                    const meta = documentoMeta(ecoActual, doc.tipo);
+                    const clave = `${ecoActual}::${doc.tipo}`;
+                    const subiendo = subiendoDoc === clave;
+                    const descargando = descargandoDoc === clave;
+                    const existe = !!meta;
+                    return (
+                      <div key={doc.tipo} className="flex flex-col items-center gap-1 w-[110px]">
+                        <button
+                          type="button"
+                          onClick={() => (existe ? previsualizarDoc(doc.tipo) : pedirArchivoDoc(doc.tipo))}
+                          disabled={subiendo || descargando || cargandoDocs}
+                          title={existe ? `Ver ${doc.etiqueta}` : soloConsulta ? "Sin archivo" : `Subir ${doc.etiqueta}`}
+                          className="relative flex items-center justify-center w-11 h-11 rounded-lg bg-[var(--red)] text-white disabled:opacity-60"
+                        >
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M12 11v6M9.5 14.5 12 17l2.5-2.5" /></svg>
+                          {!existe && !soloConsulta && (
+                            <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-[var(--navy)] flex items-center justify-center text-[10px] leading-none">+</span>
+                          )}
+                        </button>
+                        <span className="text-[11px] font-semibold text-[var(--navy)] text-center leading-tight">{doc.etiqueta}</span>
+                        <span className="text-[9.5px] text-[var(--gray-400)] text-center leading-tight">
+                          {subiendo
+                            ? "Subiendo..."
+                            : cargandoDocs
+                            ? "Cargando..."
+                            : existe
+                            ? `${formatoFecha(meta!.fecha_carga)}${meta!.cargado_por ? ` · ${meta!.cargado_por}` : ""}`
+                            : "Sin archivo"}
+                        </span>
+                        {existe && !soloConsulta && (
+                          <button type="button" onClick={() => pedirArchivoDoc(doc.tipo)} disabled={subiendo} className="text-[9.5px] font-bold text-[var(--blue)] hover:underline">
+                            Reemplazar
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* Kilometraje + checklists adicionales */}
@@ -1568,6 +1894,15 @@ function FilaRevision({
           <div className="flex items-center gap-3">
             <button type="button" onClick={onVer} className="text-[12px] font-bold text-[var(--blue)] hover:underline">
               {expandido ? "Ocultar" : "Ver"}
+            </button>
+            <button
+              type="button"
+              onClick={() => descargarPdfRevision(revision, unidad, tipoLlantas)}
+              className="text-[var(--navy)]"
+              title="Descargar PDF de esta revisión"
+              aria-label="Descargar PDF de esta revisión"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v12M6 11l6 6 6-6" /><path d="M4 21h16" /></svg>
             </button>
             {puedeEliminar && (
               <button type="button" onClick={onEliminar} className="text-[var(--red)]" title="Eliminar revisión" aria-label="Eliminar revisión">

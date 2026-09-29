@@ -161,6 +161,7 @@ export default function CapacitacionesPage() {
   const [cargando, setCargando] = useState(true);
   const [detalle, setDetalle] = useState<Evaluacion | null>(null);
   const [catalogo, setCatalogo] = useState<CapacitacionResumen[]>([]);
+  const [qrCapacitacion, setQrCapacitacion] = useState<CapacitacionResumen | null>(null);
   const [modalAbierto, setModalAbierto] = useState(false);
   const [editando, setEditando] = useState<CapacitacionData | undefined>(undefined);
   const [editandoNombreId, setEditandoNombreId] = useState<number | null>(null);
@@ -196,19 +197,21 @@ export default function CapacitacionesPage() {
   });
 
   useEffect(() => {
-    if (catalogo.length === 0) return;
+    if (!qrCapacitacion) return;
     cargarQRiousLib()
       .then(() => {
-        const origen = window.location.origin;
-        catalogo.forEach((c) => {
-          const canvas = document.getElementById(`qr-cap-${c.id}`) as HTMLCanvasElement | null;
-          if (canvas) {
-            new window.QRious({ element: canvas, value: `${origen}/personas/capacitaciones/tomar?id=${c.id}`, size: 60, level: "M" });
-          }
-        });
+        const canvas = document.getElementById("qr-capacitacion-modal") as HTMLCanvasElement | null;
+        if (canvas) {
+          new window.QRious({
+            element: canvas,
+            value: `${window.location.origin}/personas/capacitaciones/tomar?id=${qrCapacitacion.id}`,
+            size: 190,
+            level: "M",
+          });
+        }
       })
       .catch(() => {});
-  }, [catalogo]);
+  }, [qrCapacitacion]);
 
   const abrirEditar = async (id: number) => {
     try {
@@ -302,6 +305,12 @@ export default function CapacitacionesPage() {
             {catalogo.map((c) => (
               <div key={c.id} className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] relative hover:border-[var(--blue)] transition-colors">
                 <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                  <span onClick={() => setQrCapacitacion(c)} className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer" title="Ver código QR">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                      <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
+                    </svg>
+                  </span>
                   <span onClick={() => abrirEditar(c.id)} className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer" title="Editar capacitación">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
                   </span>
@@ -310,15 +319,12 @@ export default function CapacitacionesPage() {
                   </span>
                 </div>
                 <Link href={`/personas/capacitaciones/tomar?id=${c.id}`} className="block no-underline">
-                  <div className="w-[76px] h-[76px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-3 md:mb-4 p-1.5">
-                    <canvas id={`qr-cap-${c.id}`} />
-                  </div>
-                  <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight pr-6">{c.titulo}</h3>
+                  <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight pr-24">{c.titulo}</h3>
                   <div className="w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
                   <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed mb-1">
                     {c.descripcion || `Evaluación de ${c.total_preguntas} preguntas.`}
                   </p>
-                  <p className="text-[10.5px] font-bold text-[var(--blue)] m-0">{c.total_preguntas} preguntas · Escanea para iniciar</p>
+                  <p className="text-[10.5px] font-bold text-[var(--blue)] m-0">{c.total_preguntas} preguntas</p>
                 </Link>
               </div>
             ))}
@@ -546,6 +552,21 @@ export default function CapacitacionesPage() {
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {qrCapacitacion && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setQrCapacitacion(null)}>
+          <div className="bg-white rounded-2xl p-6 text-center shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <p className="text-[13.5px] font-bold text-[var(--navy)] mb-1">{qrCapacitacion.titulo}</p>
+            <p className="text-[11.5px] text-[var(--gray-400)] mb-4">Escanea para iniciar la evaluación</p>
+            <div className="w-[210px] h-[210px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-4 p-2.5">
+              <canvas id="qr-capacitacion-modal" />
+            </div>
+            <button type="button" onClick={() => setQrCapacitacion(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
+              Cerrar
+            </button>
           </div>
         </div>
       )}

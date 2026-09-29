@@ -7,7 +7,7 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const destino = params.get("destino") || "/";
-  const [correo, setCorreo] = useState("");
+  const [usuario, setUsuario] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [cargando, setCargando] = useState(false);
@@ -20,7 +20,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ correo, password }),
+        body: JSON.stringify({ usuario, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo iniciar sesión.");
@@ -41,14 +41,16 @@ function LoginForm() {
         </div>
         <form onSubmit={iniciarSesion} className="flex flex-col gap-3.5">
           <div>
-            <label className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Correo</label>
+            <label className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Usuario</label>
             <input
-              type="email"
+              type="text"
               required
               autoFocus
-              value={correo}
-              onChange={(e) => setCorreo(e.target.value)}
-              placeholder="correo@transporteslogisticar.com"
+              autoCapitalize="characters"
+              autoComplete="username"
+              value={usuario}
+              onChange={(e) => setUsuario(e.target.value)}
+              placeholder="NOMBRE COMPLETO o correo"
               className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
             />
           </div>

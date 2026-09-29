@@ -770,6 +770,13 @@ creado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
 expira_en TIMESTAMPTZ NOT NULL
 );
 `);
+// Acceso del personal (se genera desde Expedientes): entra con su nombre en MAYÚSCULAS, sin correo.
+await p.query(`ALTER TABLE usuarios ALTER COLUMN correo DROP NOT NULL;`);
+await p.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS usuario TEXT;`);
+await p.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS usuario_clave TEXT;`);
+await p.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS expediente_id INTEGER REFERENCES expedientes(id) ON DELETE CASCADE;`);
+await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS usuarios_usuario_clave_idx ON usuarios (usuario_clave) WHERE usuario_clave IS NOT NULL;`);
+await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS usuarios_expediente_id_idx ON usuarios (expediente_id) WHERE expediente_id IS NOT NULL;`);
 const usuariosExistentes = await p.query(`SELECT COUNT(*)::int AS n FROM usuarios`);
 if (usuariosExistentes.rows[0].n === 0) {
 const bcrypt = await import("bcryptjs");

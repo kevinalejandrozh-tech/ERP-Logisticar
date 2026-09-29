@@ -10,7 +10,7 @@ export default function Home() {
 const sesion = useSesion();
 const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
 const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
-const rolEtiqueta = sesion.rol === "sysadmin" ? "Sysadmin" : sesion.rol === "supervisor_tms" ? "Supervisor TMS" : "";
+const rolEtiqueta = sesion.rol === "sysadmin" ? "Sysadmin" : sesion.rol === "supervisor_tms" ? "Supervisor TMS" : sesion.rol === "personal" ? "Personal" : "";
 const cerrarSesion = async () => {
 await fetch("/api/auth/logout", { method: "POST" });
 window.location.href = "/login";
@@ -88,7 +88,7 @@ Buscar...
 </div>
 <div className="hidden lg:block leading-tight">
 <span className="block text-[13px] font-semibold text-[var(--navy)]">{sesion.nombre || "..."}</span>
-<span className="block text-[10px] text-[var(--gray-400)]">{sesion.rol === "sysadmin" ? "Sysadmin" : sesion.rol === "supervisor_tms" ? "Supervisor TMS" : ""}</span>
+<span className="block text-[10px] text-[var(--gray-400)]">{rolEtiqueta}</span>
 </div>
 <svg className="hidden lg:block" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.5"><path d="M6 9l6 6 6-6" /></svg>
 </div>

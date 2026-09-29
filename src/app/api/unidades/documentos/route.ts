@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, getPool } from "@/lib/db";
-import { COOKIE_SESION, verificarTokenSesion } from "@/lib/sesion";
+import { COOKIE_SESION, verificarTokenSesion, tienePermisosAdmin } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -101,7 +101,7 @@ export async function DELETE(req: NextRequest) {
   try {
     const token = req.cookies.get(COOKIE_SESION)?.value;
     const sesion = token ? await verificarTokenSesion(token) : null;
-    if (sesion?.rol !== "sysadmin") {
+    if (!tienePermisosAdmin(sesion?.rol)) {
       return NextResponse.json({ error: "No tienes permisos para eliminar documentos." }, { status: 403 });
     }
     const eco = req.nextUrl.searchParams.get("eco")?.trim();

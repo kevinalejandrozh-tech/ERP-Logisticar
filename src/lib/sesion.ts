@@ -1,7 +1,12 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export type Rol = "sysadmin" | "supervisor_tms";
+export type Rol = "sysadmin" | "supervisor_tms" | "personal";
 export type SesionPayload = { userId: number; nombre: string; correo: string; rol: Rol };
+
+// Permisos operativos completos: sysadmin y personal (el personal NO puede gestionar usuarios ni contraseñas).
+export function tienePermisosAdmin(rol?: string | null): boolean {
+  return rol === "sysadmin" || rol === "personal";
+}
 
 export const COOKIE_SESION = "gl_sesion";
 // La cookie es de sesión de navegador (se borra al cerrarlo) y el token caduca en 12 h como respaldo.

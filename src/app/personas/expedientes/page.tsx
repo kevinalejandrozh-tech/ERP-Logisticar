@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
+import { useSesion } from "@/lib/useSesion";
 import ExpedienteFormModal from "@/components/ExpedienteFormModal";
 import CuadroBasicoModal from "@/components/CuadroBasicoModal";
 
@@ -39,6 +40,8 @@ function cargarQRiousLib(): Promise<void> {
 
 export default function ExpedientesPage() {
   const router = useRouter();
+  const sesion = useSesion();
+  const puedeGenerarUsuario = sesion.rol === "sysadmin" || sesion.rol === "personal";
   const [registros, setRegistros] = useState<ExpedienteResumen[]>([]);
   const [cargando, setCargando] = useState(true);
   const [modalAbierto, setModalAbierto] = useState(false);
@@ -54,6 +57,11 @@ export default function ExpedientesPage() {
   const [guardandoBaja, setGuardandoBaja] = useState(false);
   const [cuadroBasicoAbierto, setCuadroBasicoAbierto] = useState(false);
   const [totalCuadroBasico, setTotalCuadroBasico] = useState(0);
+  const [conUsuario, setConUsuario] = useState<Set<number>>(new Set());
+  const [usuarioExpediente, setUsuarioExpediente] = useState<ExpedienteResumen | null>(null);
+  const [generandoUsuario, setGenerandoUsuario] = useState(false);
+  const [errorUsuario, setErrorUsuario] = useState("");
+  const [usuarioGenerado, setUsuarioGenerado] = useState<{ usuario: string; passwordInicial: string } | null>(null);
 
   const filtrosActivos = filtroTipo !== "todos" || filtroCuenta !== "todas" || filtroEstatus !== "todos";
   const registrosFiltrados = registros.filter((r) => {
@@ -106,11 +114,22 @@ export default function ExpedientesPage() {
       .then((d) => setTotalCuadroBasico((d.filas || []).length))
       .catch(() => {});
   };
+  const cargarUsuarios = () => {
+    if (!puedeGenerarUsuario) return;
+    fetch("/api/auth/usuarios", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setConUsuario(new Set<number>((d.usuarios || []).filter((u: any) => u.expediente_id).map((u: any) => Number(u.expediente_id)))))
+      .catch(() => {});
+  };
   useEffect(() => {
     cargar();
     cargarCuadroBasico();
   }, []);
-  useRefrescarAlEnfocar(cargar);
+  useEffect(cargarUsuarios, [puedeGenerarUsuario]);
+  useRefrescarAlEnfocar(() => {
+    cargar();
+    cargarUsuarios();
+  });
 
   useEffect(() => {
     if (!qrExpediente) return;
@@ -123,6 +142,29 @@ export default function ExpedientesPage() {
       })
       .catch(() => {});
   }, [qrExpediente]);
+
+  const cerrarModalUsuario = () => {
+    setUsuarioExpediente(null);
+    setUsuarioGenerado(null);
+    setErrorUsuario("");
+  };
+
+  const generarUsuario = async () => {
+    if (!usuarioExpediente) return;
+    setGenerandoUsuario(true);
+    setErrorUsuario("");
+    try {
+      const res = await fetch("/api/expedientes/generar-usuario", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: usuarioExpediente.id }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo generar el usuario.");
+      setUsuarioGenerado({ usuario: data.usuario, passwordInicial: data.passwordInicial });
+      setConUsuario((prev) => new Set(prev).add(usuarioExpediente.id));
+    } catch (err: any) {
+      setErrorUsuario(err.message || "No se pudo generar el usuario.");
+    } finally {
+      setGenerandoUsuario(false);
+    }
+  };
 
   const confirmarBaja = async () => {
     if (!bajaExpediente || !motivoBaja.trim()) return;
@@ -313,6 +355,25 @@ export default function ExpedientesPage() {
                                   <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
                                 </svg>
                               </span>
+                              {!esBaja && puedeGenerarUsuario && (
+                                <span
+                                  onClick={() => {
+                                    setErrorUsuario("");
+                                    setUsuarioGenerado(null);
+                                    setUsuarioExpediente(r);
+                                  }}
+                                  title={conUsuario.has(r.id) ? "Usuario generado" : "Generar usuario"}
+                                  className={`w-7 h-7 rounded-lg flex items-center justify-center cursor-pointer ${conUsuario.has(r.id) ? "bg-[rgba(34,168,90,0.14)]" : "bg-[var(--gray-100)]"}`}
+                                >
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={conUsuario.has(r.id) ? "#22a85a" : "#2f6fed"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    {conUsuario.has(r.id) ? (
+                                      <><circle cx="10" cy="8" r="4" /><path d="M2 21v-1a6 6 0 016-6h4" /><path d="M16 18l2 2 4-4" /></>
+                                    ) : (
+                                      <><circle cx="10" cy="8" r="4" /><path d="M2 21v-1a6 6 0 016-6h4" /><path d="M19 14v6M16 17h6" /></>
+                                    )}
+                                  </svg>
+                                </span>
+                              )}
                               {!esBaja && (
                                 <span
                                   onClick={() => {
@@ -359,6 +420,55 @@ export default function ExpedientesPage() {
             <button type="button" onClick={() => setQrExpediente(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
               Cerrar
             </button>
+          </div>
+        </div>
+      )}
+
+      {usuarioExpediente && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={cerrarModalUsuario}>
+          <div className="bg-white rounded-2xl p-6 w-[400px] max-w-full shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-[15px] font-bold text-[var(--navy)] mb-1">Generar usuario</h3>
+            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">{usuarioExpediente.nombre}</p>
+
+            {usuarioGenerado ? (
+              <>
+                <p className="text-[12.5px] font-semibold text-[var(--green)] mb-3">Usuario generado correctamente.</p>
+                <div className="bg-[var(--gray-100)] rounded-lg px-3.5 py-3 mb-4 text-[12.5px] text-[var(--navy)]">
+                  <p className="m-0 mb-1"><span className="font-bold">Usuario:</span> {usuarioGenerado.usuario}</p>
+                  <p className="m-0"><span className="font-bold">Contraseña inicial:</span> {usuarioGenerado.passwordInicial}</p>
+                </div>
+                <div className="flex justify-end">
+                  <button type="button" onClick={cerrarModalUsuario} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            ) : conUsuario.has(usuarioExpediente.id) ? (
+              <>
+                <p className="text-[12.5px] text-[var(--navy)] mb-4">Este colaborador ya tiene usuario. Solo el sysadmin puede cambiar su contraseña.</p>
+                <div className="flex justify-end">
+                  <button type="button" onClick={cerrarModalUsuario} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                    Cerrar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-[var(--gray-100)] rounded-lg px-3.5 py-3 mb-4 text-[12.5px] text-[var(--navy)]">
+                  <p className="m-0 mb-1"><span className="font-bold">Usuario:</span> {usuarioExpediente.nombre.replace(/\s+/g, " ").trim().toUpperCase()}</p>
+                  <p className="m-0"><span className="font-bold">Contraseña inicial:</span> 1234</p>
+                </div>
+                {errorUsuario && <p className="text-[12px] text-[var(--red)] font-semibold mb-3">{errorUsuario}</p>}
+                <div className="flex gap-2.5 justify-end">
+                  <button type="button" onClick={cerrarModalUsuario} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                    Cancelar
+                  </button>
+                  <button type="button" onClick={generarUsuario} disabled={generandoUsuario} className="bg-[var(--navy)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                    {generandoUsuario ? "Generando..." : "Generar usuario"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

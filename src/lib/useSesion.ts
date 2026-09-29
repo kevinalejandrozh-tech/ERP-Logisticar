@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 
-export type SesionActual = { ok: boolean; nombre?: string; correo?: string; rol?: "sysadmin" | "supervisor_tms"; cargando: boolean };
+export type SesionActual = { ok: boolean; nombre?: string; correo?: string; rol?: "sysadmin" | "supervisor_tms" | "personal"; cargando: boolean };
 
 export function useSesion(): SesionActual {
   const [sesion, setSesion] = useState<SesionActual>({ ok: false, cargando: true });

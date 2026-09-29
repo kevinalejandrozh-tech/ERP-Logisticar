@@ -235,13 +235,6 @@ descripcion="Tabla libre: agrega columnas y filas, y edita directamente."
 />
 <MenuCard
 compactoMovil
-href="/checklist/elegir"
-icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 12l2.5 2.5L16 9" /></svg>}
-titulo="Check List Diario de Unidades"
-descripcion="Inspección diaria de unidades. Consulta los registros guardados desde la misma página."
-/>
-<MenuCard
-compactoMovil
 href="/compras"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
 titulo="Compras"

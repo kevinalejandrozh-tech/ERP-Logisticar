@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_SESION, verificarTokenSesion } from "@/lib/sesion";
 
 // Páginas que se llenan vía código QR por cualquier operador, sin necesidad de cuenta.
-const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/checklist-evidencias", "/inventario/consulta"]; // ← NUEVO: "/inventario/consulta"
+const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/inventario/consulta"]; // ← NUEVO: "/inventario/consulta"
 
 // Rutas de API que esas mismas páginas públicas necesitan para funcionar.
 const API_PUBLICA = new Set([
@@ -15,7 +15,6 @@ const API_PUBLICA = new Set([
   "/api/capacitaciones",
   "/api/capacitaciones/catalogo/get",
   "/api/expedientes/list",
-  "/api/checklist/get",
   "/api/inventario/consulta", // ← NUEVO
 ]);
 

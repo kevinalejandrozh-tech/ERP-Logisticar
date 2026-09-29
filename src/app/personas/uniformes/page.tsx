@@ -348,7 +348,7 @@ export default function UniformesPage() {
             <div className="mb-4">
               <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Nombre del operador</label>
               {operadores.length === 0 ? (
-                <p className="text-[12.5px] text-[var(--red)]">No hay operadores registrados. Agrégalos en &quot;Agregar / Administrar personas&quot;.</p>
+                <p className="text-[12.5px] text-[var(--red)]">No hay operadores registrados. Regístralos en &quot;Expedientes&quot; como personal tipo Operador.</p>
               ) : (
                 <select value={fOperador} onChange={(e) => setFOperador(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]">
                   {operadores.map((nombre) => (

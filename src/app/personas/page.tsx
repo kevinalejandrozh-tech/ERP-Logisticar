@@ -68,21 +68,10 @@ export default function PersonasPage() {
               descripcion="Administra la asignación y revisión de mochilas Covid."
             />
             <MenuCard
-              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="5" y="2" width="14" height="20" rx="2" /><path d="M9 8h.01M9 12h.01M9 16h.01M13 8h2M13 12h2M13 16h2" /></svg>}
-              titulo="Asignación de radios"
-              descripcion="Gestiona la asignación de radios de comunicación."
-            />
-            <MenuCard
               href="/personas/expedientes"
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
               titulo="Expedientes"
               descripcion="Consulta y administra los expedientes del personal."
-            />
-            <MenuCard
-              href="/personas/operadores"
-              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.5" /><path d="M2 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5" /><path d="M19 8v6M22 11h-6" /></svg>}
-              titulo="Agregar / Administrar personas"
-              descripcion="Da de alta o edita la información del personal."
             />
             <MenuCard
               href="/personas/capacitaciones"
@@ -108,7 +97,7 @@ export default function PersonasPage() {
             <div className="mb-4">
               <label className="block text-[12.5px] font-bold text-[var(--navy)] mb-1.5">Nombre del operador</label>
               {operadores.length === 0 ? (
-                <p className="text-[12.5px] text-[var(--red)]">No hay operadores registrados. Agrégalos en &quot;Agregar / Administrar personas&quot;.</p>
+                <p className="text-[12.5px] text-[var(--red)]">No hay operadores registrados. Regístralos en &quot;Expedientes&quot; como personal tipo Operador.</p>
               ) : (
                 <select value={cOperador} onChange={(e) => setCOperador(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]">
                   {operadores.map((nombre) => (

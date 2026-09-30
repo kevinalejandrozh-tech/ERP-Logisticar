@@ -861,4 +861,15 @@ indice INTEGER PRIMARY KEY,
 contenido TEXT NOT NULL
 );
 `);
+await p.query(`ALTER TABLE evaluaciones_candidatos ADD COLUMN IF NOT EXISTS foto TEXT;`);
+// Configuración de la evaluación: municipios zona roja y rango de edad.
+await p.query(`
+CREATE TABLE IF NOT EXISTS evaluacion_config (
+id INTEGER PRIMARY KEY DEFAULT 1,
+zonas_rojas JSONB NOT NULL DEFAULT '[]'::jsonb,
+edad_min INTEGER NOT NULL DEFAULT 23,
+edad_max INTEGER NOT NULL DEFAULT 55,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

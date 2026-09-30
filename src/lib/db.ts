@@ -844,4 +844,21 @@ contenido TEXT NOT NULL,
 PRIMARY KEY (evaluacion_id, indice)
 );
 `);
+await p.query(`ALTER TABLE evaluaciones_candidatos ADD COLUMN IF NOT EXISTS puntos_criticos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE evaluaciones_candidatos ADD COLUMN IF NOT EXISTS categorias JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+// Video de inducción de la empresa (uno solo), guardado en partes base64.
+await p.query(`
+CREATE TABLE IF NOT EXISTS evaluacion_induccion (
+id INTEGER PRIMARY KEY DEFAULT 1,
+nombre TEXT,
+partes INTEGER NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS evaluacion_induccion_partes (
+indice INTEGER PRIMARY KEY,
+contenido TEXT NOT NULL
+);
+`);
 }

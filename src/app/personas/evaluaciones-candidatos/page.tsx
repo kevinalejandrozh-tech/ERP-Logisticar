@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
-import { UMBRAL_ESTRATEGICO, UMBRAL_CONOCIMIENTO } from "@/lib/evaluacionCandidatosData";
+import { UMBRAL_ESTRATEGICO, UMBRAL_CONOCIMIENTO, VIDEO_MAX_BYTES, VIDEO_TAM_PARTE } from "@/lib/evaluacionCandidatosData";
 
 type Resumen = {
   id: number;
@@ -15,30 +15,80 @@ type Resumen = {
   max_estrategico: number;
   puntaje_conocimiento: number;
   max_conocimiento: number;
-  video_partes: number;
+  criticos: number;
   created_at: string;
 };
-type Respuesta = { id: string; seccion: "estrategica" | "conocimiento"; pregunta: string; respuesta: string; puntos: number; maximo: number; correcta?: string };
-type Evaluacion = Resumen & { datos: Record<string, any>; respuestas: Respuesta[]; observaciones: string | null; video_nombre: string | null };
+type Respuesta = { id: string; seccion: "estrategica" | "conocimiento"; categoria?: string; pregunta: string; respuesta: string; puntos: number; maximo: number; correcta?: string };
+type Categoria = { nombre: string; seccion: "estrategica" | "conocimiento"; puntos: number; maximo: number; pct: number };
+type PuntoCritico = { nivel: "critico" | "atencion"; texto: string };
+type Evaluacion = Resumen & { datos: Record<string, any>; respuestas: Respuesta[]; observaciones: string | null; puntos_criticos: PuntoCritico[] | null; categorias: Categoria[] | null };
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const fecha = (iso: string) => new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 const dictamenDe = (e: { dictamen_final: string | null; dictamen_auto: string }) => e.dictamen_final || e.dictamen_auto;
+const colorPct = (p: number, umbral: number) => (p >= umbral ? "#21a866" : p >= umbral - 20 ? "#f2b134" : "#e2412c");
+const umbralDe = (c: Categoria) => (c.seccion === "estrategica" ? UMBRAL_ESTRATEGICO : UMBRAL_CONOCIMIENTO);
 
-const ETIQUETAS_DATOS: [string, string][] = [
-  ["nombre", "Nombre"],
-  ["edad", "Edad"],
-  ["telefono", "Teléfono"],
-  ["domicilio_actual", "Domicilio actual"],
-  ["tipo_vivienda", "Tipo de vivienda"],
-  ["familiar", "Vive con / domicilio de"],
-  ["pago_vivienda", "Renta o apoyo económico"],
-  ["tiempo_domicilio_actual", "Tiempo en domicilio actual"],
-  ["domicilio_anterior", "Domicilio anterior"],
-  ["tiempo_domicilio_anterior", "Tiempo en domicilio anterior"],
-  ["renta_anterior", "Renta anterior"],
-  ["tiene_transporte", "¿Cuenta con transporte?"],
-  ["tipo_transporte", "Tipo de transporte"],
+const GRUPOS_DATOS: [string, [string, string][]][] = [
+  [
+    "Datos personales y familiares",
+    [
+      ["nombre", "Nombre"],
+      ["edad", "Edad"],
+      ["telefono", "Teléfono"],
+      ["estado_civil", "Estado civil"],
+      ["personas_vive", "Personas con quien vive"],
+      ["dependientes", "Dependientes económicos"],
+      ["otro_ingreso", "Alguien más aporta en casa"],
+    ],
+  ],
+  [
+    "Vivienda y economía",
+    [
+      ["domicilio_actual", "Domicilio actual"],
+      ["tipo_vivienda", "Tipo de vivienda"],
+      ["familiar", "Vive con / domicilio de"],
+      ["pago_vivienda", "Renta o apoyo mensual"],
+      ["tiempo_domicilio_actual", "Tiempo en domicilio actual"],
+      ["domicilio_anterior", "Domicilio anterior"],
+      ["tiempo_domicilio_anterior", "Tiempo en domicilio anterior"],
+      ["renta_anterior", "Renta anterior"],
+      ["tiene_transporte", "Transporte propio"],
+      ["tipo_transporte", "Tipo de transporte"],
+      ["creditos", "Créditos activos"],
+      ["creditos_detalle", "Detalle de créditos"],
+    ],
+  ],
+  [
+    "Experiencia laboral",
+    [
+      ["licencia_tipo", "Licencia"],
+      ["licencia_vigencia", "Vigencia de licencia"],
+      ["psicofisico", "Examen psicofísico"],
+      ["anios_experiencia", "Años de experiencia"],
+      ["unidades", "Unidades que ha manejado"],
+      ["rutas_conocidas", "Rutas recorridas"],
+      ["ultimo_empleo", "Último empleo"],
+      ["tiempo_ultimo_empleo", "Tiempo en último empleo"],
+      ["motivo_salida", "Motivo de salida"],
+      ["empleos_3_anios", "Empleos en 3 años"],
+    ],
+  ],
+  [
+    "Salud, legal y seguridad",
+    [
+      ["condicion_salud", "Condición de salud"],
+      ["salud_detalle", "Detalle de salud"],
+      ["proceso_legal", "Asunto legal pendiente"],
+      ["legal_detalle", "Detalle legal"],
+      ["accidentes", "Accidentes (3 años)"],
+      ["accidentes_detalle", "Detalle de accidentes"],
+      ["robo_ruta", "Robo en ruta"],
+      ["robo_detalle", "Detalle de robo"],
+      ["carta_antecedentes", "Puede tramitar carta de no antecedentes"],
+      ["acepta_aviso", "Aceptó aviso de antidoping y examen médico"],
+    ],
+  ],
 ];
 
 export default function EvaluacionesCandidatosPage() {
@@ -49,11 +99,13 @@ export default function EvaluacionesCandidatosPage() {
   const [dictamenFinal, setDictamenFinal] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [guardando, setGuardando] = useState(false);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  const [cargandoVideo, setCargandoVideo] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Video de inducción
+  const [induccion, setInduccion] = useState<{ nombre: string | null; partes: number; updated_at: string | null }>({ nombre: null, partes: 0, updated_at: null });
+  const [induccionAbierta, setInduccionAbierta] = useState(false);
+  const [subiendo, setSubiendo] = useState("");
 
   const cargar = () =>
     fetch("/api/evaluacion-candidatos", { cache: "no-store" })
@@ -61,18 +113,56 @@ export default function EvaluacionesCandidatosPage() {
       .then((d) => setLista(d.evaluaciones || []))
       .catch(() => {})
       .finally(() => setCargando(false));
+  const cargarInduccion = () =>
+    fetch("/api/evaluacion-candidatos/induccion", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setInduccion({ nombre: d.nombre || null, partes: d.partes || 0, updated_at: d.updated_at || null }))
+      .catch(() => {});
   useEffect(() => {
     cargar();
+    cargarInduccion();
   }, []);
   useRefrescarAlEnfocar(cargar);
 
-  const cerrarVideo = () => {
-    if (videoUrl) URL.revokeObjectURL(videoUrl);
-    setVideoUrl(null);
+  const subirInduccion = async (f: File | null) => {
+    if (!f) return;
+    if (f.type !== "video/mp4" && !f.name.toLowerCase().endsWith(".mp4")) return alert("El video debe estar en formato MP4.");
+    if (f.size > VIDEO_MAX_BYTES) return alert(`El video pesa ${(f.size / 1048576).toFixed(1)} MB; el máximo es ${VIDEO_MAX_BYTES / 1048576} MB.`);
+    try {
+      setSubiendo("Preparando video…");
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result).split(",")[1] || "");
+        r.onerror = () => rej(new Error("No se pudo leer el video."));
+        r.readAsDataURL(f);
+      });
+      const total = Math.ceil(b64.length / VIDEO_TAM_PARTE);
+      for (let i = 0; i < total; i++) {
+        setSubiendo(`Subiendo ${Math.round(((i + 1) / total) * 100)}%`);
+        const r = await fetch("/api/evaluacion-candidatos/induccion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ indice: i, total, nombre: f.name, contenido: b64.slice(i * VIDEO_TAM_PARTE, (i + 1) * VIDEO_TAM_PARTE) }),
+        });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          throw new Error(d.error || "Error de red al subir el video.");
+        }
+      }
+      await cargarInduccion();
+    } catch (err: any) {
+      alert(err.message || "No se pudo subir el video.");
+    } finally {
+      setSubiendo("");
+    }
+  };
+  const eliminarInduccion = async () => {
+    if (!confirm("¿Quitar el video de inducción? Los candidatos ya no lo verán.")) return;
+    await fetch("/api/evaluacion-candidatos/induccion/eliminar", { method: "POST" });
+    cargarInduccion();
   };
 
   const abrir = async (id: number) => {
-    cerrarVideo();
     try {
       const r = await fetch(`/api/evaluacion-candidatos/get?id=${id}`, { cache: "no-store" });
       const d = await r.json();
@@ -82,32 +172,6 @@ export default function EvaluacionesCandidatosPage() {
       setObservaciones(d.evaluacion.observaciones || "");
     } catch (err: any) {
       alert(err.message || "No se pudo abrir la evaluación.");
-    }
-  };
-  const cerrar = () => {
-    cerrarVideo();
-    setAbierta(null);
-  };
-
-  const verVideo = async () => {
-    if (!abierta) return;
-    setCargandoVideo(true);
-    try {
-      let b64 = "";
-      for (let i = 0; i < abierta.video_partes; i++) {
-        const r = await fetch(`/api/evaluacion-candidatos/video?id=${abierta.id}&parte=${i}`, { cache: "no-store" });
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error);
-        b64 += d.contenido;
-      }
-      const bin = atob(b64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      setVideoUrl(URL.createObjectURL(new Blob([bytes], { type: "video/mp4" })));
-    } catch (err: any) {
-      alert(err.message || "No se pudo cargar el video.");
-    } finally {
-      setCargandoVideo(false);
     }
   };
 
@@ -135,11 +199,11 @@ export default function EvaluacionesCandidatosPage() {
     if (!abierta || !confirm(`¿Eliminar la evaluación de ${abierta.nombre}? Esta acción no se puede deshacer.`)) return;
     const r = await fetch("/api/evaluacion-candidatos/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: abierta.id }) });
     if (!r.ok) return alert("No se pudo eliminar.");
-    cerrar();
+    setAbierta(null);
     cargar();
   };
 
-  // ---- PDF de resultado (mismo estilo que la Responsiva de uniformes) ----
+  // ---- PDF de resultado (mismo estilo que la Responsiva de uniformes) con puntos críticos y gráficas ----
   const generarPdf = async () => {
     if (!abierta) return;
     const ev: Evaluacion = { ...abierta, dictamen_final: dictamenFinal || null, observaciones };
@@ -157,7 +221,27 @@ export default function EvaluacionesCandidatosPage() {
           y = 60;
         }
       };
+      const hex = (h: string): [number, number, number] => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+      const titulo = (t: string) => {
+        saltoSi(40);
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.setTextColor(22, 33, 92);
+        doc.text(t, mX, y);
+        y += 10;
+      };
+      const encabezado = (a: string, b: string, xB: number) => {
+        doc.setFillColor(22, 33, 92);
+        doc.rect(mX, y, ancho, 20, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(a, mX + 10, y + 14);
+        doc.text(b, mX + xB, y + 14, xB > ancho - 60 ? { align: "right" } : undefined);
+        y += 20;
+      };
 
+      // Encabezado
       const logo = await fetch("/logo-transportes.png")
         .then((r) => r.blob())
         .then((b) => new Promise<string>((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.readAsDataURL(b); }));
@@ -174,7 +258,6 @@ export default function EvaluacionesCandidatosPage() {
       doc.setDrawColor(229, 232, 238);
       doc.line(mX, y, W - mX, y);
       y += 26;
-
       doc.setFont("helvetica", "bold");
       doc.setFontSize(12);
       doc.setTextColor(22, 33, 92);
@@ -182,108 +265,147 @@ export default function EvaluacionesCandidatosPage() {
       y += 18;
       doc.setFontSize(10);
       doc.setTextColor(90, 90, 90);
-      doc.text(`Puesto: ${ev.puesto}     ·     Fecha de evaluación: ${fecha(ev.created_at)}     ·     Folio: EVC-${String(ev.id).padStart(4, "0")}`, mX, y);
-      y += 20;
-
-      // Encabezado de tabla estilo responsiva
-      const encabezado = (a: string, b: string, xB: number) => {
-        doc.setFillColor(22, 33, 92);
-        doc.rect(mX, y, ancho, 20, "F");
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(9.5);
-        doc.setTextColor(255, 255, 255);
-        doc.text(a, mX + 10, y + 14);
-        doc.text(b, mX + xB, y + 14);
-        y += 20;
-      };
-
-      // Datos del candidato
-      encabezado("DATO", "INFORMACIÓN DEL CANDIDATO", 190);
-      ETIQUETAS_DATOS.forEach(([k, et], idx) => {
-        const v = String(ev.datos?.[k] ?? "").trim();
-        if (!v) return;
-        const lineas = doc.splitTextToSize(v, ancho - 200);
-        const alto = Math.max(20, lineas.length * 12 + 8);
-        saltoSi(alto);
-        if (idx % 2 === 1) {
-          doc.setFillColor(244, 245, 248);
-          doc.rect(mX, y, ancho, alto, "F");
-        }
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(9.5);
-        doc.setTextColor(90, 90, 90);
-        doc.text(et, mX + 10, y + 13);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(30, 30, 30);
-        doc.text(lineas, mX + 190, y + 13);
-        y += alto;
-      });
+      doc.text(`${ev.nombre}  ·  Puesto: ${ev.puesto}  ·  ${fecha(ev.created_at)}  ·  Folio EVC-${String(ev.id).padStart(4, "0")}`, mX, y);
       y += 18;
-
-      // Puntajes
-      saltoSi(110);
-      const pE = pct(ev.puntaje_estrategico, ev.max_estrategico);
-      const pC = pct(ev.puntaje_conocimiento, ev.max_conocimiento);
-      encabezado("SECCIÓN", "PUNTAJE", 300);
-      [
-        [`Perfil estratégico (mínimo ${UMBRAL_ESTRATEGICO}%)`, `${ev.puntaje_estrategico} / ${ev.max_estrategico}  (${pE}%)`],
-        [`Rutas, casetas y manejo defensivo (mínimo ${UMBRAL_CONOCIMIENTO}%)`, `${ev.puntaje_conocimiento} / ${ev.max_conocimiento}  (${pC}%)`],
-      ].forEach(([a, b], idx) => {
-        if (idx % 2 === 1) {
-          doc.setFillColor(244, 245, 248);
-          doc.rect(mX, y, ancho, 22, "F");
-        }
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(10);
-        doc.setTextColor(30, 30, 30);
-        doc.text(a, mX + 10, y + 15);
-        doc.setFont("helvetica", "bold");
-        doc.text(b, mX + 300, y + 15);
-        y += 22;
-      });
-      y += 16;
 
       // Dictamen
       const dict = dictamenDe(ev);
       const apto = dict === "Apto";
-      doc.setFillColor(apto ? 227 : 253, apto ? 246 : 234, apto ? 236 : 231);
-      doc.setDrawColor(apto ? 33 : 226, apto ? 168 : 65, apto ? 102 : 44);
+      const cDict = hex(apto ? "#21a866" : "#e2412c");
+      doc.setFillColor(...hex(apto ? "#e3f6ec" : "#fdeae7"));
+      doc.setDrawColor(...cDict);
       doc.roundedRect(mX, y, ancho, 44, 6, 6, "FD");
       doc.setFont("helvetica", "bold");
       doc.setFontSize(15);
-      doc.setTextColor(apto ? 33 : 226, apto ? 168 : 65, apto ? 102 : 44);
+      doc.setTextColor(...cDict);
       doc.text(`DICTAMEN: ${dict.toUpperCase()}`, mX + 16, y + 27);
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(90, 90, 90);
-      doc.text(ev.dictamen_final ? `Dictamen del evaluador (automático: ${ev.dictamen_auto})` : "Dictamen automático según puntaje", W - mX - 14, y + 27, { align: "right" });
+      doc.text(ev.dictamen_final ? `Dictamen del evaluador (automático: ${ev.dictamen_auto})` : "Dictamen automático según puntaje y puntos críticos", W - mX - 14, y + 27, { align: "right" });
       y += 62;
+
+      // Gráfica 1: resultados globales (dos barras grandes)
+      titulo("Resultado general");
+      y += 6;
+      const pE = pct(ev.puntaje_estrategico, ev.max_estrategico);
+      const pC = pct(ev.puntaje_conocimiento, ev.max_conocimiento);
+      const barra = (etiqueta: string, valor: number, umbral: number, alto: number, anchoEt: number) => {
+        const x0 = mX + anchoEt;
+        const largo = ancho - anchoEt - 40;
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.setTextColor(30, 30, 30);
+        doc.text(etiqueta, mX, y + alto / 2 + 3);
+        doc.setFillColor(238, 241, 246);
+        doc.rect(x0, y, largo, alto, "F");
+        doc.setFillColor(...hex(colorPct(valor, umbral)));
+        if (valor > 0) doc.rect(x0, y, (largo * valor) / 100, alto, "F");
+        doc.setDrawColor(22, 33, 92);
+        doc.setLineDashPattern([2, 2], 0);
+        const xu = x0 + (largo * umbral) / 100;
+        doc.line(xu, y - 3, xu, y + alto + 3);
+        doc.setLineDashPattern([], 0);
+        doc.setFont("helvetica", "bold");
+        doc.text(`${valor}%`, x0 + largo + 6, y + alto / 2 + 3);
+        y += alto + 8;
+      };
+      barra("Perfil (día a día)", pE, UMBRAL_ESTRATEGICO, 16, 150);
+      barra("Rutas y manejo", pC, UMBRAL_CONOCIMIENTO, 16, 150);
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`Línea punteada = mínimo requerido (perfil ${UMBRAL_ESTRATEGICO}%, rutas y manejo ${UMBRAL_CONOCIMIENTO}%).`, mX, y + 2);
+      y += 18;
+
+      // Gráfica 2: desempeño por competencia
+      const cats = ev.categorias || [];
+      if (cats.length) {
+        titulo("Desempeño por competencia");
+        y += 6;
+        cats.forEach((c) => {
+          saltoSi(20);
+          barra(c.nombre, c.pct, umbralDe(c), 11, 150);
+        });
+        y += 8;
+      }
+
+      // Puntos críticos
+      const pcs = ev.puntos_criticos || [];
+      titulo(`Puntos críticos del perfil (${pcs.filter((p) => p.nivel === "critico").length} críticos, ${pcs.filter((p) => p.nivel === "atencion").length} de atención)`);
+      y += 6;
+      if (!pcs.length) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(10);
+        doc.setTextColor(33, 168, 102);
+        doc.text("No se detectaron puntos críticos.", mX, y + 6);
+        y += 20;
+      }
+      pcs.forEach((p) => {
+        const lt = doc.splitTextToSize(p.texto, ancho - 90);
+        const alto = lt.length * 12 + 8;
+        saltoSi(alto);
+        const col = hex(p.nivel === "critico" ? "#e2412c" : "#f2b134");
+        doc.setFillColor(...col);
+        doc.roundedRect(mX, y + 2, 66, 14, 3, 3, "F");
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(255, 255, 255);
+        doc.text(p.nivel === "critico" ? "CRÍTICO" : "ATENCIÓN", mX + 33, y + 12, { align: "center" });
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9.5);
+        doc.setTextColor(30, 30, 30);
+        doc.text(lt, mX + 78, y + 12);
+        y += alto;
+      });
+      y += 10;
 
       if (ev.observaciones?.trim()) {
         const lo = doc.splitTextToSize(ev.observaciones.trim(), ancho);
-        saltoSi(lo.length * 13 + 24);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10.5);
-        doc.setTextColor(22, 33, 92);
-        doc.text("Observaciones del evaluador:", mX, y);
-        y += 15;
+        titulo("Observaciones del evaluador");
+        y += 6;
+        saltoSi(lo.length * 13);
         doc.setFont("helvetica", "normal");
         doc.setFontSize(10);
         doc.setTextColor(30, 30, 30);
-        doc.text(lo, mX, y);
+        doc.text(lo, mX, y + 4);
         y += lo.length * 13 + 14;
       }
 
-      // Detalle de respuestas
-      const bloque = (titulo: string, seccion: Respuesta["seccion"]) => {
-        const items = (ev.respuestas || []).filter((r) => r.seccion === seccion);
+      // Datos del candidato
+      GRUPOS_DATOS.forEach(([grupo, campos]) => {
+        const filas = campos.filter(([k]) => String(ev.datos?.[k] ?? "").trim());
+        if (!filas.length) return;
         saltoSi(60);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10.5);
-        doc.setTextColor(22, 33, 92);
-        doc.text(titulo, mX, y);
-        y += 10;
-        encabezado("PREGUNTA / RESPUESTA", "PTS", ancho - 34);
+        y += 6;
+        encabezado(grupo.toUpperCase(), "", 190);
+        filas.forEach(([k, et], idx) => {
+          const lineas = doc.splitTextToSize(String(ev.datos[k]), ancho - 200);
+          const alto = Math.max(20, lineas.length * 12 + 8);
+          saltoSi(alto);
+          if (idx % 2 === 1) {
+            doc.setFillColor(244, 245, 248);
+            doc.rect(mX, y, ancho, alto, "F");
+          }
+          doc.setFont("helvetica", "normal");
+          doc.setFontSize(9.5);
+          doc.setTextColor(90, 90, 90);
+          doc.text(et, mX + 10, y + 13);
+          doc.setFont("helvetica", "bold");
+          doc.setTextColor(30, 30, 30);
+          doc.text(lineas, mX + 190, y + 13);
+          y += alto;
+        });
+        y += 8;
+      });
+      y += 10;
+
+      // Detalle de respuestas
+      const bloque = (t: string, seccion: Respuesta["seccion"]) => {
+        const items = (ev.respuestas || []).filter((r) => r.seccion === seccion);
+        if (!items.length) return;
+        titulo(t);
+        encabezado("PREGUNTA / RESPUESTA", "PTS", ancho - 12);
         items.forEach((r, idx) => {
           const lp = doc.splitTextToSize(`${idx + 1}. ${r.pregunta}`, ancho - 60);
           const lr = doc.splitTextToSize(`R: ${r.respuesta}`, ancho - 60);
@@ -308,17 +430,16 @@ export default function EvaluacionesCandidatosPage() {
             doc.setTextColor(33, 168, 102);
             doc.text(lc, mX + 10, yy);
           }
-          const bien = r.puntos === r.maximo;
           doc.setFont("helvetica", "bold");
           doc.setFontSize(10);
-          doc.setTextColor(bien ? 33 : r.puntos === 0 ? 226 : 180, bien ? 168 : r.puntos === 0 ? 65 : 130, bien ? 102 : r.puntos === 0 ? 44 : 20);
+          doc.setTextColor(...hex(r.puntos === r.maximo ? "#21a866" : r.puntos === 0 ? "#e2412c" : "#b48214"));
           doc.text(`${r.puntos}/${r.maximo}`, W - mX - 12, y + 13, { align: "right" });
           y += alto;
         });
         y += 18;
       };
-      bloque("Perfil estratégico", "estrategica");
-      bloque("Rutas, casetas y manejo defensivo", "conocimiento");
+      bloque("Detalle — Perfil (día a día)", "estrategica");
+      bloque("Detalle — Rutas, casetas y manejo defensivo", "conocimiento");
 
       // Firmas
       saltoSi(70);
@@ -359,6 +480,16 @@ export default function EvaluacionesCandidatosPage() {
   };
 
   const visibles = lista.filter((e) => `${e.nombre} ${e.puesto}`.toLowerCase().includes(filtro.toLowerCase()));
+  const Barra = ({ etiqueta, valor, umbral }: { etiqueta: string; valor: number; umbral: number }) => (
+    <div className="grid grid-cols-[150px_1fr_40px] items-center gap-2 text-[12px]">
+      <span className="text-[var(--navy)] font-semibold truncate" title={etiqueta}>{etiqueta}</span>
+      <div className="relative h-3 bg-[#eef1f6] rounded">
+        <div className="h-3 rounded" style={{ width: `${valor}%`, background: colorPct(valor, umbral) }} />
+        <div className="absolute -top-1 -bottom-1 border-l-2 border-dashed border-[var(--navy)]" style={{ left: `${umbral}%` }} />
+      </div>
+      <b className="text-right">{valor}%</b>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#eef1f6] pb-12">
@@ -370,6 +501,13 @@ export default function EvaluacionesCandidatosPage() {
           backLabel="Personas"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h9" /></svg>}
         />
+
+        <div className="flex flex-wrap gap-2.5 mb-5">
+          <button type="button" onClick={() => setInduccionAbierta(true)} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="5" width="15" height="14" rx="2" /><path d="M17 10l5-3v10l-5-3z" /></svg>
+            Video de inducción {induccion.partes > 0 ? "✓" : ""}
+          </button>
+        </div>
 
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
@@ -397,7 +535,7 @@ export default function EvaluacionesCandidatosPage() {
                     <div className="flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full ${apto ? "bg-[var(--green)]" : "bg-[var(--red)]"}`} />
                       <span className="text-[13px] font-bold text-[var(--navy)]">{e.nombre}</span>
-                      {e.video_partes > 0 && <span title="Incluye video" className="text-[11px]">🎥</span>}
+                      {e.criticos > 0 && <span className="text-[10.5px] font-bold text-white bg-[var(--red)] rounded-full px-1.5">⚠ {e.criticos}</span>}
                     </div>
                     <p className="text-[11.5px] text-[var(--gray-400)] m-0 mt-0.5">
                       {e.puesto} · {fecha(e.created_at)} · <b className={apto ? "text-[var(--green)]" : "text-[var(--red)]"}>{dictamenDe(e)}</b>
@@ -410,9 +548,48 @@ export default function EvaluacionesCandidatosPage() {
         </div>
       </div>
 
+      {induccionAbierta && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-40">
+          <div className="bg-white rounded-2xl w-[520px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-1">Video de inducción</h3>
+            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">Lo verá el candidato al abrir la evaluación. Formato MP4, máximo {VIDEO_MAX_BYTES / 1048576} MB.</p>
+            <p className="text-[13px] mb-4">
+              {induccion.partes > 0 ? (
+                <>
+                  Video actual: <b>{induccion.nombre}</b>
+                  {induccion.updated_at ? ` · ${fecha(induccion.updated_at)}` : ""}
+                </>
+              ) : (
+                "No hay video cargado."
+              )}
+            </p>
+            {subiendo ? (
+              <p className="text-[13px] text-[var(--blue)] font-semibold">{subiendo}</p>
+            ) : (
+              <label className="inline-block bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold cursor-pointer">
+                {induccion.partes > 0 ? "Reemplazar video" : "Subir video"}
+                <input type="file" accept="video/mp4,.mp4" className="hidden" onChange={(e) => { subirInduccion(e.target.files?.[0] || null); e.target.value = ""; }} />
+              </label>
+            )}
+            <div className="flex justify-between mt-6">
+              {induccion.partes > 0 && !subiendo ? (
+                <button type="button" onClick={eliminarInduccion} className="text-[var(--red)] border border-[#f6c9c1] rounded-lg px-4 py-2.5 text-[13px] font-bold">
+                  Quitar video
+                </button>
+              ) : (
+                <span />
+              )}
+              <button type="button" disabled={!!subiendo} onClick={() => setInduccionAbierta(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {abierta && (
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-40">
-          <div className="bg-white rounded-2xl w-[860px] max-w-[94%] p-5 sm:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+          <div className="bg-white rounded-2xl w-[900px] max-w-[94%] p-5 sm:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
             <div className="flex flex-wrap justify-between gap-3 mb-4">
               <div>
                 <h3 className="text-[17px] font-bold text-[var(--navy)] m-0">{abierta.nombre}</h3>
@@ -420,41 +597,61 @@ export default function EvaluacionesCandidatosPage() {
                   {abierta.puesto} · {fecha(abierta.created_at)} · Folio EVC-{String(abierta.id).padStart(4, "0")}
                 </p>
               </div>
-              <div className="flex gap-2 text-[12px]">
-                <span className="bg-[var(--blue-light)] text-[var(--navy)] rounded-lg px-3 py-1.5 font-bold">
-                  Estratégico {pct(abierta.puntaje_estrategico, abierta.max_estrategico)}%
-                </span>
-                <span className="bg-[var(--blue-light)] text-[var(--navy)] rounded-lg px-3 py-1.5 font-bold">
-                  Conocimiento {pct(abierta.puntaje_conocimiento, abierta.max_conocimiento)}%
-                </span>
+              <span className={`self-start rounded-lg px-3 py-1.5 text-[13px] font-bold text-white ${dictamenDe({ dictamen_final: dictamenFinal || null, dictamen_auto: abierta.dictamen_auto }) === "Apto" ? "bg-[var(--green)]" : "bg-[var(--red)]"}`}>
+                {dictamenDe({ dictamen_final: dictamenFinal || null, dictamen_auto: abierta.dictamen_auto })}
+              </span>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5 mb-5">
+              <div className="border border-[var(--gray-200)] rounded-xl p-4 grid gap-2">
+                <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0 mb-1">Resultados</h4>
+                <Barra etiqueta="Perfil (día a día)" valor={pct(abierta.puntaje_estrategico, abierta.max_estrategico)} umbral={UMBRAL_ESTRATEGICO} />
+                <Barra etiqueta="Rutas y manejo" valor={pct(abierta.puntaje_conocimiento, abierta.max_conocimiento)} umbral={UMBRAL_CONOCIMIENTO} />
+                {(abierta.categorias || []).length > 0 && <div className="border-t border-[var(--gray-200)] my-1" />}
+                {(abierta.categorias || []).map((c) => (
+                  <Barra key={c.nombre} etiqueta={c.nombre} valor={c.pct} umbral={umbralDe(c)} />
+                ))}
               </div>
-            </div>
-
-            <h4 className="text-[13.5px] font-bold text-[var(--navy)] mb-2">Información básica</h4>
-            <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[12.5px] mb-5">
-              {ETIQUETAS_DATOS.filter(([k]) => String(abierta.datos?.[k] ?? "").trim()).map(([k, et]) => (
-                <div key={k}>
-                  <span className="text-[var(--gray-400)]">{et}: </span>
-                  <b>{String(abierta.datos[k])}</b>
-                </div>
-              ))}
-            </div>
-
-            {abierta.video_partes > 0 && (
-              <div className="mb-5">
-                {videoUrl ? (
-                  <video src={videoUrl} controls className="w-full max-h-[360px] rounded-lg bg-black" />
+              <div className="border border-[var(--gray-200)] rounded-xl p-4">
+                <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0 mb-2">Puntos críticos</h4>
+                {(abierta.puntos_criticos || []).length === 0 ? (
+                  <p className="text-[12.5px] text-[var(--green)] m-0">No se detectaron puntos críticos.</p>
                 ) : (
-                  <button type="button" onClick={verVideo} disabled={cargandoVideo} className="bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-2 text-[13px] font-bold">
-                    {cargandoVideo ? "Cargando video…" : `🎥 Ver video (${abierta.video_nombre || "video.mp4"})`}
-                  </button>
+                  <div className="grid gap-1.5 max-h-[260px] overflow-y-auto">
+                    {(abierta.puntos_criticos || []).map((p, i) => (
+                      <div key={i} className="flex gap-2 items-start text-[12px]">
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${p.nivel === "critico" ? "bg-[var(--red)]" : "bg-[var(--amber)]"}`}>
+                          {p.nivel === "critico" ? "CRÍTICO" : "ATENCIÓN"}
+                        </span>
+                        <span>{p.texto}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-            )}
+            </div>
+
+            {GRUPOS_DATOS.map(([grupo, campos]) => {
+              const filas = campos.filter(([k]) => String(abierta.datos?.[k] ?? "").trim());
+              if (!filas.length) return null;
+              return (
+                <div key={grupo} className="mb-4">
+                  <h4 className="text-[13.5px] font-bold text-[var(--navy)] mb-2">{grupo}</h4>
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-1.5 text-[12.5px]">
+                    {filas.map(([k, et]) => (
+                      <div key={k}>
+                        <span className="text-[var(--gray-400)]">{et}: </span>
+                        <b>{String(abierta.datos[k])}</b>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
 
             {(["estrategica", "conocimiento"] as const).map((sec) => (
               <div key={sec} className="mb-5">
-                <h4 className="text-[13.5px] font-bold text-[var(--navy)] mb-2">{sec === "estrategica" ? "Perfil estratégico" : "Rutas, casetas y manejo defensivo"}</h4>
+                <h4 className="text-[13.5px] font-bold text-[var(--navy)] mb-2">{sec === "estrategica" ? "Perfil (día a día)" : "Rutas, casetas y manejo defensivo"}</h4>
                 <div className="grid gap-1.5">
                   {abierta.respuestas
                     .filter((r) => r.seccion === sec)
@@ -463,7 +660,9 @@ export default function EvaluacionesCandidatosPage() {
                       return (
                         <div key={r.id} className="flex gap-3 border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[12.5px]">
                           <div className="flex-1">
-                            <p className="m-0 font-semibold">{i + 1}. {r.pregunta}</p>
+                            <p className="m-0 font-semibold">
+                              {i + 1}. {r.pregunta} {r.categoria && <span className="text-[10.5px] text-[var(--blue)] font-bold">· {r.categoria}</span>}
+                            </p>
                             <p className="m-0 text-[var(--gray-400)]">R: {r.respuesta}</p>
                             {sec === "conocimiento" && r.puntos === 0 && r.correcta && <p className="m-0 text-[var(--green)]">Correcta: {r.correcta}</p>}
                           </div>
@@ -495,7 +694,7 @@ export default function EvaluacionesCandidatosPage() {
                 Eliminar
               </button>
               <div className="flex flex-wrap gap-2.5">
-                <button type="button" onClick={cerrar} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                <button type="button" onClick={() => setAbierta(null)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
                   Cerrar
                 </button>
                 <button type="button" onClick={guardarDictamen} disabled={guardando} className="bg-white text-[var(--navy)] border border-[var(--navy)] rounded-lg px-5 py-2.5 text-[13px] font-bold">

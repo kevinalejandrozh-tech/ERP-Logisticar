@@ -814,4 +814,34 @@ proveedores JSONB NOT NULL DEFAULT '[]'::jsonb,
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+
+// ---- Personas → Evaluación de candidatos ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS evaluaciones_candidatos (
+id SERIAL PRIMARY KEY,
+puesto TEXT NOT NULL,
+nombre TEXT NOT NULL,
+edad INTEGER,
+datos JSONB NOT NULL DEFAULT '{}'::jsonb,
+respuestas JSONB NOT NULL DEFAULT '[]'::jsonb,
+puntaje_estrategico INTEGER NOT NULL DEFAULT 0,
+max_estrategico INTEGER NOT NULL DEFAULT 0,
+puntaje_conocimiento INTEGER NOT NULL DEFAULT 0,
+max_conocimiento INTEGER NOT NULL DEFAULT 0,
+dictamen_auto TEXT NOT NULL,
+dictamen_final TEXT,
+observaciones TEXT,
+video_nombre TEXT,
+video_partes INTEGER NOT NULL DEFAULT 0,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS evaluaciones_candidatos_video (
+evaluacion_id INTEGER NOT NULL REFERENCES evaluaciones_candidatos(id) ON DELETE CASCADE,
+indice INTEGER NOT NULL,
+contenido TEXT NOT NULL,
+PRIMARY KEY (evaluacion_id, indice)
+);
+`);
 }

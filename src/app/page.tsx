@@ -216,7 +216,7 @@ descripcion="Consulta los expedientes del personal (cuenta TMS)."
 compactoMovil
 href="/personas"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" /><circle cx="17.5" cy="9" r="2.4" /><path d="M15 14c2.6.2 5 2.1 5 6" /></svg>}
-titulo="Personas"
+titulo="Recursos Humanos"
 descripcion="Gestiona la información del personal del sistema."
 />
 <MenuCard

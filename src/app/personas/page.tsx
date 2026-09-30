@@ -12,6 +12,9 @@ export default function PersonasPage() {
   const [operadores, setOperadores] = useState<string[]>([]);
   const [cOperador, setCOperador] = useState("");
   const [cEmpresa, setCEmpresa] = useState(OPCIONES_EMPRESA[0]);
+  const [puestosAbierto, setPuestosAbierto] = useState(false);
+  const [puestos, setPuestos] = useState<string[]>([]);
+  const [cargandoPuestos, setCargandoPuestos] = useState(false);
 
   useEffect(() => {
     fetch("/api/operadores/list", { cache: "no-store" })
@@ -21,6 +24,22 @@ export default function PersonasPage() {
         // si falla, el select queda vacío y se puede reintentar cerrando y abriendo el formulario
       });
   }, []);
+
+  // Evaluación de candidatos: los puestos salen de la columna PUESTO del Cuadro Básico.
+  const abrirPuestos = () => {
+    setPuestosAbierto(true);
+    setCargandoPuestos(true);
+    fetch("/api/cuadro-basico", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((data) => {
+        const unicos = Array.from(
+          new Set(((data.filas || []) as { puesto: string | null }[]).map((f) => (f.puesto || "").trim()).filter(Boolean))
+        ).sort((a, b) => a.localeCompare(b, "es"));
+        setPuestos(unicos);
+      })
+      .catch(() => setPuestos([]))
+      .finally(() => setCargandoPuestos(false));
+  };
 
   const abrirCredencial = () => {
     setCOperador(operadores[0] || "");
@@ -85,9 +104,52 @@ export default function PersonasPage() {
               titulo="Uniformes"
               descripcion="Registra tallas asignadas y genera la responsiva de entrega."
             />
+            <MenuCard
+              onClick={abrirPuestos}
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M9 11l3 3 8-8" /><path d="M20 12v7a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2h9" /></svg>}
+              titulo="Evaluación Candidatos"
+              descripcion="Aplica la evaluación de ingreso según el puesto."
+            />
+            <MenuCard
+              href="/personas/evaluaciones-candidatos"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="4" y="3" width="16" height="18" rx="2" /><path d="M8 8h8M8 12h8M8 16h5" /></svg>}
+              titulo="Evaluaciones enviadas"
+              descripcion="Consulta resultados de candidatos e imprime su dictamen."
+            />
           </div>
         </div>
       </div>
+
+      {puestosAbierto && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[560px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-1">Evaluación Candidatos</h3>
+            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">Selecciona el puesto al que aplica el candidato.</p>
+            {cargandoPuestos ? (
+              <p className="text-[13px] text-[var(--gray-400)]">Cargando puestos…</p>
+            ) : puestos.length === 0 ? (
+              <p className="text-[12.5px] text-[var(--red)]">No hay puestos registrados. Captúralos en la columna PUESTO del Cuadro Básico.</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[55vh] overflow-y-auto">
+                {puestos.map((p) => (
+                  <Link
+                    key={p}
+                    href={`/personas/evaluacion-candidatos/formulario?puesto=${encodeURIComponent(p)}`}
+                    className="border border-[var(--gray-200)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)] rounded-lg px-4 py-3 text-[13px] font-bold text-[var(--navy)] text-left"
+                  >
+                    {p}
+                  </Link>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-end mt-5">
+              <button type="button" onClick={() => setPuestosAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {credencialAbierta && (
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">

@@ -5,6 +5,25 @@ import PageHeader from "@/components/PageHeader";
 import MenuCard from "@/components/MenuCard";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
+
+declare global {
+  interface Window {
+    QRious: any;
+  }
+}
+function cargarQRiousLib(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (window.QRious) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/qrious/4.0.2/qrious.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("No se pudo cargar el generador de código QR."));
+    document.body.appendChild(script);
+  });
+}
 const OPCIONES_EMPRESA = ["Logisticar", "Fleetlogis"];
 
 export default function PersonasPage() {
@@ -15,6 +34,28 @@ export default function PersonasPage() {
   const [puestosAbierto, setPuestosAbierto] = useState(false);
   const [puestos, setPuestos] = useState<string[]>([]);
   const [cargandoPuestos, setCargandoPuestos] = useState(false);
+  const [puestoSel, setPuestoSel] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [copiado, setCopiado] = useState(false);
+  const linkEvaluacion = (p: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/personas/evaluacion-candidatos/formulario?puesto=${encodeURIComponent(p)}`;
+
+  const elegirPuesto = (p: string) => {
+    setPuestoSel(p);
+    setQrDataUrl("");
+    setCopiado(false);
+    cargarQRiousLib()
+      .then(() => setQrDataUrl(new window.QRious({ value: linkEvaluacion(p), size: 220, level: "M" }).toDataURL()))
+      .catch(() => setQrDataUrl(""));
+  };
+  const copiarLink = async () => {
+    if (!puestoSel) return;
+    try {
+      await navigator.clipboard.writeText(linkEvaluacion(puestoSel));
+      setCopiado(true);
+    } catch {
+      prompt("Copia el link:", linkEvaluacion(puestoSel));
+    }
+  };
 
   useEffect(() => {
     fetch("/api/operadores/list", { cache: "no-store" })
@@ -27,6 +68,7 @@ export default function PersonasPage() {
 
   // Evaluación de candidatos: los puestos salen de la columna PUESTO del Cuadro Básico.
   const abrirPuestos = () => {
+    setPuestoSel(null);
     setPuestosAbierto(true);
     setCargandoPuestos(true);
     fetch("/api/cuadro-basico", { cache: "no-store" })
@@ -124,23 +166,67 @@ export default function PersonasPage() {
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-50">
           <div className="bg-white rounded-2xl w-[560px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
             <h3 className="text-[17px] font-bold text-[var(--navy)] mb-1">Evaluación Candidatos</h3>
-            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">Selecciona el puesto al que aplica el candidato.</p>
-            {cargandoPuestos ? (
-              <p className="text-[13px] text-[var(--gray-400)]">Cargando puestos…</p>
-            ) : puestos.length === 0 ? (
-              <p className="text-[12.5px] text-[var(--red)]">No hay puestos registrados. Captúralos en la columna PUESTO del Cuadro Básico.</p>
+            {puestoSel ? (
+              <>
+                <p className="text-[12.5px] text-[var(--gray-400)] mb-4">
+                  Puesto: <b className="text-[var(--navy)]">{puestoSel}</b> · Comparte el link o el QR con tu candidato. No necesita cuenta.
+                </p>
+                <div className="flex flex-col items-center gap-3">
+                  {qrDataUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={qrDataUrl} alt="QR de la evaluación" className="w-[200px] h-[200px] border border-[var(--gray-200)] rounded-lg p-2" />
+                  ) : (
+                    <div className="w-[200px] h-[200px] border border-[var(--gray-200)] rounded-lg flex items-center justify-center text-[12px] text-[var(--gray-400)]">Generando QR…</div>
+                  )}
+                  <div className="w-full bg-[var(--gray-100)] rounded-lg px-3 py-2 text-[11.5px] break-all text-[var(--navy)]">{linkEvaluacion(puestoSel)}</div>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <button type="button" onClick={copiarLink} className="bg-[var(--navy)] text-white rounded-lg px-4 py-2.5 text-[13px] font-bold">
+                      {copiado ? "✓ Link copiado" : "Copiar link"}
+                    </button>
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(`Hola, te compartimos la evaluación para el puesto de ${puestoSel} en Transportes Logisticar: ${linkEvaluacion(puestoSel)}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#21a866] text-white rounded-lg px-4 py-2.5 text-[13px] font-bold"
+                    >
+                      Enviar por WhatsApp
+                    </a>
+                    {qrDataUrl && (
+                      <a href={qrDataUrl} download={`QR_Evaluacion_${puestoSel.replace(/\s+/g, "_")}.png`} className="bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-2.5 text-[13px] font-bold">
+                        Descargar QR
+                      </a>
+                    )}
+                    <Link href={`/personas/evaluacion-candidatos/formulario?puesto=${encodeURIComponent(puestoSel)}`} className="bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-2.5 text-[13px] font-bold">
+                      Abrir aquí
+                    </Link>
+                  </div>
+                  <button type="button" onClick={() => setPuestoSel(null)} className="text-[12.5px] text-[var(--blue)] font-semibold">
+                    ← Elegir otro puesto
+                  </button>
+                </div>
+              </>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[55vh] overflow-y-auto">
-                {puestos.map((p) => (
-                  <Link
-                    key={p}
-                    href={`/personas/evaluacion-candidatos/formulario?puesto=${encodeURIComponent(p)}`}
-                    className="border border-[var(--gray-200)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)] rounded-lg px-4 py-3 text-[13px] font-bold text-[var(--navy)] text-left"
-                  >
-                    {p}
-                  </Link>
-                ))}
-              </div>
+              <>
+                <p className="text-[12.5px] text-[var(--gray-400)] mb-4">Selecciona el puesto al que aplica el candidato.</p>
+                {cargandoPuestos ? (
+                  <p className="text-[13px] text-[var(--gray-400)]">Cargando puestos…</p>
+                ) : puestos.length === 0 ? (
+                  <p className="text-[12.5px] text-[var(--red)]">No hay puestos registrados. Captúralos en la columna PUESTO del Cuadro Básico.</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-[55vh] overflow-y-auto">
+                    {puestos.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => elegirPuesto(p)}
+                        className="border border-[var(--gray-200)] hover:border-[var(--blue)] hover:bg-[var(--blue-light)] rounded-lg px-4 py-3 text-[13px] font-bold text-[var(--navy)] text-left"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
             <div className="flex justify-end mt-5">
               <button type="button" onClick={() => setPuestosAbierto(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">

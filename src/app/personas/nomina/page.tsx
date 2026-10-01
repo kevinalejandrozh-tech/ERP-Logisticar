@@ -11,6 +11,11 @@ type Empleado = {
   puesto: string | null;
   sueldo_ofertado: string | null;
   sueldo_semanal: number;
+  sueldo_base: number;
+  imss: number;
+  caja_ahorro: number;
+  fonacot: number;
+  infonavit: number;
   incluir: boolean;
   notas: string | null;
   configurado: boolean;
@@ -209,6 +214,7 @@ export default function NominaPage() {
                     <th className="px-4 py-3 font-medium">Semana</th>
                     <th className="px-4 py-3 font-medium">Periodo</th>
                     <th className="px-4 py-3 font-medium">Estado</th>
+                    <th className="px-4 py-3 font-medium text-right">Total de personal</th>
                     <th className="px-4 py-3 font-medium text-right">Capturados</th>
                     <th className="px-4 py-3 font-medium text-right">Total neto</th>
                     <th className="px-4 py-3" />
@@ -216,13 +222,14 @@ export default function NominaPage() {
                 </thead>
                 <tbody>
                   {periodos.length === 0 && (
-                    <tr><td colSpan={6} className="px-4 py-8 text-center text-[var(--gray-500)]">Aún no hay semanas. Crea la semana 1 con “Nueva semana”.</td></tr>
+                    <tr><td colSpan={7} className="px-4 py-8 text-center text-[var(--gray-500)]">Aún no hay semanas. Crea la semana 1 con “Nueva semana”.</td></tr>
                   )}
                   {periodos.map((p) => (
                     <tr key={p.id} className="border-t border-[var(--gray-200)] hover:bg-[var(--gray-50)]">
                       <td className="px-4 py-3 font-medium text-[var(--navy)]">Semana {p.semana} · {p.anio}</td>
                       <td className="px-4 py-3 text-[var(--gray-500)]">{fechaCorta(p.fecha_inicio)} – {fechaCorta(p.fecha_fin)}</td>
                       <td className="px-4 py-3"><span className={`inline-block rounded px-2 py-0.5 text-[11.5px] font-medium ${ESTILO_ESTADO[p.estado] || ""}`}>{p.estado}</span></td>
+                      <td className="px-4 py-3 text-right">{p.total_personal ?? "—"}</td>
                       <td className="px-4 py-3 text-right">{p.empleados ?? 0}</td>
                       <td className="px-4 py-3 text-right font-medium">{moneda(p.total_neto ?? 0)}</td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -239,15 +246,15 @@ export default function NominaPage() {
           ) : (
             <div className="overflow-x-auto">
               <p className="px-4 pt-4 text-[12.5px] text-[var(--gray-500)]">
-                El sueldo semanal se usa como propuesta al abrir cada semana. Si no se ha configurado, se toma el sueldo ofertado del expediente.
+                Resumen rápido. Los conceptos completos (IMSS, caja de ahorro, Fonacot, Infonavit, licencia federal y préstamos) se editan en el expediente de cada persona, sección Nómina.
               </p>
               <table className="w-full text-[13px] min-w-[720px] mt-2">
                 <thead>
                   <tr className="text-left text-[11.5px] text-[var(--gray-500)] uppercase tracking-wide">
                     <th className="px-4 py-3 font-medium">Nombre</th>
                     <th className="px-4 py-3 font-medium">Puesto</th>
-                    <th className="px-4 py-3 font-medium">Sueldo ofertado (expediente)</th>
-                    <th className="px-4 py-3 font-medium">Sueldo semanal</th>
+                    <th className="px-4 py-3 font-medium">Sueldo ofertado semanal</th>
+                    <th className="px-4 py-3 font-medium">Sueldo base (BBVA)</th>
                     <th className="px-4 py-3 font-medium text-center">En nómina</th>
                     <th className="px-4 py-3" />
                   </tr>
@@ -258,12 +265,14 @@ export default function NominaPage() {
                     const sucio = !!editados[e0.expediente_id];
                     return (
                       <tr key={e.expediente_id} className="border-t border-[var(--gray-200)]">
-                        <td className="px-4 py-2.5 font-medium text-[var(--navy)]">{e.nombre}</td>
+                        <td className="px-4 py-2.5 font-medium text-[var(--navy)]"><Link href={`/personas/expedientes/detalle?id=${e.expediente_id}`} className="hover:underline">{e.nombre}</Link></td>
                         <td className="px-4 py-2.5 text-[var(--gray-500)]">{e.puesto || "—"}</td>
-                        <td className="px-4 py-2.5 text-[var(--gray-500)]">{e.sueldo_ofertado || "—"}</td>
                         <td className="px-4 py-2.5">
                           <input type="number" min={0} step="0.01" value={e.sueldo_semanal} onChange={(ev) => editarEmpleado(e0, { sueldo_semanal: Number(ev.target.value) })} className={`${inputCls} max-w-[150px] py-1.5`} />
                           {!e0.configurado && !sucio && <span className="block text-[11px] text-[var(--amber)] mt-0.5">Sugerido, sin guardar</span>}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <input type="number" min={0} step="0.01" value={e.sueldo_base} onChange={(ev) => editarEmpleado(e0, { sueldo_base: Number(ev.target.value) })} className={`${inputCls} max-w-[130px] py-1.5`} />
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <input type="checkbox" checked={e.incluir} onChange={(ev) => editarEmpleado(e0, { incluir: ev.target.checked })} className="w-4 h-4 accent-[var(--navy)]" />

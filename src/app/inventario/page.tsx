@@ -112,6 +112,9 @@ export default function InventarioPage() {
   const [errorForm, setErrorForm] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
+  // Modal QR (botón pequeño de cada tarjeta)
+  const [qrEquipo, setQrEquipo] = useState<EquipoInventario | null>(null);
+
   // Modal detalle
   const [equipoSeleccionado, setEquipoSeleccionado] = useState<EquipoInventario | null>(null);
   const [estadoEditado, setEstadoEditado] = useState<EstadoInventario>("Activo");
@@ -158,18 +161,17 @@ export default function InventarioPage() {
     return t;
   }, [equipos]);
 
-  // QR pequeños de cada tarjeta
+  // QR del modal (mismo formato que Capacitaciones)
+  const folioQr = qrEquipo?.folio;
   useEffect(() => {
-    if (equiposFiltrados.length === 0) return;
+    if (!folioQr) return;
     cargarQRiousLib()
       .then(() => {
-        equiposFiltrados.forEach((e) => {
-          const canvas = document.getElementById(`qr-inv-${e.id}`) as HTMLCanvasElement | null;
-          if (canvas) new window.QRious({ element: canvas, value: urlConsulta(e.folio), size: 64, level: "M" });
-        });
+        const canvas = document.getElementById("qr-inv-modal") as HTMLCanvasElement | null;
+        if (canvas) new window.QRious({ element: canvas, value: urlConsulta(folioQr), size: 190, level: "M" });
       })
       .catch(() => {});
-  }, [equiposFiltrados]);
+  }, [folioQr]);
 
   // QR grande del detalle
   const folioSeleccionado = equipoSeleccionado?.folio;
@@ -362,30 +364,47 @@ export default function InventarioPage() {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 md:gap-5">
               {equiposFiltrados.map((e) => (
-                <button
-                  key={e.id}
-                  type="button"
-                  onClick={() => abrirDetalle(e)}
-                  className="text-left bg-white border border-[var(--gray-200)] rounded-2xl p-4 hover:border-[var(--blue)] transition-colors flex gap-3.5"
-                >
-                  <div className="w-[76px] h-[76px] shrink-0 rounded-xl border border-[var(--gray-200)] flex items-center justify-center p-1.5">
-                    <canvas id={`qr-inv-${e.id}`} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10.5px] font-bold text-[var(--blue)] m-0 truncate">{e.folio} · {nombreCategoria(e.categoria)}</p>
-                    <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0 mb-1 truncate">{e.datos.nombre}</h4>
-                    <p className="text-[11.5px] text-[var(--gray-400)] m-0 truncate">{[e.datos.marca, e.datos.modelo].filter(Boolean).join(" ") || "—"}</p>
-                    <p className="text-[11.5px] text-[var(--gray-400)] m-0 truncate">{e.datos.responsable || "Sin responsable"}</p>
-                    <span className="inline-block mt-1.5 text-[10.5px] font-bold rounded-full px-2 py-0.5" style={{ backgroundColor: COLOR_ESTADO[e.estado]?.bg, color: COLOR_ESTADO[e.estado]?.fg }}>
-                      {e.estado}
+                <div key={e.id} className="bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] relative hover:border-[var(--blue)] transition-colors">
+                  <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                    <span onClick={() => setQrEquipo(e)} className="w-7 h-7 rounded-lg bg-[var(--gray-100)] flex items-center justify-center cursor-pointer" title="Ver código QR">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2">
+                        <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
+                        <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20v.01" />
+                      </svg>
                     </span>
                   </div>
-                </button>
+                  <button type="button" onClick={() => abrirDetalle(e)} className="block w-full text-center">
+                    <p className="text-[10.5px] font-bold text-[var(--blue)] m-0 mb-1 truncate pr-9">{e.folio} · {nombreCategoria(e.categoria)}</p>
+                    <h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight pr-9 break-words">{e.datos.nombre}</h3>
+                    <div className="w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
+                    <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed truncate">{[e.datos.marca, e.datos.modelo].filter(Boolean).join(" ") || "—"}</p>
+                    <p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed mb-1 truncate">{e.datos.responsable || "Sin responsable"}</p>
+                    <span className="inline-block mt-1 text-[10.5px] font-bold rounded-full px-2.5 py-0.5" style={{ backgroundColor: COLOR_ESTADO[e.estado]?.bg, color: COLOR_ESTADO[e.estado]?.fg }}>
+                      {e.estado}
+                    </span>
+                  </button>
+                </div>
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Modal: código QR (mismo formato que Capacitaciones) */}
+      {qrEquipo && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setQrEquipo(null)}>
+          <div className="bg-white rounded-2xl p-6 text-center shadow-[0_1px_3px_rgba(22,33,92,0.06)]" onClick={(ev) => ev.stopPropagation()}>
+            <p className="text-[13.5px] font-bold text-[var(--navy)] mb-1">{qrEquipo.datos.nombre}</p>
+            <p className="text-[11.5px] text-[var(--gray-400)] mb-4">{qrEquipo.folio} · Escanea para consultar el equipo</p>
+            <div className="w-[210px] h-[210px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-4 p-2.5">
+              <canvas id="qr-inv-modal" />
+            </div>
+            <button type="button" onClick={() => setQrEquipo(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal: agregar equipo */}
       {modalAgregar && (

@@ -872,4 +872,18 @@ edad_max INTEGER NOT NULL DEFAULT 55,
 updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+await p.query(`ALTER TABLE evaluaciones_candidatos ADD COLUMN IF NOT EXISTS doc_token TEXT UNIQUE;`);
+// Documentos del candidato (PDF o foto), cargados desde el enlace público con token.
+await p.query(`
+CREATE TABLE IF NOT EXISTS evaluacion_documentos (
+id SERIAL PRIMARY KEY,
+evaluacion_id INTEGER NOT NULL REFERENCES evaluaciones_candidatos(id) ON DELETE CASCADE,
+tipo TEXT NOT NULL,
+nombre TEXT,
+mime TEXT NOT NULL,
+contenido TEXT NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`CREATE INDEX IF NOT EXISTS idx_evaluacion_documentos_ev ON evaluacion_documentos (evaluacion_id);`);
 }

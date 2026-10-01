@@ -228,6 +228,13 @@ descripcion="Registro por QR, calendario semanal, vacaciones, permisos y faltas.
 />
 <MenuCard
 compactoMovil
+href="/rutas"
+icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="5" r="2.5" /><path d="M8.5 19H17a3.5 3.5 0 000-7H7a3.5 3.5 0 010-7h8.5" /></svg>}
+titulo="Rutas"
+descripcion="Catálogo de rutas y bono por ruta para viajes foráneos."
+/>
+<MenuCard
+compactoMovil
 href="/buzon-sugerencias"
 icono={<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><path d="M12 2C7 2 3 5 3 9c0 2.4 1.4 4.5 3.5 5.8V21l4-2.2c.5.1 1 .2 1.5.2 5 0 9-3 9-7s-4-7-9-7z" /></svg>}
 titulo="Buzón de sugerencias e ideas de mejora"

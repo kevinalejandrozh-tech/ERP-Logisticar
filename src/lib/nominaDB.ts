@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, getPool } from "./db";
 import { COOKIE_SESION, verificarTokenSesion, tienePermisosAdmin } from "./sesion";
-import { CONFIG_DEFAULT, NominaConfig, aNumero } from "./nominaCalculo";
+import { CONFIG_DEFAULT, CreditoEstado, NominaConfig, aNumero, redondear, semanasRestantes } from "./nominaCalculo";
+import { semanaIso, sumarDiasIso } from "./asistenciaData";
 
 // Esquema propio del módulo "Nómina" (Personas).
 // Se mantiene separado de db.ts para no tocar las tablas de los demás módulos.
@@ -86,7 +87,19 @@ async function crearEsquema() {
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_nomina_registros_exp ON nomina_registros (expediente_id);`);
 
-  // ---------- Fase 2 (estructura lista, sin pantalla todavía) ----------
+  // ---------- v2: conceptos por persona, sueldo base (depósito BBVA) y viáticos ----------
+  await p.query(`ALTER TABLE nomina_empleados ADD COLUMN IF NOT EXISTS sueldo_base NUMERIC NOT NULL DEFAULT 2310;`);
+  await p.query(`ALTER TABLE nomina_empleados ADD COLUMN IF NOT EXISTS imss NUMERIC NOT NULL DEFAULT 75;`);
+  await p.query(`ALTER TABLE nomina_empleados ADD COLUMN IF NOT EXISTS caja_ahorro NUMERIC NOT NULL DEFAULT 100;`);
+  await p.query(`ALTER TABLE nomina_empleados ADD COLUMN IF NOT EXISTS fonacot NUMERIC NOT NULL DEFAULT 0;`);
+  await p.query(`ALTER TABLE nomina_empleados ADD COLUMN IF NOT EXISTS infonavit NUMERIC NOT NULL DEFAULT 0;`);
+  await p.query(`ALTER TABLE nomina_periodos ADD COLUMN IF NOT EXISTS sueldo_base NUMERIC;`);
+  for (const col of ["sueldo_base", "fonacot", "infonavit", "deposito_bbva", "deposito_viaticos", "bonos_ruta"]) {
+    await p.query(`ALTER TABLE nomina_registros ADD COLUMN IF NOT EXISTS ${col} NUMERIC NOT NULL DEFAULT 0;`);
+  }
+  await p.query(`ALTER TABLE nomina_registros ADD COLUMN IF NOT EXISTS creditos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+
+  // ---------- Fase 2: créditos (licencia federal, préstamos) y caja de ahorro ----------
   await p.query(`
     CREATE TABLE IF NOT EXISTS nomina_prestamos (
       id SERIAL PRIMARY KEY,
@@ -127,6 +140,12 @@ async function crearEsquema() {
     );
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_nomina_prestamos_exp ON nomina_prestamos (expediente_id);`);
+  await p.query(`ALTER TABLE nomina_prestamo_abonos ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'Semanal';`);
+  await p.query(`ALTER TABLE nomina_prestamo_abonos ADD COLUMN IF NOT EXISTS notas TEXT;`);
+  await p.query(`ALTER TABLE nomina_prestamo_abonos ADD COLUMN IF NOT EXISTS registrado_por TEXT;`);
+  await p.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_nomina_abono_semanal ON nomina_prestamo_abonos (prestamo_id, periodo_id) WHERE tipo = 'Semanal';`
+  );
   await p.query(`CREATE INDEX IF NOT EXISTS idx_nomina_caja_exp ON nomina_caja_ahorro (expediente_id);`);
 }
 
@@ -160,4 +179,99 @@ export async function sesionNomina(req: NextRequest): Promise<{ nombre: string }
 export function errorJson(err: unknown, mensaje: string) {
   const texto = err instanceof Error ? err.message : mensaje;
   return NextResponse.json({ error: texto || mensaje }, { status: 500 });
+}
+
+// Estado de los créditos (licencia federal / préstamos) de varias personas a la fecha de corte de una semana.
+// - pagado/pagos: abonos semanales de semanas que terminan en o antes del corte + extraordinarios con fecha ≤ corte.
+// - abono_semana: abono semanal ya guardado en esa semana, o la propuesta (abono pactado, sin exceder el saldo).
+export async function estadoCreditos(
+  expedienteIds: number[],
+  corte: { periodo_id: number | null; desde: string; hasta: string }
+): Promise<Map<number, CreditoEstado[]>> {
+  const mapa = new Map<number, CreditoEstado[]>();
+  if (!expedienteIds.length) return mapa;
+  const pool = getPool();
+  const cr = await pool.query(
+    `SELECT id, expediente_id, concepto, monto_total, abono_semanal, saldo, to_char(fecha_inicio, 'YYYY-MM-DD') AS fecha_inicio, estado, notas
+     FROM nomina_prestamos WHERE expediente_id = ANY($1::int[]) AND estado != 'Cancelado' ORDER BY fecha_inicio, id`,
+    [expedienteIds]
+  );
+  if (!cr.rows.length) return mapa;
+  const ab = await pool.query(
+    `SELECT a.prestamo_id, a.tipo, a.importe, a.periodo_id, a.notas, to_char(a.fecha, 'YYYY-MM-DD') AS fecha,
+            to_char(p.fecha_fin, 'YYYY-MM-DD') AS fin_periodo
+     FROM nomina_prestamo_abonos a LEFT JOIN nomina_periodos p ON p.id = a.periodo_id
+     WHERE a.prestamo_id = ANY($1::int[])`,
+    [cr.rows.map((r) => r.id)]
+  );
+  for (const c of cr.rows) {
+    const abonos = ab.rows.filter((a) => a.prestamo_id === c.id);
+    const monto = aNumero(c.monto_total);
+    const abonoPactado = aNumero(c.abono_semanal);
+    let pagadoPrevio = 0;
+    let pagosPrevios = 0;
+    let abonoGuardado: number | null = null;
+    const extraordinarios: CreditoEstado["extraordinarios"] = [];
+    for (const a of abonos) {
+      const imp = aNumero(a.importe);
+      const esEstaSemana = a.tipo === "Semanal" && corte.periodo_id !== null && a.periodo_id === corte.periodo_id;
+      if (esEstaSemana) {
+        abonoGuardado = imp;
+        continue;
+      }
+      const fechaRef = a.tipo === "Semanal" ? a.fin_periodo || a.fecha : a.fecha;
+      if (fechaRef <= corte.hasta) {
+        pagadoPrevio += imp;
+        pagosPrevios += 1;
+      }
+      if (a.tipo === "Extraordinario" && a.fecha >= corte.desde && a.fecha <= corte.hasta) {
+        extraordinarios.push({ fecha: a.fecha, importe: imp, notas: a.notas });
+      }
+    }
+    const saldoPrevio = Math.max(0, redondear(monto - pagadoPrevio));
+    const iniciado = c.fecha_inicio <= corte.hasta;
+    const abonoSemana =
+      abonoGuardado !== null ? abonoGuardado : c.estado === "Activo" && iniciado ? Math.min(abonoPactado, saldoPrevio) : 0;
+    const pagado = redondear(pagadoPrevio + abonoSemana);
+    const saldo = Math.max(0, redondear(monto - pagado));
+    const restantes = semanasRestantes(saldo, abonoPactado);
+    const termino = restantes ? sumarDiasIso(corte.hasta, restantes * 7) : saldo <= 0 ? corte.hasta : null;
+    const sem = termino ? semanaIso(termino) : null;
+    const estado: CreditoEstado = {
+      id: c.id,
+      expediente_id: c.expediente_id,
+      concepto: c.concepto,
+      monto_total: monto,
+      abono_semanal: abonoPactado,
+      saldo: aNumero(c.saldo),
+      fecha_inicio: c.fecha_inicio,
+      estado: c.estado,
+      notas: c.notas,
+      pagado,
+      pagos: pagosPrevios + (abonoSemana > 0 ? 1 : 0),
+      saldo_corte: saldo,
+      semanas_restantes: restantes,
+      termino_estimado: termino,
+      termino_semana: sem ? `Semana ${sem.semana} ${sem.anio}` : null,
+      extraordinarios,
+      abono_semana: redondear(abonoSemana),
+    };
+    if (!mapa.has(c.expediente_id)) mapa.set(c.expediente_id, []);
+    mapa.get(c.expediente_id)!.push(estado);
+  }
+  return mapa;
+}
+
+// Recalcula el saldo y estado de un crédito con todos sus abonos.
+export async function recalcularSaldoCredito(prestamoId: number) {
+  await getPool().query(
+    `UPDATE nomina_prestamos p SET
+       saldo = GREATEST(0, p.monto_total - COALESCE((SELECT SUM(importe) FROM nomina_prestamo_abonos WHERE prestamo_id = p.id), 0)),
+       estado = CASE WHEN p.estado = 'Cancelado' THEN 'Cancelado'
+                     WHEN p.monto_total - COALESCE((SELECT SUM(importe) FROM nomina_prestamo_abonos WHERE prestamo_id = p.id), 0) <= 0 THEN 'Liquidado'
+                     ELSE 'Activo' END,
+       updated_at = now()
+     WHERE p.id = $1`,
+    [prestamoId]
+  );
 }

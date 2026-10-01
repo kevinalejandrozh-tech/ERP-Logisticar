@@ -1,60 +1,93 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureNominaSchema, errorJson, sesionNomina } from "@/lib/nominaDB";
-import { aNumero } from "@/lib/nominaCalculo";
+import { DEFAULTS_EMPLEADO, aNumero, redondear } from "@/lib/nominaCalculo";
+import { ahoraMx } from "@/lib/asistenciaData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Lista del personal activo con su sueldo semanal de nómina.
-// Si aún no tiene sueldo de nómina, se sugiere el "sueldo ofertado" del expediente.
+// Conceptos de nómina por persona. Si la persona aún no está configurada se usan los valores por defecto
+// (sueldo base $2,310, IMSS $75, caja de ahorro $100, Fonacot $0, Infonavit $0) y su sueldo ofertado del expediente.
+const SELECT = `
+  SELECT e.id, e.nombre, e.puesto, e.sueldo_ofertado, to_char(e.fecha_ingreso, 'YYYY-MM-DD') AS fecha_ingreso,
+         n.sueldo_semanal, n.sueldo_base, n.imss, n.caja_ahorro, n.fonacot, n.infonavit,
+         COALESCE(n.incluir, true) AS incluir, n.notas, (n.expediente_id IS NOT NULL) AS configurado
+  FROM expedientes e LEFT JOIN nomina_empleados n ON n.expediente_id = e.id`;
+
+function mapear(f: Record<string, unknown>) {
+  const conf = !!f.configurado;
+  return {
+    expediente_id: f.id as number,
+    nombre: f.nombre as string,
+    puesto: f.puesto as string | null,
+    fecha_ingreso: f.fecha_ingreso as string | null,
+    sueldo_ofertado: f.sueldo_ofertado as string | null,
+    sueldo_semanal: conf ? aNumero(f.sueldo_semanal) : aNumero(f.sueldo_ofertado),
+    sueldo_base: conf ? aNumero(f.sueldo_base) : DEFAULTS_EMPLEADO.sueldo_base,
+    imss: conf ? aNumero(f.imss) : DEFAULTS_EMPLEADO.imss,
+    caja_ahorro: conf ? aNumero(f.caja_ahorro) : DEFAULTS_EMPLEADO.caja_ahorro,
+    fonacot: conf ? aNumero(f.fonacot) : DEFAULTS_EMPLEADO.fonacot,
+    infonavit: conf ? aNumero(f.infonavit) : DEFAULTS_EMPLEADO.infonavit,
+    incluir: f.incluir as boolean,
+    notas: f.notas as string | null,
+    configurado: conf,
+  };
+}
+
+// Caja de ahorro acumulada estimada: aportación semanal × semanas completas desde la fecha de ingreso.
+function cajaAcumulada(fechaIngreso: string | null, semanal: number): { semanas: number; acumulado: number } {
+  if (!fechaIngreso) return { semanas: 0, acumulado: 0 };
+  const dias = (new Date(ahoraMx().fecha + "T00:00:00Z").getTime() - new Date(fechaIngreso + "T00:00:00Z").getTime()) / 86400000;
+  const semanas = Math.max(0, Math.floor(dias / 7));
+  return { semanas, acumulado: redondear(semanas * semanal) };
+}
+
 export async function GET(req: NextRequest) {
   const s = await sesionNomina(req);
   if (s instanceof NextResponse) return s;
   try {
     await ensureNominaSchema();
-    const r = await getPool().query(`
-      SELECT e.id, e.nombre, e.puesto, e.sueldo_ofertado,
-             n.sueldo_semanal, COALESCE(n.incluir, true) AS incluir, n.notas,
-             (n.expediente_id IS NOT NULL) AS configurado
-      FROM expedientes e
-      LEFT JOIN nomina_empleados n ON n.expediente_id = e.id
-      WHERE COALESCE(e.estatus_laboral, 'Activo') != 'Baja'
-      ORDER BY e.nombre ASC
-    `);
-    const empleados = r.rows.map((f) => ({
-      expediente_id: f.id,
-      nombre: f.nombre,
-      puesto: f.puesto,
-      sueldo_ofertado: f.sueldo_ofertado,
-      sueldo_semanal: f.configurado ? aNumero(f.sueldo_semanal) : aNumero(f.sueldo_ofertado),
-      incluir: f.incluir,
-      notas: f.notas,
-      configurado: f.configurado,
-    }));
-    return NextResponse.json({ ok: true, empleados });
+    const id = Number(req.nextUrl.searchParams.get("expediente_id"));
+    if (id) {
+      const r = await getPool().query(`${SELECT} WHERE e.id = $1`, [id]);
+      if (!r.rows[0]) return NextResponse.json({ error: "El expediente no existe." }, { status: 404 });
+      const emp = mapear(r.rows[0]);
+      return NextResponse.json({ ok: true, empleado: emp, caja: cajaAcumulada(emp.fecha_ingreso, emp.caja_ahorro) });
+    }
+    const r = await getPool().query(`${SELECT} WHERE COALESCE(e.estatus_laboral, 'Activo') != 'Baja' ORDER BY e.nombre ASC`);
+    return NextResponse.json({ ok: true, empleados: r.rows.map(mapear) });
   } catch (err) {
     return errorJson(err, "Error al leer el personal de nómina.");
   }
+}
+
+function formatoMoneda(n: number) {
+  return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export async function PUT(req: NextRequest) {
   const s = await sesionNomina(req);
   if (s instanceof NextResponse) return s;
   try {
-    const body = await req.json();
-    const expedienteId = Number(body.expediente_id);
-    if (!expedienteId) return NextResponse.json({ error: "Falta el empleado." }, { status: 400 });
-    const sueldo = Math.max(0, aNumero(body.sueldo_semanal));
+    const b = await req.json();
+    const id = Number(b.expediente_id);
+    if (!id) return NextResponse.json({ error: "Falta el empleado." }, { status: 400 });
+    const v = (k: keyof typeof DEFAULTS_EMPLEADO) => (b[k] === undefined || b[k] === null || b[k] === "" ? DEFAULTS_EMPLEADO[k] : Math.max(0, aNumero(b[k])));
+    const sueldo = Math.max(0, aNumero(b.sueldo_semanal));
     await ensureNominaSchema();
-    await getPool().query(
-      `INSERT INTO nomina_empleados (expediente_id, sueldo_semanal, incluir, notas)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (expediente_id) DO UPDATE SET sueldo_semanal = $2, incluir = $3, notas = $4, updated_at = now()`,
-      [expedienteId, sueldo, body.incluir !== false, body.notas ? String(body.notas) : null]
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO nomina_empleados (expediente_id, sueldo_semanal, sueldo_base, imss, caja_ahorro, fonacot, infonavit, incluir, notas)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       ON CONFLICT (expediente_id) DO UPDATE SET sueldo_semanal = $2, sueldo_base = $3, imss = $4, caja_ahorro = $5, fonacot = $6,
+         infonavit = $7, incluir = $8, notas = $9, updated_at = now()`,
+      [id, sueldo, v("sueldo_base"), v("imss"), v("caja_ahorro"), v("fonacot"), v("infonavit"), b.incluir !== false, b.notas ? String(b.notas).slice(0, 300) : null]
     );
+    // El sueldo ofertado vive ahora en la sección Nómina; se refleja en el expediente para no tener dos valores distintos.
+    await pool.query(`UPDATE expedientes SET sueldo_ofertado = $2 WHERE id = $1`, [id, formatoMoneda(sueldo)]);
     return NextResponse.json({ ok: true });
   } catch (err) {
-    return errorJson(err, "Error al guardar el sueldo.");
+    return errorJson(err, "Error al guardar los conceptos de nómina.");
   }
 }

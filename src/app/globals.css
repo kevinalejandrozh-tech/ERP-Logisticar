@@ -2,26 +2,97 @@
 
 :root {
   --navy: #16215c;
+  --navy-dark: #0f1845;
   --blue: #2f6fed;
-  --blue-light: #e8f0fe;
+  --blue-light: #eef3fd;
   --red: #e2412c;
   --green: #21a866;
   --amber: #f2b134;
+  --gray-50: #f5f6f8;
   --gray-100: #f4f5f8;
-  --gray-200: #e5e8ee;
-  --gray-400: #9aa1b0;
-  --text: #1a1f2e;
+  --gray-200: #e3e6eb;
+  --gray-300: #cfd5df;
+  --gray-400: #8a91a0;
+  --gray-500: #6b7280;
+  --text: #1f2937;
 
-  --font-display: "Segoe UI Semibold", "Segoe UI", sans-serif;
-  --font-body: "Segoe UI", system-ui, sans-serif;
+  --font-display: var(--font-roboto), "Segoe UI", system-ui, sans-serif;
+  --font-body: var(--font-roboto), "Segoe UI", system-ui, sans-serif;
 }
 
 body {
-  background: #dcdfe6;
+  background: var(--gray-50);
   color: var(--text);
   font-family: var(--font-body);
+  letter-spacing: 0.005em;
 }
 
 .font-display {
   font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+/* Interacción uniforme y discreta en controles */
+button,
+a,
+input,
+select,
+textarea {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(47, 111, 237, 0.15);
+}
+
+/* Botones reutilizables (estilo formal) */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 6px;
+  padding: 0.55rem 1rem;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.btn-primario {
+  background: var(--navy);
+  color: #fff;
+}
+.btn-primario:hover:not(:disabled) {
+  background: var(--navy-dark);
+}
+.btn-secundario {
+  background: #fff;
+  color: var(--navy);
+  border-color: var(--gray-300);
+}
+.btn-secundario:hover:not(:disabled) {
+  background: #f4f6fa;
+  border-color: #b9c2d0;
+}
+.btn-enlace {
+  color: var(--blue);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

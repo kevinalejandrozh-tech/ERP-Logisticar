@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_SESION, verificarTokenSesion } from "@/lib/sesion";
 
 // Páginas que se llenan vía código QR por cualquier operador, sin necesidad de cuenta.
-const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/inventario/consulta", "/personas/evaluacion-candidatos/formulario", "/personas/evaluacion-candidatos/documentos"]; // Evaluación de candidatos: link/QR para candidatos
+const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/inventario/consulta", "/personas/evaluacion-candidatos/formulario", "/personas/evaluacion-candidatos/documentos", "/asistencia/registro"]; // Evaluación de candidatos: link/QR para candidatos
 
 // Rutas de API que esas mismas páginas públicas necesitan para funcionar.
 const API_PUBLICA = new Set([
@@ -19,6 +19,7 @@ const API_PUBLICA = new Set([
   "/api/evaluacion-candidatos/enviar", // solo POST de envío del candidato
   "/api/evaluacion-candidatos/induccion/ver", // solo lectura del video de inducción
   "/api/evaluacion-candidatos/documentos/publico", // carga de documentos del candidato (requiere token)
+  "/api/asistencia/registro", // registro de asistencia por QR (lista de nombres + entrada/salida)
 ]);
 
 // El rol supervisor_tms solo puede navegar/consultar dentro de estas secciones.

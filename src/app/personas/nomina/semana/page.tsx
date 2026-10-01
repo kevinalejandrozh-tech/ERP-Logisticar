@@ -323,7 +323,7 @@ function SemanaNomina() {
               <section>
                 <h4 className="text-[12px] font-medium text-[var(--gray-500)] uppercase tracking-wide mb-2">Asistencia</h4>
                 <div className="grid grid-cols-3 gap-3">{ASISTENCIA.map(campoNumero)}</div>
-                <p className="text-[11.5px] text-[var(--gray-500)] mt-1.5">Precargado desde Asistencia diaria; puedes ajustarlo.</p>
+                <p className="text-[11.5px] text-[var(--gray-500)] mt-1.5">Precargado desde el módulo Asistencia (o Asistencia diaria); puedes ajustarlo.</p>
               </section>
               <section>
                 <h4 className="text-[12px] font-medium text-[var(--gray-500)] uppercase tracking-wide mb-2">Percepciones</h4>

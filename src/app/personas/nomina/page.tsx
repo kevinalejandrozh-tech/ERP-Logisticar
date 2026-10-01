@@ -104,6 +104,20 @@ export default function NominaPage() {
     }
   };
 
+  const generarSemanas = async () => {
+    if (!confirm("Se crearán las semanas faltantes desde la semana 1 del año hasta la semana en curso (lunes a domingo, numeración ISO). Las existentes no se modifican. ¿Continuar?")) return;
+    setGuardando(true);
+    try {
+      const r = await pedir<{ anio: number; hasta_semana: number; creadas: number }>("/api/nomina/periodos", { method: "POST", body: JSON.stringify({ generar: true }) });
+      alert(r.creadas ? `Se crearon ${r.creadas} semana(s) de ${r.anio} (hasta la semana ${r.hasta_semana}).` : "Todas las semanas ya existían.");
+      await cargar();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudieron generar las semanas.");
+    } finally {
+      setGuardando(false);
+    }
+  };
+
   const eliminarSemana = async (p: NominaPeriodo) => {
     if (!confirm(`¿Eliminar la semana ${p.semana} de ${p.anio}? Solo es posible si no tiene capturas.`)) return;
     try {
@@ -168,6 +182,9 @@ export default function NominaPage() {
           <button type="button" className="btn btn-primario" onClick={abrirNuevaSemana} disabled={cargando}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             Nueva semana
+          </button>
+          <button type="button" className="btn btn-secundario" onClick={generarSemanas} disabled={cargando || guardando}>
+            Generar semanas del año
           </button>
           <button type="button" className="btn btn-secundario" onClick={() => { setCfgEdit(config); setModalConfig(true); }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>

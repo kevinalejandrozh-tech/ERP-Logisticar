@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureNominaSchema, errorJson, sesionNomina } from "@/lib/nominaDB";
 import { aNumero, sumarDias } from "@/lib/nominaCalculo";
+import { ahoraMx, lunesSemanaIso, semanaIso } from "@/lib/asistenciaData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
   if (s instanceof NextResponse) return s;
   try {
     const body = await req.json();
+    if (body.generar === true) return await generarSemanas();
     const inicio = String(body.fecha_inicio || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio)) return NextResponse.json({ error: "Indica la fecha de inicio de la semana." }, { status: 400 });
     const anio = Number(body.anio) || Number(inicio.slice(0, 4));
@@ -96,4 +98,25 @@ export async function DELETE(req: NextRequest) {
   } catch (err) {
     return errorJson(err, "Error al eliminar la semana.");
   }
+}
+
+// Crea las semanas ISO (lunes a domingo) desde la 1 del año en curso hasta la semana actual.
+// Las que ya existen se respetan sin modificarse.
+async function generarSemanas() {
+  await ensureNominaSchema();
+  const { anio, semana: actual } = semanaIso(ahoraMx().fecha);
+  const pool = getPool();
+  const existentes = await pool.query(`SELECT semana FROM nomina_periodos WHERE anio = $1`, [anio]);
+  const ya = new Set(existentes.rows.map((r) => Number(r.semana)));
+  let creadas = 0;
+  for (let s = 1; s <= actual; s++) {
+    if (ya.has(s)) continue;
+    const inicio = lunesSemanaIso(anio, s);
+    const r = await pool.query(
+      `INSERT INTO nomina_periodos (anio, semana, fecha_inicio, fecha_fin) VALUES ($1, $2, $3, $4) ON CONFLICT (anio, semana) DO NOTHING`,
+      [anio, s, inicio, sumarDias(inicio, 6)]
+    );
+    creadas += r.rowCount || 0;
+  }
+  return NextResponse.json({ ok: true, anio, hasta_semana: actual, creadas });
 }

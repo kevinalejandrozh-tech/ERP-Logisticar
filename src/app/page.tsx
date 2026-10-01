@@ -45,14 +45,14 @@ mq.removeEventListener("change", alCambiarTamano);
 };
 }, [menuMovilAbierto]);
 return (
-<div className="min-h-screen bg-[#eef1f6]">
-<div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
-<div className="flex flex-row items-center justify-between gap-4 mb-6 md:mb-7">
+<div className="min-h-screen bg-[var(--gray-50)]">
+<div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14">
+<div className="flex flex-row items-center justify-between gap-4 mb-6 md:mb-7 bg-white border-b border-[var(--gray-200)] -mx-4 sm:-mx-6 md:-mx-10 lg:-mx-14 px-4 sm:px-6 md:px-10 lg:px-14 py-3.5 md:py-4">
 <div className="flex items-center gap-2.5 md:gap-3.5">
 <Logo size={38} />
 <div>
-<h1 className="font-display text-[17px] md:text-[22px] font-bold text-[var(--navy)] m-0">Gestión Logística</h1>
-<p className="text-[11.5px] md:text-[13px] text-[var(--gray-400)] m-0">Transportes Logisticar</p>
+<h1 className="font-display text-[17px] md:text-[21px] font-medium text-[var(--navy)] m-0">Gestión Logística</h1>
+<p className="text-[11.5px] md:text-[13px] text-[var(--gray-500)] m-0">Transportes Logisticar</p>
 </div>
 </div>
 <button
@@ -182,18 +182,18 @@ Cerrar sesión
 <div className="flex flex-wrap gap-2.5 md:gap-3.5 mb-6">
 {sesion.rol !== "supervisor_tms" && (
 <>
-<Link href="/planeacion-cargas" className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
+<Link href="/planeacion-cargas" className="btn btn-primario text-[12.5px] md:text-[13.5px]">
 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 4v18M8 15h13" /></svg>
-Planeación y Programa de Cargas
+Planeación y programa de cargas
 </Link>
-<Link href="/menu-dia" className="flex items-center gap-2 bg-[var(--blue)] text-white rounded-full px-4 md:px-6 py-2.5 md:py-3 text-[11.5px] md:text-[13px] font-bold uppercase tracking-wide no-underline">
-<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
+<Link href="/menu-dia" className="btn btn-secundario text-[12.5px] md:text-[13.5px]">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
 </Link>
 </>
 )}
 </div>
-<div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+<div>
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[18px]">
 <MenuCard
 compactoMovil

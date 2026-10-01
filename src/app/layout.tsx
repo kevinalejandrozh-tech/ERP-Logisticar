@@ -1,7 +1,19 @@
 import type { Metadata, Viewport } from "next";
+import localFont from "next/font/local";
 import "./globals.css";
 import ZoomControls from "@/components/ZoomControls";
 import PageFooter from "@/components/PageFooter";
+
+// Roboto auto-hospedada (latin 400/500/700) — tipografía institucional del sistema
+const roboto = localFont({
+  src: [
+    { path: "./fonts/roboto-400.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/roboto-500.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/roboto-700.woff2", weight: "700", style: "normal" },
+  ],
+  variable: "--font-roboto",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Gestión Logisticar",
@@ -17,7 +29,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className="h-full antialiased">
+    <html lang="es" className={`${roboto.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <ZoomControls>
           {children}

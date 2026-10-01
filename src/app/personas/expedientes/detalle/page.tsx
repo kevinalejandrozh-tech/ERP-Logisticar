@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import ExpedienteFormModal, { ExpedienteData, Curso } from "@/components/ExpedienteFormModal";
 import { useSesion } from "@/lib/useSesion";
+import NominaExpediente from "@/components/NominaExpediente";
+import HorarioExpediente from "@/components/HorarioExpediente";
 
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
@@ -405,12 +407,23 @@ export default function DetalleExpedientePage() {
               <Seccion icono={<IconoSeccion path={<><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" /></>} />} titulo="Información laboral">
                 <div className="border border-[var(--gray-200)] rounded-xl px-4">
                   {registro.tipo_personal !== "administrativo" && filaCampo("Cuenta", registro.cuenta)}
-                  {!esSoloConsulta && filaCampo("Sueldo ofertado", registro.sueldo_ofertado)}
                   {filaCampo("Radio asignado", registro.radio_asignado)}
+                  <HorarioExpediente expedienteId={registro.id} soloConsulta={esSoloConsulta} />
                   {bloqueCamposExtra("informacion_laboral")}
                 </div>
               </Seccion>
             </div>
+
+            {/* Nómina: conceptos semanales, caja de ahorro, licencia federal y préstamos (no visible para consulta) */}
+            {!esSoloConsulta && (
+              <Seccion
+                icono={<IconoSeccion path={<><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="12" cy="12" r="2.8" /></>} />}
+                titulo="Nómina"
+                subtitulo="Sueldo ofertado, sueldo base, deducciones semanales y créditos."
+              >
+                <NominaExpediente expedienteId={registro.id} />
+              </Seccion>
+            )}
 
             {/* Licencia y operación */}
             {registro.tipo_personal !== "administrativo" && (

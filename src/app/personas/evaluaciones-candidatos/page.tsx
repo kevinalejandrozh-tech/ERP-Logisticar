@@ -2,7 +2,8 @@
 import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
-import { UMBRAL_ESTRATEGICO, UMBRAL_CONOCIMIENTO, VIDEO_MAX_BYTES, VIDEO_TAM_PARTE } from "@/lib/evaluacionCandidatosData";
+import { UMBRAL_ESTRATEGICO, UMBRAL_CONOCIMIENTO, VIDEO_MAX_BYTES, VIDEO_TAM_PARTE, type DocumentoRequerido } from "@/lib/evaluacionCandidatosData";
+import { analizarEmpleos, dinero, aNumero, type Empleo, type Credito } from "@/lib/evaluacionCandidatosAnalisis";
 
 type Resumen = {
   id: number;
@@ -16,17 +17,58 @@ type Resumen = {
   puntaje_conocimiento: number;
   max_conocimiento: number;
   criticos: number;
+  docs_cargados?: number;
+  docs_total?: number;
   created_at: string;
 };
 type Respuesta = { id: string; seccion: "estrategica" | "conocimiento"; categoria?: string; pregunta: string; respuesta: string; puntos: number; maximo: number; correcta?: string };
 type Categoria = { nombre: string; seccion: "estrategica" | "conocimiento"; puntos: number; maximo: number; pct: number };
 type PuntoCritico = { nivel: "critico" | "atencion"; texto: string };
-type Evaluacion = Resumen & { datos: Record<string, any>; respuestas: Respuesta[]; observaciones: string | null; puntos_criticos: PuntoCritico[] | null; categorias: Categoria[] | null };
+type Evaluacion = Resumen & { datos: Record<string, any>; respuestas: Respuesta[]; observaciones: string | null; puntos_criticos: PuntoCritico[] | null; categorias: Categoria[] | null; foto: string | null };
+
+const COLORES_LINEA = ["#f2b134", "#21a866", "#d6246e", "#2f6fed", "#8e44ad", "#16a3b8"];
+const duracion = (m: number | null) => {
+  if (m === null) return "—";
+  const a = Math.floor(m / 12);
+  const r = m % 12;
+  return a ? `${a} año${a > 1 ? "s" : ""}${r ? ` ${r} m` : ""}` : `${r} mes${r === 1 ? "" : "es"}`;
+};
+const anioDe = (ym?: string) => (ym ? ym.slice(0, 4) : "");
+const periodo = (e: Empleo) => `${anioDe(e.inicio) || "?"} – ${e.actual ? "actual" : anioDe(e.fin) || "?"}`;
+
+// Resumen y análisis de la experiencia previa (texto para la pantalla y el PDF).
+function analisisExperiencia(datos: Record<string, any>): string[] {
+  if (datos?.primer_empleo === "Sí") return ["Declara que este sería su primer empleo; no hay trayectoria laboral que analizar."];
+  const empleos: Empleo[] = Array.isArray(datos?.empleos) ? datos.empleos : [];
+  if (!empleos.length) return ["No se capturó historial laboral."];
+  const a = analizarEmpleos(empleos);
+  const l: string[] = [];
+  l.push(`Trayectoria de ${a.total} empleo(s) en aproximadamente ${a.aniosTrayectoria} años; permanencia promedio de ${duracion(a.promedioMeses)} y empleo más largo de ${duracion(a.masLargo)}.`);
+  l.push(`${a.ultimos3} empleo(s) en los últimos 3 años${a.ultimos3 >= 4 ? " (alta rotación)" : a.ultimos3 === 3 ? " (rotación moderada)" : " (estable)"}.`);
+  const huecos = a.huecos.filter((h) => h > 2);
+  l.push(huecos.length ? `Periodos sin empleo de ${huecos.map((h) => `${h} meses`).join(", ")}.` : "Sin periodos relevantes sin empleo.");
+  if (a.sueldoMax) {
+    const esp = aNumero(datos.sueldo_esperado);
+    l.push(`Último sueldo declarado ${dinero(a.sueldoUltimo)}, mayor sueldo ${dinero(a.sueldoMax)}${esp ? `; espera ${dinero(esp)} (${esp >= a.sueldoUltimo ? "+" : ""}${a.sueldoUltimo ? Math.round(((esp - a.sueldoUltimo) / a.sueldoUltimo) * 100) : 0}% vs. último)` : ""}.`);
+  }
+  l.push(`Referencias laborales en ${a.conReferencia} de ${a.total} empleo(s); ${datos.autoriza_referencias === "Sí" ? "autoriza" : "NO autoriza"} solicitar información a sus empleos anteriores.`);
+  const motivos = empleos.filter((e) => (e.motivo || "").trim()).map((e) => `${e.empresa}: ${e.motivo}`);
+  if (motivos.length) l.push(`Motivos de salida — ${motivos.join(" · ")}.`);
+  return l;
+}
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const fecha = (iso: string) => new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 const dictamenDe = (e: { dictamen_final: string | null; dictamen_auto: string }) => e.dictamen_final || e.dictamen_auto;
-const colorPct = (p: number, umbral: number) => (p >= umbral ? "#21a866" : p >= umbral - 20 ? "#f2b134" : "#e2412c");
+// Barras y etiquetas del reporte en un solo color (azul marino).
+const AZUL_MARINO = "#16215c";
+type ArchivoDoc = { id: number; tipo: string; nombre: string | null; mime: string; created_at?: string };
+const b64aBytes = (b64: string) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+};
 const umbralDe = (c: Categoria) => (c.seccion === "estrategica" ? UMBRAL_ESTRATEGICO : UMBRAL_CONOCIMIENTO);
 
 const GRUPOS_DATOS: [string, [string, string][]][] = [
@@ -35,17 +77,23 @@ const GRUPOS_DATOS: [string, [string, string][]][] = [
     [
       ["nombre", "Nombre"],
       ["edad", "Edad"],
+      ["fecha_nacimiento", "Fecha de nacimiento"],
+      ["lugar_nacimiento", "Lugar de nacimiento"],
+      ["escolaridad", "Escolaridad"],
       ["telefono", "Teléfono"],
+      ["correo", "Correo"],
       ["estado_civil", "Estado civil"],
+      ["hijos", "Hijos"],
       ["personas_vive", "Personas con quien vive"],
       ["dependientes", "Dependientes económicos"],
       ["otro_ingreso", "Alguien más aporta en casa"],
     ],
   ],
   [
-    "Vivienda y economía",
+    "Vivienda y estilo de vida",
     [
       ["domicilio_actual", "Domicilio actual"],
+      ["municipio", "Municipio"],
       ["tipo_vivienda", "Tipo de vivienda"],
       ["familiar", "Vive con / domicilio de"],
       ["pago_vivienda", "Renta o apoyo mensual"],
@@ -55,12 +103,18 @@ const GRUPOS_DATOS: [string, [string, string][]][] = [
       ["renta_anterior", "Renta anterior"],
       ["tiene_transporte", "Transporte propio"],
       ["tipo_transporte", "Tipo de transporte"],
+      ["vehiculo_modelo", "Vehículo"],
+      ["vehiculo_valor", "Valor del vehículo"],
+      ["vehiculo_pagado", "Situación del vehículo"],
+      ["gastos_mensuales", "Gastos mensuales del hogar"],
+      ["traslado", "Traslado a la empresa"],
       ["creditos", "Créditos activos"],
       ["creditos_detalle", "Detalle de créditos"],
+      ["sueldo_esperado", "Sueldo esperado"],
     ],
   ],
   [
-    "Experiencia laboral",
+    "Licencia y experiencia de manejo",
     [
       ["licencia_tipo", "Licencia"],
       ["licencia_vigencia", "Vigencia de licencia"],
@@ -72,6 +126,7 @@ const GRUPOS_DATOS: [string, [string, string][]][] = [
       ["tiempo_ultimo_empleo", "Tiempo en último empleo"],
       ["motivo_salida", "Motivo de salida"],
       ["empleos_3_anios", "Empleos en 3 años"],
+      ["autoriza_referencias", "Autoriza pedir referencias"],
     ],
   ],
   [
@@ -85,11 +140,26 @@ const GRUPOS_DATOS: [string, [string, string][]][] = [
       ["accidentes_detalle", "Detalle de accidentes"],
       ["robo_ruta", "Robo en ruta"],
       ["robo_detalle", "Detalle de robo"],
+      ["robo_veces", "Veces que lo ha vivido"],
+      ["robo_fecha_lugar", "Cuándo y dónde"],
+      ["robo_modus", "Cómo ocurrió"],
+      ["robo_relato", "Relato"],
+      ["robo_observacion", "Detalles que recuerda"],
+      ["robo_reaccion", "Cómo reaccionó"],
+      ["robo_aviso", "Avisó a la empresa y denunció"],
       ["carta_antecedentes", "Puede tramitar carta de no antecedentes"],
       ["acepta_aviso", "Aceptó aviso de antidoping y examen médico"],
     ],
   ],
 ];
+const valorDato = (datos: Record<string, any>, k: string) => {
+  const v = datos?.[k];
+  return typeof v === "string" || typeof v === "number" ? String(v).trim() : "";
+};
+const textoCreditos = (datos: Record<string, any>) =>
+  (Array.isArray(datos?.creditos_lista) ? (datos.creditos_lista as Credito[]) : [])
+    .map((c) => `${c.tipo}: ${c.pago_mensual ? `${dinero(aNumero(c.pago_mensual))}/mes` : "sin monto"}${c.saldo ? `, saldo ${dinero(aNumero(c.saldo))}` : ""}`)
+    .join(" · ");
 
 export default function EvaluacionesCandidatosPage() {
   const [lista, setLista] = useState<Resumen[]>([]);
@@ -102,10 +172,55 @@ export default function EvaluacionesCandidatosPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [pdfTitulo, setPdfTitulo] = useState("Resultado de evaluación");
+  const [pdfNombre, setPdfNombre] = useState("Evaluacion");
+  // Documentación del candidato
+  const [docsAbierto, setDocsAbierto] = useState(false);
+  const [docsToken, setDocsToken] = useState("");
+  const [docsReq, setDocsReq] = useState<DocumentoRequerido[]>([]);
+  const [docsArchivos, setDocsArchivos] = useState<ArchivoDoc[]>([]);
+  const [docsCargando, setDocsCargando] = useState(false);
+  const [docsCopiado, setDocsCopiado] = useState(false);
+  const [unirProgreso, setUnirProgreso] = useState("");
   // Video de inducción
   const [induccion, setInduccion] = useState<{ nombre: string | null; partes: number; updated_at: string | null }>({ nombre: null, partes: 0, updated_at: null });
   const [induccionAbierta, setInduccionAbierta] = useState(false);
   const [subiendo, setSubiendo] = useState("");
+  // Configuración (zonas rojas y rango de edad)
+  const [configAbierta, setConfigAbierta] = useState(false);
+  const [zonasTexto, setZonasTexto] = useState("");
+  const [edadMin, setEdadMin] = useState("23");
+  const [edadMax, setEdadMax] = useState("55");
+  const [guardandoConfig, setGuardandoConfig] = useState(false);
+
+  const abrirConfig = () => {
+    setConfigAbierta(true);
+    fetch("/api/evaluacion-candidatos/config", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        setZonasTexto((d.zonas_rojas || []).join("\n"));
+        setEdadMin(String(d.edad_min ?? 23));
+        setEdadMax(String(d.edad_max ?? 55));
+      })
+      .catch(() => {});
+  };
+  const guardarConfig = async () => {
+    setGuardandoConfig(true);
+    try {
+      const r = await fetch("/api/evaluacion-candidatos/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zonas_rojas: zonasTexto.split(/\n|,/).map((z) => z.trim()).filter(Boolean), edad_min: Number(edadMin), edad_max: Number(edadMax) }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setConfigAbierta(false);
+    } catch (err: any) {
+      alert(err.message || "No se pudo guardar la configuración.");
+    } finally {
+      setGuardandoConfig(false);
+    }
+  };
 
   const cargar = () =>
     fetch("/api/evaluacion-candidatos", { cache: "no-store" })
@@ -266,6 +381,14 @@ export default function EvaluacionesCandidatosPage() {
       doc.setFontSize(10);
       doc.setTextColor(90, 90, 90);
       doc.text(`${ev.nombre}  ·  Puesto: ${ev.puesto}  ·  ${fecha(ev.created_at)}  ·  Folio EVC-${String(ev.id).padStart(4, "0")}`, mX, y);
+      if (ev.foto) {
+        try {
+          doc.addImage(ev.foto, "JPEG", W - mX - 64, y - 42, 64, 64);
+          doc.setDrawColor(229, 232, 238);
+          doc.rect(W - mX - 64, y - 42, 64, 64);
+        } catch {}
+        y += 28;
+      }
       y += 18;
 
       // Dictamen
@@ -299,9 +422,9 @@ export default function EvaluacionesCandidatosPage() {
         doc.text(etiqueta, mX, y + alto / 2 + 3);
         doc.setFillColor(238, 241, 246);
         doc.rect(x0, y, largo, alto, "F");
-        doc.setFillColor(...hex(colorPct(valor, umbral)));
+        doc.setFillColor(...hex(AZUL_MARINO));
         if (valor > 0) doc.rect(x0, y, (largo * valor) / 100, alto, "F");
-        doc.setDrawColor(22, 33, 92);
+        doc.setDrawColor(154, 161, 176);
         doc.setLineDashPattern([2, 2], 0);
         const xu = x0 + (largo * umbral) / 100;
         doc.line(xu, y - 3, xu, y + alto + 3);
@@ -311,11 +434,11 @@ export default function EvaluacionesCandidatosPage() {
         y += alto + 8;
       };
       barra("Perfil (día a día)", pE, UMBRAL_ESTRATEGICO, 16, 150);
-      barra("Rutas y manejo", pC, UMBRAL_CONOCIMIENTO, 16, 150);
+      barra("Conocimientos", pC, UMBRAL_CONOCIMIENTO, 16, 150);
       doc.setFont("helvetica", "italic");
       doc.setFontSize(8);
       doc.setTextColor(120, 120, 120);
-      doc.text(`Línea punteada = mínimo requerido (perfil ${UMBRAL_ESTRATEGICO}%, rutas y manejo ${UMBRAL_CONOCIMIENTO}%).`, mX, y + 2);
+      doc.text(`Línea punteada = mínimo requerido (perfil ${UMBRAL_ESTRATEGICO}%, conocimientos ${UMBRAL_CONOCIMIENTO}%).`, mX, y + 2);
       y += 18;
 
       // Gráfica 2: desempeño por competencia
@@ -345,7 +468,7 @@ export default function EvaluacionesCandidatosPage() {
         const lt = doc.splitTextToSize(p.texto, ancho - 90);
         const alto = lt.length * 12 + 8;
         saltoSi(alto);
-        const col = hex(p.nivel === "critico" ? "#e2412c" : "#f2b134");
+        const col = hex(AZUL_MARINO);
         doc.setFillColor(...col);
         doc.roundedRect(mX, y + 2, 66, 14, 3, 3, "F");
         doc.setFont("helvetica", "bold");
@@ -372,15 +495,110 @@ export default function EvaluacionesCandidatosPage() {
         y += lo.length * 13 + 14;
       }
 
+      // Línea de tiempo laboral (camino con pines, estilo infografía)
+      const empleosPdf = analizarEmpleos(Array.isArray(ev.datos?.empleos) ? ev.datos.empleos : []).lista.slice(-6);
+      if (empleosPdf.length) {
+        saltoSi(270);
+        titulo("Línea de tiempo laboral");
+        const n = empleosPdf.length;
+        const anchoEt = n > 1 ? Math.min(130, ancho / n - 6) : 160;
+        const x0 = mX + 16;
+        const x1 = W - mX - anchoEt + 14;
+        const base = y + 228;
+        const sube = n > 1 ? Math.min(28, 110 / (n - 1)) : 0;
+        const pts = empleosPdf.map((_, i) => ({ x: n > 1 ? x0 + ((x1 - x0) * i) / (n - 1) : (x0 + x1) / 2, y: base - i * sube }));
+        // Camino
+        doc.setDrawColor(222, 226, 233);
+        doc.setLineWidth(16);
+        doc.setLineCap("round");
+        doc.setLineJoin("round");
+        const camino = [{ x: mX, y: base + 12 }, ...pts, { x: W - mX, y: (pts[pts.length - 1]?.y ?? base) - 10 }];
+        for (let i = 1; i < camino.length; i++) doc.line(camino[i - 1].x, camino[i - 1].y, camino[i].x, camino[i].y);
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(1.2);
+        doc.setLineDashPattern([5, 4], 0);
+        for (let i = 1; i < camino.length; i++) doc.line(camino[i - 1].x, camino[i - 1].y, camino[i].x, camino[i].y);
+        doc.setLineDashPattern([], 0);
+        doc.setLineWidth(1);
+        empleosPdf.forEach((e, i) => {
+          const c = hex(COLORES_LINEA[i % COLORES_LINEA.length]);
+          const p = pts[i];
+          const cy = p.y - 46;
+          // sombra, poste y pin
+          doc.setFillColor(200, 204, 212);
+          doc.ellipse(p.x, p.y, 7, 2.5, "F");
+          doc.setDrawColor(...c);
+          doc.setLineWidth(2);
+          doc.line(p.x, p.y, p.x, cy + 14);
+          doc.setLineWidth(1);
+          doc.setFillColor(...c);
+          doc.circle(p.x, cy, 15, "F");
+          doc.setFillColor(255, 255, 255);
+          doc.circle(p.x, cy, 9, "F");
+          doc.setFont("helvetica", "bold");
+          doc.setFontSize(9);
+          doc.setTextColor(...c);
+          doc.text(String(i + 1), p.x, cy + 3.2, { align: "center" });
+          // Etiqueta: triángulo + periodo, empresa, puesto, duración y subrayado de color
+          let ty = cy - 70;
+          const tx = Math.max(mX, p.x - 14);
+          doc.setFillColor(...c);
+          doc.triangle(tx, ty - 7, tx, ty + 1, tx + 6, ty - 3, "F");
+          doc.setFontSize(10);
+          doc.setTextColor(30, 30, 30);
+          doc.text(periodo(e), tx + 9, ty);
+          ty += 11;
+          doc.setFontSize(8);
+          const lineas = [
+            ...doc.splitTextToSize(e.empresa || "—", anchoEt).slice(0, 2),
+            ...doc.splitTextToSize(e.puesto || "", anchoEt).slice(0, 1),
+            `${duracion(e.meses)}${e.sueldoN ? ` · ${dinero(e.sueldoN)}` : ""}`,
+          ];
+          lineas.forEach((t: string, k: number) => {
+            doc.setFont("helvetica", k === 0 ? "bold" : "normal");
+            doc.setTextColor(k === 0 ? 30 : 100, k === 0 ? 30 : 100, k === 0 ? 30 : 100);
+            doc.text(t, tx, ty);
+            ty += 9.5;
+          });
+          doc.setDrawColor(...c);
+          doc.setLineWidth(1.5);
+          doc.line(tx, ty - 5, tx + anchoEt * 0.85, ty - 5);
+          doc.setLineWidth(1);
+        });
+        y = base + 30;
+      }
+
+      // Resumen y análisis de la experiencia previa
+      const analisis = analisisExperiencia(ev.datos);
+      titulo("Resumen y análisis de experiencia previa");
+      y += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9.5);
+      doc.setTextColor(30, 30, 30);
+      analisis.forEach((t) => {
+        const lt = doc.splitTextToSize(`• ${t}`, ancho);
+        saltoSi(lt.length * 12 + 4);
+        doc.text(lt, mX, y + 4);
+        y += lt.length * 12 + 3;
+      });
+      const credTxt = textoCreditos(ev.datos);
+      if (credTxt) {
+        const lt = doc.splitTextToSize(`• Créditos: ${credTxt}.`, ancho);
+        saltoSi(lt.length * 12 + 4);
+        doc.text(lt, mX, y + 4);
+        y += lt.length * 12 + 3;
+      }
+      y += 12;
+
       // Datos del candidato
       GRUPOS_DATOS.forEach(([grupo, campos]) => {
-        const filas = campos.filter(([k]) => String(ev.datos?.[k] ?? "").trim());
+        const filas = campos.filter(([k]) => valorDato(ev.datos, k));
         if (!filas.length) return;
         saltoSi(60);
         y += 6;
         encabezado(grupo.toUpperCase(), "", 190);
         filas.forEach(([k, et], idx) => {
-          const lineas = doc.splitTextToSize(String(ev.datos[k]), ancho - 200);
+          const lineas = doc.splitTextToSize(valorDato(ev.datos, k), ancho - 200);
           const alto = Math.max(20, lineas.length * 12 + 8);
           saltoSi(alto);
           if (idx % 2 === 1) {
@@ -439,7 +657,7 @@ export default function EvaluacionesCandidatosPage() {
         y += 18;
       };
       bloque("Detalle — Perfil (día a día)", "estrategica");
-      bloque("Detalle — Rutas, casetas y manejo defensivo", "conocimiento");
+      bloque("Detalle — Mecánica, rutas y manejo defensivo", "conocimiento");
 
       // Firmas
       saltoSi(70);
@@ -454,11 +672,134 @@ export default function EvaluacionesCandidatosPage() {
       doc.text("Vo. Bo. Jefe directo", 340 + 95, y + 16, { align: "center" });
 
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      setPdfTitulo("Resultado de evaluación");
+      setPdfNombre(`Evaluacion_${ev.nombre.replace(/\s+/g, "_")}`);
       setPdfUrl(URL.createObjectURL(doc.output("blob")));
     } catch (err: any) {
       alert(err.message || "No se pudo generar el PDF.");
     } finally {
       setGenerando(false);
+    }
+  };
+
+  const linkDocs = (t: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/personas/evaluacion-candidatos/documentos?t=${t}`;
+  const cargarDocs = async (id: number) => {
+    const r = await fetch(`/api/evaluacion-candidatos/documentos?id=${id}`, { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    setDocsReq(d.requeridos);
+    setDocsArchivos(d.archivos);
+    return d;
+  };
+  const abrirDocs = async () => {
+    if (!abierta) return;
+    setDocsAbierto(true);
+    setDocsCargando(true);
+    setDocsCopiado(false);
+    try {
+      const r = await fetch("/api/evaluacion-candidatos/documentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "enlace", id: abierta.id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDocsToken(d.token);
+      await cargarDocs(abierta.id);
+    } catch (err: any) {
+      alert(err.message || "No se pudo abrir la documentación.");
+    } finally {
+      setDocsCargando(false);
+    }
+  };
+  const copiarLinkDocs = async () => {
+    try {
+      await navigator.clipboard.writeText(linkDocs(docsToken));
+      setDocsCopiado(true);
+    } catch {
+      prompt("Copia el link:", linkDocs(docsToken));
+    }
+  };
+  const verArchivo = async (archivoId: number) => {
+    const ventana = window.open("", "_blank");
+    try {
+      const r = await fetch(`/api/evaluacion-candidatos/documentos?archivo=${archivoId}`, { cache: "no-store" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      const url = URL.createObjectURL(new Blob([b64aBytes(d.contenido)], { type: d.mime }));
+      if (ventana) ventana.location.href = url;
+      else window.location.href = url;
+    } catch (err: any) {
+      ventana?.close();
+      alert(err.message || "No se pudo abrir el archivo.");
+    }
+  };
+  const quitarArchivo = async (archivoId: number) => {
+    if (!abierta || !confirm("¿Quitar este archivo?")) return;
+    await fetch("/api/evaluacion-candidatos/documentos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "eliminar", archivoId }) });
+    await cargarDocs(abierta.id);
+    cargar();
+  };
+
+  // Une todos los documentos cargados en un solo PDF (portada + fotos + PDFs), en el orden de la lista.
+  const unirDocumentos = async () => {
+    if (!abierta || !docsArchivos.length) return;
+    try {
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+      const salida = await PDFDocument.create();
+      const fuente = await salida.embedFont(StandardFonts.Helvetica);
+      const negrita = await salida.embedFont(StandardFonts.HelveticaBold);
+      const azul = rgb(22 / 255, 33 / 255, 92 / 255);
+      const ordenados = docsReq.flatMap((d) => docsArchivos.filter((a) => a.tipo === d.id).map((a) => ({ ...a, doc: d.nombre })));
+
+      // Portada con índice
+      const portada = salida.addPage([612, 792]);
+      portada.drawText("TRANSPORTES LOGISTICAR", { x: 48, y: 730, size: 14, font: negrita, color: azul });
+      portada.drawText("Expediente de documentos del candidato", { x: 48, y: 704, size: 12, font: negrita });
+      portada.drawText(`${abierta.nombre}  -  ${abierta.puesto}`, { x: 48, y: 684, size: 11, font: fuente });
+      portada.drawText(`Folio EVC-${String(abierta.id).padStart(4, "0")}  -  ${new Date().toLocaleDateString("es-MX")}`, { x: 48, y: 668, size: 10, font: fuente, color: rgb(0.4, 0.4, 0.4) });
+      let yy = 630;
+      docsReq.forEach((d) => {
+        const n = docsArchivos.filter((a) => a.tipo === d.id).length;
+        portada.drawText(`${n ? "[X]" : "[  ]"}  ${d.nombre.replace(/—/g, "-")}${n > 1 ? ` (${n} archivos)` : ""}`, { x: 48, y: yy, size: 10, font: fuente, color: n ? rgb(0, 0, 0) : rgb(0.6, 0.6, 0.6) });
+        yy -= 18;
+      });
+
+      for (let i = 0; i < ordenados.length; i++) {
+        const a = ordenados[i];
+        setUnirProgreso(`Uniendo ${i + 1} de ${ordenados.length}…`);
+        const r = await fetch(`/api/evaluacion-candidatos/documentos?archivo=${a.id}`, { cache: "no-store" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        const bytes = b64aBytes(d.contenido);
+        if (a.mime === "application/pdf") {
+          try {
+            const origen = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const paginas = await salida.copyPages(origen, origen.getPageIndices());
+            paginas.forEach((pg) => salida.addPage(pg));
+          } catch {
+            const pg = salida.addPage([612, 792]);
+            pg.drawText(`${a.doc.replace(/—/g, "-")}: no se pudo incluir el PDF "${a.nombre || ""}".`, { x: 48, y: 740, size: 10, font: fuente });
+          }
+        } else {
+          const img = a.mime === "image/png" ? await salida.embedPng(bytes) : await salida.embedJpg(bytes);
+          const pg = salida.addPage([612, 792]);
+          pg.drawText(a.doc.replace(/—/g, "-"), { x: 36, y: 765, size: 10, font: negrita, color: azul });
+          const esc = Math.min(540 / img.width, 700 / img.height, 1.5);
+          const w = img.width * esc;
+          const h = img.height * esc;
+          pg.drawImage(img, { x: (612 - w) / 2, y: 750 - h - (700 - h) / 2, width: w, height: h });
+        }
+      }
+      const bytes = await salida.save();
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      setPdfTitulo("Documentación del candidato");
+      setPdfNombre(`Documentos_${abierta.nombre.replace(/\s+/g, "_")}`);
+      setPdfUrl(URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" })));
+    } catch (err: any) {
+      alert(err.message || "No se pudieron unir los documentos.");
+    } finally {
+      setUnirProgreso("");
     }
   };
 
@@ -473,7 +814,7 @@ export default function EvaluacionesCandidatosPage() {
     if (!pdfUrl || !abierta) return;
     const a = document.createElement("a");
     a.href = pdfUrl;
-    a.download = `Evaluacion_${abierta.nombre.replace(/\s+/g, "_")}.pdf`;
+    a.download = `${pdfNombre}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -484,8 +825,8 @@ export default function EvaluacionesCandidatosPage() {
     <div className="grid grid-cols-[150px_1fr_40px] items-center gap-2 text-[12px]">
       <span className="text-[var(--navy)] font-semibold truncate" title={etiqueta}>{etiqueta}</span>
       <div className="relative h-3 bg-[#eef1f6] rounded">
-        <div className="h-3 rounded" style={{ width: `${valor}%`, background: colorPct(valor, umbral) }} />
-        <div className="absolute -top-1 -bottom-1 border-l-2 border-dashed border-[var(--navy)]" style={{ left: `${umbral}%` }} />
+        <div className="h-3 rounded" style={{ width: `${valor}%`, background: AZUL_MARINO }} />
+        <div className="absolute -top-1 -bottom-1 border-l-2 border-dashed border-[var(--gray-400)]" style={{ left: `${umbral}%` }} />
       </div>
       <b className="text-right">{valor}%</b>
     </div>
@@ -506,6 +847,10 @@ export default function EvaluacionesCandidatosPage() {
           <button type="button" onClick={() => setInduccionAbierta(true)} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="5" width="15" height="14" rx="2" /><path d="M17 10l5-3v10l-5-3z" /></svg>
             Video de inducción {induccion.partes > 0 ? "✓" : ""}
+          </button>
+          <button type="button" onClick={abrirConfig} className="flex items-center gap-2 bg-white text-[var(--navy)] border border-[var(--navy)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16215c" strokeWidth="2"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+            Configuración (zonas rojas y edad)
           </button>
         </div>
 
@@ -540,6 +885,14 @@ export default function EvaluacionesCandidatosPage() {
                     <p className="text-[11.5px] text-[var(--gray-400)] m-0 mt-0.5">
                       {e.puesto} · {fecha(e.created_at)} · <b className={apto ? "text-[var(--green)]" : "text-[var(--red)]"}>{dictamenDe(e)}</b>
                     </p>
+                    {!!e.docs_total &&
+                      (e.docs_cargados === e.docs_total ? (
+                        <span className="inline-block mt-1.5 text-[11px] font-bold text-white bg-[var(--green)] rounded-md px-2 py-0.5">✓ Documentación Completa</span>
+                      ) : (
+                        <span className="inline-block mt-1.5 text-[11px] font-bold text-[var(--navy)] bg-[var(--gray-100)] rounded-md px-2 py-0.5">
+                          📄 {e.docs_cargados || 0}/{e.docs_total} documentos
+                        </span>
+                      ))}
                   </button>
                 );
               })}
@@ -547,6 +900,32 @@ export default function EvaluacionesCandidatosPage() {
           )}
         </div>
       </div>
+
+      {configAbierta && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-40">
+          <div className="bg-white rounded-2xl w-[560px] max-w-[92%] p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-1">Configuración de la evaluación</h3>
+            <p className="text-[12.5px] text-[var(--gray-400)] mb-4">Se aplica a las evaluaciones que se envíen a partir de ahora; genera alertas en el reporte.</p>
+            <label className="block text-[13px] font-bold text-[var(--navy)] mb-1.5">Municipios o alcaldías en zona roja (uno por renglón)</label>
+            <textarea value={zonasTexto} onChange={(e) => setZonasTexto(e.target.value)} rows={8} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] mb-4" placeholder={"Ej.\nEcatepec de Morelos\nNezahualcóyotl"} />
+            <label className="block text-[13px] font-bold text-[var(--navy)] mb-1.5">Rango de edad aceptado</label>
+            <div className="flex items-center gap-2 mb-2">
+              <input type="number" min={16} max={99} value={edadMin} onChange={(e) => setEdadMin(e.target.value)} className="w-24 border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+              <span className="text-[13px]">a</span>
+              <input type="number" min={16} max={99} value={edadMax} onChange={(e) => setEdadMax(e.target.value)} className="w-24 border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+              <span className="text-[13px]">años</span>
+            </div>
+            <div className="flex justify-end gap-2.5 mt-6">
+              <button type="button" onClick={() => setConfigAbierta(false)} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cancelar
+              </button>
+              <button type="button" onClick={guardarConfig} disabled={guardandoConfig} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                {guardandoConfig ? "Guardando…" : "Guardar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {induccionAbierta && (
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 overflow-y-auto z-40">
@@ -591,11 +970,17 @@ export default function EvaluacionesCandidatosPage() {
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-40">
           <div className="bg-white rounded-2xl w-[900px] max-w-[94%] p-5 sm:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
             <div className="flex flex-wrap justify-between gap-3 mb-4">
-              <div>
+              <div className="flex items-center gap-3">
+                {abierta.foto && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={abierta.foto} alt={abierta.nombre} className="w-16 h-16 rounded-full object-cover border border-[var(--gray-200)]" />
+                )}
+                <div>
                 <h3 className="text-[17px] font-bold text-[var(--navy)] m-0">{abierta.nombre}</h3>
                 <p className="text-[12.5px] text-[var(--gray-400)] m-0">
                   {abierta.puesto} · {fecha(abierta.created_at)} · Folio EVC-{String(abierta.id).padStart(4, "0")}
                 </p>
+                </div>
               </div>
               <span className={`self-start rounded-lg px-3 py-1.5 text-[13px] font-bold text-white ${dictamenDe({ dictamen_final: dictamenFinal || null, dictamen_auto: abierta.dictamen_auto }) === "Apto" ? "bg-[var(--green)]" : "bg-[var(--red)]"}`}>
                 {dictamenDe({ dictamen_final: dictamenFinal || null, dictamen_auto: abierta.dictamen_auto })}
@@ -606,7 +991,7 @@ export default function EvaluacionesCandidatosPage() {
               <div className="border border-[var(--gray-200)] rounded-xl p-4 grid gap-2">
                 <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0 mb-1">Resultados</h4>
                 <Barra etiqueta="Perfil (día a día)" valor={pct(abierta.puntaje_estrategico, abierta.max_estrategico)} umbral={UMBRAL_ESTRATEGICO} />
-                <Barra etiqueta="Rutas y manejo" valor={pct(abierta.puntaje_conocimiento, abierta.max_conocimiento)} umbral={UMBRAL_CONOCIMIENTO} />
+                <Barra etiqueta="Conocimientos" valor={pct(abierta.puntaje_conocimiento, abierta.max_conocimiento)} umbral={UMBRAL_CONOCIMIENTO} />
                 {(abierta.categorias || []).length > 0 && <div className="border-t border-[var(--gray-200)] my-1" />}
                 {(abierta.categorias || []).map((c) => (
                   <Barra key={c.nombre} etiqueta={c.nombre} valor={c.pct} umbral={umbralDe(c)} />
@@ -620,7 +1005,7 @@ export default function EvaluacionesCandidatosPage() {
                   <div className="grid gap-1.5 max-h-[260px] overflow-y-auto">
                     {(abierta.puntos_criticos || []).map((p, i) => (
                       <div key={i} className="flex gap-2 items-start text-[12px]">
-                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${p.nivel === "critico" ? "bg-[var(--red)]" : "bg-[var(--amber)]"}`}>
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white bg-[var(--navy)]`}>
                           {p.nivel === "critico" ? "CRÍTICO" : "ATENCIÓN"}
                         </span>
                         <span>{p.texto}</span>
@@ -631,8 +1016,44 @@ export default function EvaluacionesCandidatosPage() {
               </div>
             </div>
 
+            <div className="border border-[var(--gray-200)] rounded-xl p-4 mb-5">
+              <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0 mb-3">Experiencia laboral</h4>
+              {(() => {
+                const lista = analizarEmpleos(Array.isArray(abierta.datos?.empleos) ? abierta.datos.empleos : []).lista;
+                return lista.length ? (
+                  <div className="flex gap-0 overflow-x-auto pb-2 mb-3">
+                    {lista.map((e, i) => {
+                      const color = COLORES_LINEA[i % COLORES_LINEA.length];
+                      return (
+                        <div key={i} className="min-w-[170px] flex-1">
+                          <div className="flex items-center">
+                            <span className="w-7 h-7 rounded-full text-white text-[12px] font-bold flex items-center justify-center shrink-0" style={{ background: color }}>{i + 1}</span>
+                            <span className="h-1.5 flex-1 bg-[var(--gray-200)]" />
+                          </div>
+                          <div className="pr-3 mt-2 text-[12px]">
+                            <p className="m-0 font-bold" style={{ color }}>{periodo(e)}</p>
+                            <p className="m-0 font-bold text-[var(--navy)]">{e.empresa}</p>
+                            <p className="m-0 text-[var(--gray-400)]">{e.puesto}</p>
+                            <p className="m-0 text-[var(--gray-400)]">{duracion(e.meses)}{e.sueldoN ? ` · ${dinero(e.sueldoN)}` : ""}</p>
+                            {e.motivo && <p className="m-0 text-[11.5px]">Salida: {e.motivo}</p>}
+                            {e.ref_nombre && <p className="m-0 text-[11.5px] text-[var(--blue)]">Ref.: {e.ref_nombre} {e.ref_telefono}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null;
+              })()}
+              <ul className="m-0 pl-5 text-[12.5px] grid gap-1">
+                {analisisExperiencia(abierta.datos).map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+                {textoCreditos(abierta.datos) && <li>Créditos: {textoCreditos(abierta.datos)}.</li>}
+              </ul>
+            </div>
+
             {GRUPOS_DATOS.map(([grupo, campos]) => {
-              const filas = campos.filter(([k]) => String(abierta.datos?.[k] ?? "").trim());
+              const filas = campos.filter(([k]) => valorDato(abierta.datos, k));
               if (!filas.length) return null;
               return (
                 <div key={grupo} className="mb-4">
@@ -641,7 +1062,7 @@ export default function EvaluacionesCandidatosPage() {
                     {filas.map(([k, et]) => (
                       <div key={k}>
                         <span className="text-[var(--gray-400)]">{et}: </span>
-                        <b>{String(abierta.datos[k])}</b>
+                        <b>{valorDato(abierta.datos, k)}</b>
                       </div>
                     ))}
                   </div>
@@ -651,7 +1072,7 @@ export default function EvaluacionesCandidatosPage() {
 
             {(["estrategica", "conocimiento"] as const).map((sec) => (
               <div key={sec} className="mb-5">
-                <h4 className="text-[13.5px] font-bold text-[var(--navy)] mb-2">{sec === "estrategica" ? "Perfil (día a día)" : "Rutas, casetas y manejo defensivo"}</h4>
+                <h4 className="text-[13.5px] font-bold text-[var(--navy)] mb-2">{sec === "estrategica" ? "Perfil (día a día)" : "Mecánica, rutas y manejo defensivo"}</h4>
                 <div className="grid gap-1.5">
                   {abierta.respuestas
                     .filter((r) => r.seccion === sec)
@@ -703,16 +1124,92 @@ export default function EvaluacionesCandidatosPage() {
                 <button type="button" onClick={generarPdf} disabled={generando} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
                   {generando ? "Generando…" : "Previsualizar resultado"}
                 </button>
+                <button type="button" onClick={abrirDocs} className="flex items-center gap-2 bg-[var(--green)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" /><path d="M14 3v6h6M9 14h6M9 17h4" /></svg>
+                  Documentación
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {docsAbierto && abierta && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[640px] max-w-[94%] p-5 sm:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] m-0 mb-1">Documentación — {abierta.nombre}</h3>
+            {docsCargando ? (
+              <p className="text-[13px] text-[var(--gray-400)]">Cargando…</p>
+            ) : (
+              <>
+                <p className="text-[12.5px] text-[var(--gray-400)] mb-3">Comparte este enlace con el candidato. Solo verá las opciones para subir archivos o tomar fotos.</p>
+                <div className="bg-[var(--gray-100)] rounded-lg px-3 py-2 text-[11.5px] break-all text-[var(--navy)] mb-2.5">{linkDocs(docsToken)}</div>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  <button type="button" onClick={copiarLinkDocs} className="bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                    {docsCopiado ? "✓ Link copiado" : "Copiar link"}
+                  </button>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(`Hola ${abierta.nombre.split(" ")[0]}, por favor carga tu documentación para continuar con tu proceso en Transportes Logisticar: ${linkDocs(docsToken)}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#21a866] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold"
+                  >
+                    Enviar por WhatsApp
+                  </a>
+                  <a href={linkDocs(docsToken)} target="_blank" rel="noopener noreferrer" className="bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                    Abrir enlace
+                  </a>
+                </div>
+
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0">
+                    Documentos cargados: {docsReq.filter((d) => docsArchivos.some((a) => a.tipo === d.id)).length} de {docsReq.length}
+                  </h4>
+                  <button type="button" onClick={() => cargarDocs(abierta.id)} className="text-[12px] text-[var(--blue)] font-bold">
+                    Actualizar
+                  </button>
+                </div>
+                <div className="grid gap-1.5 max-h-[45vh] overflow-y-auto">
+                  {docsReq.map((d) => {
+                    const propios = docsArchivos.filter((a) => a.tipo === d.id);
+                    return (
+                      <div key={d.id} className="border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[12.5px]">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-4 h-4 rounded-full shrink-0 text-[10px] text-white font-bold flex items-center justify-center ${propios.length ? "bg-[var(--green)]" : "bg-[var(--gray-200)]"}`}>{propios.length ? "✓" : ""}</span>
+                          <b className="text-[var(--navy)] flex-1">{d.nombre}</b>
+                          {!propios.length && <span className="text-[var(--gray-400)]">Pendiente</span>}
+                        </div>
+                        {propios.map((a) => (
+                          <div key={a.id} className="flex items-center gap-2 mt-1 pl-6">
+                            <span>{a.mime === "application/pdf" ? "📄" : "🖼️"}</span>
+                            <span className="truncate flex-1">{a.nombre || "archivo"}</span>
+                            <button type="button" onClick={() => verArchivo(a.id)} className="text-[var(--blue)] font-bold">Ver</button>
+                            <button type="button" onClick={() => quitarArchivo(a.id)} className="text-[var(--red)] font-bold">Quitar</button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <div className="flex flex-wrap justify-end gap-2.5 mt-5">
+              <button type="button" onClick={() => { setDocsAbierto(false); cargar(); }} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+              <button type="button" onClick={unirDocumentos} disabled={!docsArchivos.length || !!unirProgreso} className="flex items-center gap-2 bg-[var(--navy)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>
+                {unirProgreso || "Imprimir todo en un PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pdfUrl && (
-        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-[60]">
           <div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Previsualización — Resultado de evaluación</h3>
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Previsualización — {pdfTitulo}</h3>
             <iframe ref={iframeRef} src={pdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
             <div className="flex gap-2.5 justify-end mt-4 flex-wrap">
               <button

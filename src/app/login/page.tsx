@@ -32,16 +32,16 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#dcdfe6] px-4">
-      <div className="w-full max-w-[380px] bg-white rounded-2xl shadow-xl p-7">
+    <div className="min-h-screen flex items-center justify-center bg-[var(--gray-50)] px-4">
+      <div className="w-full max-w-[380px] bg-white border border-[var(--gray-200)] rounded-lg shadow-[0_4px_20px_rgba(22,33,92,0.06)] p-8">
         <div className="flex flex-col items-center mb-6">
           <Logo size={54} enlace={false} />
-          <p className="font-display font-extrabold text-[var(--red)] text-[13px] mt-2">TRANSPORTES LOGISTICAR</p>
-          <h1 className="font-display font-extrabold text-[var(--navy)] text-[16px] mt-1">Iniciar sesión</h1>
+          <p className="font-display font-medium text-[var(--red)] text-[12px] tracking-[0.12em] mt-3">TRANSPORTES LOGISTICAR</p>
+          <h1 className="font-display font-medium text-[var(--navy)] text-[20px] mt-1.5">Iniciar sesión</h1>
         </div>
         <form onSubmit={iniciarSesion} className="flex flex-col gap-3.5">
           <div>
-            <label className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Usuario</label>
+            <label className="block text-[12.5px] font-medium text-[var(--text)] mb-1.5">Usuario</label>
             <input
               type="text"
               required
@@ -51,25 +51,25 @@ function LoginForm() {
               value={usuario}
               onChange={(e) => setUsuario(e.target.value)}
               placeholder="NOMBRE COMPLETO o correo"
-              className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
+              className="w-full border border-[var(--gray-300)] rounded-md px-3 py-2.5 text-[14px]"
             />
           </div>
           <div>
-            <label className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Contraseña</label>
+            <label className="block text-[12.5px] font-medium text-[var(--text)] mb-1.5">Contraseña</label>
             <input
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2.5 text-[13.5px]"
+              className="w-full border border-[var(--gray-300)] rounded-md px-3 py-2.5 text-[14px]"
             />
           </div>
-          {error && <p className="text-[12px] text-[var(--red)] font-semibold">{error}</p>}
+          {error && <p className="text-[12.5px] text-[var(--red)] font-medium">{error}</p>}
           <button
             type="submit"
             disabled={cargando}
-            className="mt-1 bg-[var(--navy)] disabled:opacity-60 text-white font-display font-extrabold uppercase text-[12.5px] tracking-wide rounded-lg py-3"
+            className="btn btn-primario mt-2 w-full py-3 text-[14px]"
           >
             {cargando ? "Ingresando..." : "Ingresar"}
           </button>

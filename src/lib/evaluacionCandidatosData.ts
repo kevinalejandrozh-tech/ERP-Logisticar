@@ -9,7 +9,7 @@ export const CATEGORIAS_ESTRATEGICAS: Record<string, string[]> = {
   "Adaptabilidad": ["e1", "e12", "e15"],
   "Disponibilidad": ["e3", "e4", "e5"],
   "Servicio y conflictos": ["e6", "e9", "e10"],
-  "Integridad ante autoridades": ["e7", "e8"],
+  "Trato con autoridades": ["e7", "e8", "e18"],
   "Seguridad en ruta": ["e11", "e14"],
   "Salud y cumplimiento": ["e16", "e17"],
 };
@@ -17,6 +17,7 @@ export const TEMAS_CONOCIMIENTO: Record<string, string[]> = {
   "Rutas": ["c1", "c2", "c3", "c4", "c5", "c7"],
   "Casetas y normativa": ["c6", "c8"],
   "Manejo defensivo": ["c9", "c10"],
+  "Mecánica básica": ["m1", "m2", "m3", "m4", "m5", "m6", "m7"],
 };
 
 // 15 preguntas de perfil, redactadas como situaciones cotidianas (todas las opciones suenan razonables).
@@ -89,6 +90,16 @@ export const PREGUNTAS_ESTRATEGICAS: PreguntaOpcion[] = [
       "Depende de la cantidad y de qué tan urgente sea la entrega.",
       "Prefiero apegarme a la documentación y reportar si me piden algo fuera de lugar.",
       "Le preguntaría a la empresa si tiene un apoyo para esos casos.",
+    ],
+  },
+  {
+    id: "e18",
+    texto: "Te detienen por una falta que sí cometiste y el agente quiere retener la unidad, lo que retrasaría la entrega. ¿Cómo lo resuelves?",
+    opciones: [
+      "Le ofrezco una cantidad para que me deje seguir.",
+      "Reconozco la falta y negocio con respeto las opciones legales para no detener la unidad (boleta, garantía, pago), avisando a monitoreo para agilizar.",
+      "Discuto con él hasta que me deje ir.",
+      "Espero lo que tarde el trámite, sin avisar a nadie para no preocupar a la base.",
     ],
   },
   {
@@ -242,6 +253,80 @@ export const PREGUNTAS_CONOCIMIENTO: PreguntaOpcion[] = [
   },
 ];
 
+// 7 preguntas de mecánica básica y reacción ante fallas.
+export const PREGUNTAS_MECANICA: PreguntaOpcion[] = [
+  {
+    id: "m1",
+    texto: "Para pasar corriente con cables, ¿cuál es el orden correcto de conexión?",
+    opciones: [
+      "Negativo de la batería descargada → negativo de la buena → positivo de la buena → positivo de la descargada",
+      "Positivo de la batería descargada → positivo de la buena → negativo de la buena → parte metálica sin pintar del motor de la unidad descargada",
+      "Positivo de la batería buena → negativo de la descargada → negativo de la buena → positivo de la descargada",
+      "No importa el orden si ambos motores están apagados",
+    ],
+  },
+  {
+    id: "m2",
+    texto: "Al cambiar una llanta, ¿cuál es la secuencia correcta?",
+    opciones: [
+      "Levantar la unidad con el gato, aflojar las tuercas, cambiar la llanta y apretar en círculo.",
+      "Aflojar y retirar todas las tuercas con la llanta en el piso, luego levantar la unidad.",
+      "Asegurar y señalizar la unidad, aflojar un poco las tuercas con la llanta en el piso, levantar con el gato, cambiar, apretar en cruz y dar el apriete final ya en el piso.",
+      "Levantar la unidad, cambiar la llanta y apretar las tuercas a tope con la unidad todavía levantada.",
+    ],
+  },
+  {
+    id: "m3",
+    texto: "¿Cuál es la forma correcta de revisar el nivel de aceite del motor?",
+    opciones: [
+      "Con el motor encendido y acelerado, para que el aceite circule.",
+      "Con el motor apagado, en piso nivelado, esperar unos minutos, limpiar la bayoneta, volver a introducirla y leer entre MIN y MAX.",
+      "Inmediatamente después de apagar el motor, sin limpiar la bayoneta.",
+      "Solo cuando se enciende el testigo de aceite en el tablero.",
+    ],
+  },
+  {
+    id: "m4",
+    texto: "Sobre el anticongelante (refrigerante), ¿qué es lo correcto?",
+    opciones: [
+      "Abrir el tapón del radiador con el motor caliente para revisar rápido.",
+      "Rellenar siempre con agua de la llave en lugar de anticongelante.",
+      "Si el nivel está bajo, rellenar con el motor caliente y en marcha.",
+      "Revisarlo con el motor frío en el depósito de expansión, nunca abrir el radiador en caliente.",
+    ],
+  },
+  {
+    id: "m5",
+    texto: "¿Qué indica que una llanta ya debe cambiarse?",
+    opciones: [
+      "Que el dibujo llegue a los testigos de desgaste o que tenga chipotes, cortes o desgaste disparejo.",
+      "Solo cuando ya se ve la cuerda o el alambre.",
+      "Cuando cumple un año de uso, sin importar su estado.",
+      "Cuando pierde un poco de aire en la semana.",
+    ],
+  },
+  {
+    id: "m6",
+    texto: "Si se revienta o poncha una llanta delantera a velocidad de carretera, ¿qué haces?",
+    opciones: [
+      "Frenar a fondo de inmediato para detenerme lo antes posible.",
+      "Girar rápido hacia el acotamiento.",
+      "Sujetar firme el volante, soltar el acelerador sin frenar bruscamente, orillarme poco a poco y señalizar.",
+      "Acelerar para mantener la estabilidad hasta la siguiente salida.",
+    ],
+  },
+  {
+    id: "m7",
+    texto: "Tu unidad presenta una falla y no puede seguir en carretera. ¿Qué es lo primero que haces?",
+    opciones: [
+      "Detenerme en el carril y bajar a revisar el motor.",
+      "Orillarme fuera del carril, encender intermitentes, colocar triángulos a distancia y reportar a monitoreo.",
+      "Pedir ayuda al primer vehículo que pase.",
+      "Seguir avanzando despacio hasta encontrar un taller.",
+    ],
+  },
+];
+
 export const OPCIONES_VIVIENDA = ["Rento", "Es propia", "Vivo con un familiar / en casa de un familiar", "Otra"];
 export const OPCIONES_TIEMPO = ["Menos de 6 meses", "De 6 meses a 1 año", "De 1 a 3 años", "De 3 a 5 años", "Más de 5 años"];
 export const OPCIONES_TRANSPORTE = ["Automóvil", "Motocicleta", "Bicicleta", "Transporte público", "Otro"];
@@ -257,8 +342,32 @@ export const OPCIONES_LICENCIA = [
 ];
 export const OPCIONES_UNIDAD = ["Tractocamión full", "Tractocamión sencillo", "Torton", "Rabón", "Camioneta 3.5 t", "Otra"];
 export const OPCIONES_RUTAS = ["Guadalajara", "Monterrey", "Chihuahua", "Locales (Valle de México)", "Otras"];
-export const OPCIONES_EMPLEOS = ["1", "2", "3", "4 o más"];
+export const OPCIONES_CREDITO = [
+  "Infonavit",
+  "Fovissste",
+  "Fonacot",
+  "Crédito automotriz",
+  "Tienda departamental (Coppel, Elektra, etc.)",
+  "Tarjeta de crédito",
+  "Préstamo personal / financiera",
+  "Préstamo de nómina",
+  "Caja de ahorro / caja popular",
+  "Préstamo familiar o de conocidos",
+  "Otro",
+];
+export const OPCIONES_ESCOLARIDAD = ["Primaria", "Secundaria", "Preparatoria / bachillerato", "Carrera técnica", "Licenciatura", "Otra"];
+export const OPCIONES_MODUS = [
+  "Me cerraron el paso con otro vehículo",
+  "Retén o autoridad falsa",
+  "En una parada, descanso o gasolinera",
+  "En patio, cliente o zona de carga",
+  "Me siguieron desde el origen",
+  "Otro",
+];
 export const OPCIONES_PSICOFISICO = ["Sí, vigente", "En trámite", "No / vencido"];
+
+// Configuración por defecto (se edita desde Evaluaciones de candidatos → Configuración).
+export const CONFIG_DEFECTO = { zonas_rojas: [] as string[], edad_min: 23, edad_max: 55 };
 
 // Umbrales del dictamen automático (porcentaje mínimo en cada sección).
 export const UMBRAL_ESTRATEGICO = 70;
@@ -267,3 +376,25 @@ export const UMBRAL_CONOCIMIENTO = 60;
 // Video de inducción de la empresa: se sube y se descarga en partes para respetar el límite de Vercel.
 export const VIDEO_MAX_BYTES = 40 * 1024 * 1024; // 40 MB
 export const VIDEO_TAM_PARTE = 3_000_000; // caracteres base64 por parte (~2.2 MB)
+
+// ---- Documentación del candidato (se carga desde un enlace público con token) ----
+export type DocumentoRequerido = { id: string; nombre: string; ayuda?: string; soloOperador?: boolean; multiple?: boolean };
+export const DOCUMENTOS: DocumentoRequerido[] = [
+  { id: "acta", nombre: "Acta de nacimiento" },
+  { id: "curp", nombre: "CURP" },
+  { id: "ine_frente", nombre: "Credencial para votar (INE) — frente" },
+  { id: "ine_reverso", nombre: "Credencial para votar (INE) — reverso" },
+  { id: "sat", nombre: "Constancia de actualización de datos en el SAT" },
+  { id: "nss", nombre: "Documento que acredite tu número de Seguro Social (NSS)" },
+  { id: "domicilio", nombre: "Comprobante de domicilio", ayuda: "Con antigüedad máxima de un mes." },
+  { id: "antecedentes", nombre: "Constancia estatal de antecedentes no penales" },
+  { id: "estudios", nombre: "Certificado de estudios", ayuda: "Copia digital del original." },
+  { id: "licencia", nombre: "Licencia federal de manejo vigente", soloOperador: true, multiple: true, ayuda: "Ambos lados." },
+  { id: "medico_sct", nombre: "Comprobante del examen médico y del curso SCT vigentes", soloOperador: true, multiple: true },
+  { id: "recomendacion", nombre: "Cartas de recomendación", ayuda: "Que acrediten los últimos cuatro años de trayectoria laboral.", multiple: true },
+  { id: "bbva", nombre: "Documento bancario BBVA", ayuda: "Que acredite que eres titular de la cuenta de nómina en BBVA." },
+];
+export const esPuestoOperador = (puesto: string) => /operador/i.test(puesto || "");
+export const documentosRequeridos = (puesto: string) => DOCUMENTOS.filter((d) => !d.soloOperador || esPuestoOperador(puesto));
+export const DOC_MAX_ARCHIVOS = 6; // por documento
+export const DOC_MAX_BYTES_PDF = 3 * 1024 * 1024; // límite de body de Vercel (~4.5 MB en base64)

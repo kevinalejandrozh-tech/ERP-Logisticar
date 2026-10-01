@@ -13,37 +13,42 @@ icono: React.ReactNode;
 titulo: string;
 descripcion: string;
 // Opcional: en celular (menos de 640 px) muestra la tarjeta en formato horizontal compacto.
-// Desde tablet se ve igual que la tarjeta original. Por defecto desactivado para no afectar otras pantallas.
+// Desde tablet se ve igual que la tarjeta estándar. Por defecto desactivado para no afectar otras pantallas.
 compactoMovil?: boolean;
 }) {
-const contenido = compactoMovil ? (
-<div className="flex items-center gap-3.5 sm:block">
-<div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0 sm:mx-auto sm:mb-3 md:mb-4">
+const iconoCaja = (
+<div className="w-[38px] h-[38px] md:w-[42px] md:h-[42px] rounded-md bg-[var(--blue-light)] flex items-center justify-center shrink-0">
 {icono}
 </div>
+);
+const abrir = (
+<span className="inline-flex items-center gap-1 text-[12.5px] font-medium text-[var(--blue)] mt-3">
+Abrir
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
+</span>
+);
+const contenido = compactoMovil ? (
+<div className="flex items-center gap-3.5 sm:block">
+<div className="sm:mb-3.5">{iconoCaja}</div>
 <div className="min-w-0 flex-1">
-<h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-1 sm:mb-2 leading-tight">{titulo}</h3>
-<div className="hidden sm:block w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
-<p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-snug sm:leading-relaxed">{descripcion}</p>
+<h3 className="text-[14px] md:text-[15px] font-medium text-[var(--navy)] m-0 mb-1 leading-tight">{titulo}</h3>
+<p className="text-[12px] md:text-[12.5px] text-[var(--gray-500)] m-0 leading-snug sm:leading-relaxed">{descripcion}</p>
+<span className="hidden sm:inline-flex">{abrir}</span>
 </div>
-<svg className="sm:hidden shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.2" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
+<svg className="sm:hidden shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8a91a0" strokeWidth="2.2" strokeLinecap="round"><path d="M9 6l6 6-6 6" /></svg>
 </div>
 ) : (
 <>
-<div className="w-[42px] h-[42px] md:w-[50px] md:h-[50px] rounded-full bg-[var(--blue-light)] flex items-center justify-center mx-auto mb-3 md:mb-4">
-{icono}
-</div>
-<h3 className="text-[13.5px] md:text-[14.5px] font-bold text-[var(--navy)] m-0 mb-2 leading-tight">{titulo}</h3>
-<div className="w-[26px] h-[3px] bg-[var(--blue)] rounded-sm mx-auto mb-2.5" />
-<p className="text-[12px] md:text-[12.5px] text-[var(--gray-400)] m-0 leading-relaxed">{descripcion}</p>
+<div className="mb-3.5">{iconoCaja}</div>
+<h3 className="text-[14px] md:text-[15px] font-medium text-[var(--navy)] m-0 mb-1 leading-tight">{titulo}</h3>
+<p className="text-[12px] md:text-[12.5px] text-[var(--gray-500)] m-0 leading-relaxed">{descripcion}</p>
+{abrir}
 </>
 );
-const clases = compactoMovil
-? "bg-white border border-[var(--gray-200)] rounded-2xl p-3.5 sm:p-4 md:p-6 text-left sm:text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] block"
-: "bg-white border border-[var(--gray-200)] rounded-2xl p-4 md:p-6 text-center shadow-[0_1px_2px_rgba(22,33,92,0.04)] block";
+const clases = "group bg-white border border-[var(--gray-200)] rounded-lg p-3.5 sm:p-4 md:p-5 text-left block h-full hover:border-[var(--blue)] hover:shadow-[0_2px_8px_rgba(22,33,92,0.06)]";
 if (href) {
 return (
-<Link href={href} className={clases}>
+<Link href={href} className={`${clases} no-underline`}>
 {contenido}
 </Link>
 );

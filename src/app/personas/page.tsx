@@ -158,6 +158,12 @@ export default function PersonasPage() {
               titulo="Evaluaciones enviadas"
               descripcion="Consulta resultados de candidatos e imprime su dictamen."
             />
+            <MenuCard
+              href="/personas/nomina"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="12" cy="12" r="2.8" /><path d="M6 9v.01M18 15v.01" /></svg>}
+              titulo="Nómina"
+              descripcion="Captura semanal de sueldos, descuentos e incentivos y genera recibos."
+            />
           </div>
         </div>
       </div>

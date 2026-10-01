@@ -19,6 +19,12 @@ export default function ControlViajesPage() {
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-5">
             <MenuCard
+              href="/control-viajes/calendario"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M7 15h4M7 18h7" /></svg>}
+              titulo="Calendario de viajes"
+              descripcion="Programa los viajes por unidad: cuenta, destino, embarque, operador y seguimiento."
+            />
+            <MenuCard
               href="/control-viajes/gastos-totales"
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
               titulo="Gastos Totales de Viajes"

@@ -147,6 +147,13 @@ async function crearEsquema() {
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_nomina_abono_semanal ON nomina_prestamo_abonos (prestamo_id, periodo_id) WHERE tipo = 'Semanal';`
   );
   await p.query(`CREATE INDEX IF NOT EXISTS idx_nomina_caja_exp ON nomina_caja_ahorro (expediente_id);`);
+
+  // ---------- v3: la semana se paga y se corta el sábado (domingo a sábado) ----------
+  // Las semanas abiertas creadas de lunes a domingo se recorren un día. Las cerradas/pagadas se respetan.
+  await p.query(
+    `UPDATE nomina_periodos SET fecha_inicio = fecha_inicio - 1, fecha_fin = fecha_fin - 1, updated_at = now()
+     WHERE estado = 'Abierta' AND EXTRACT(ISODOW FROM fecha_inicio) = 1`
+  );
 }
 
 export function ensureNominaSchema(): Promise<void> {

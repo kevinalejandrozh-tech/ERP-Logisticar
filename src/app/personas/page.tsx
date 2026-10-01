@@ -112,6 +112,10 @@ export default function PersonasPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="8" cy="12" r="2.3" /><path d="M13.5 10.5h6M13.5 13.5h4.5" /></svg>
             Crear credencial
           </button>
+          <Link href="/personas/documentos" className="btn btn-secundario px-5 py-2.5 text-[13px] font-bold rounded-lg">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>
+            Documentos
+          </Link>
         </div>
 
         <div className="bg-white rounded-[18px] p-4 sm:p-6 md:p-8 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
@@ -163,6 +167,12 @@ export default function PersonasPage() {
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="12" cy="12" r="2.8" /><path d="M6 9v.01M18 15v.01" /></svg>}
               titulo="Nómina"
               descripcion="Captura semanal de sueldos, descuentos e incentivos y genera recibos."
+            />
+            <MenuCard
+              href="/personas/nomina/dashboard"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18" /><path d="M7 15l4-4 3 3 5-6" /></svg>}
+              titulo="Dashboard de nómina"
+              descripcion="Finanzas de la nómina: total pagado, depósitos BBVA/viáticos, percepciones y deducciones."
             />
           </div>
         </div>

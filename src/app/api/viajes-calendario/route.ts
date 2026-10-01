@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import { getPool } from "@/lib/db";
 import { ensureAsistenciaSchema, sesionAsistencia } from "@/lib/asistenciaDB";
 import { sumarDiasIso } from "@/lib/asistenciaData";
-import { CAMPOS_VIAJE } from "@/lib/viajesData";
+import { CAMPOS_VIAJE, calcularEstatusViaje, esViajeLocal } from "@/lib/viajesData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,12 +27,14 @@ function limpiarDatos(datos: unknown): Record<string, string> {
 
 // Marca en Asistencia "Viaje foráneo" al operador y al ayudante, desde la fecha del viaje hasta el término
 // del servicio (máx. 14 días). No sobrescribe días que ya tengan otro registro (manual, QR, vacaciones…).
+// Los viajes de tipo LOCAL no generan "Viaje foráneo" (ni bono por ruta).
 async function sincronizarAsistencia(c: PoolClient, viajeId: number) {
   await c.query(`DELETE FROM asistencia_registros WHERE viaje_id = $1 AND origen = 'Viaje'`, [viajeId]);
   const r = await c.query(`SELECT to_char(fecha, 'YYYY-MM-DD') AS fecha, datos, operador_id, ayudante_id FROM viajes_calendario WHERE id = $1`, [viajeId]);
   const v = r.rows[0];
   if (!v) return;
   const d = v.datos as Record<string, string>;
+  if (esViajeLocal(d)) return;
   const fin = String(d["TERMINO DE SERVICIO"] || d["TERMINO ESTIMADO DE TERMINO DEL SERVICIO"] || "").slice(0, 10);
   const hasta = FECHA.test(fin) && fin >= v.fecha ? (fin > sumarDiasIso(v.fecha, 13) ? sumarDiasIso(v.fecha, 13) : fin) : v.fecha;
   for (const persona of [v.operador_id, v.ayudante_id].filter(Boolean) as number[]) {
@@ -70,8 +72,20 @@ export async function GET(req: NextRequest) {
       [desde, hasta]
     );
     const personas = await pool.query(`SELECT id, nombre, puesto FROM expedientes WHERE COALESCE(estatus_laboral, 'Activo') != 'Baja' ORDER BY nombre`);
-    const rutas = await pool.query(`SELECT nombre, estado_destino, bono FROM rutas WHERE activa ORDER BY nombre`);
-    return NextResponse.json({ ok: true, unidades: unidades.rows, viajes: viajes.rows, personas: personas.rows, rutas: rutas.rows.map((r) => ({ ...r, bono: Number(r.bono) || 0 })) });
+    const rutas = await pool.query(`SELECT id, nombre, estado_destino, bono FROM rutas WHERE activa ORDER BY nombre`);
+    const bonos = await pool.query(`SELECT ruta_id, eco, bono FROM rutas_bonos_unidad`);
+    return NextResponse.json({
+      ok: true,
+      unidades: unidades.rows,
+      viajes: viajes.rows,
+      personas: personas.rows,
+      rutas: rutas.rows.map((r) => ({
+        nombre: r.nombre,
+        estado_destino: r.estado_destino,
+        bono: Number(r.bono) || 0,
+        bonos_unidad: Object.fromEntries(bonos.rows.filter((b) => b.ruta_id === r.id).map((b) => [b.eco, Number(b.bono) || 0])),
+      })),
+    });
   } catch (e) {
     return error(e, "Error al leer los viajes.");
   }
@@ -86,6 +100,12 @@ async function guardar(req: NextRequest, id: number | null) {
   if (!eco || !FECHA.test(fecha)) return NextResponse.json({ error: "Faltan la unidad o la fecha." }, { status: 400 });
   const datos = limpiarDatos(b.datos);
   datos["ECO"] = eco;
+  // Estatus patio / almacén se calculan siempre a partir de los horarios (no se capturan).
+  const est = calcularEstatusViaje(datos);
+  if (est.patio) datos["ESTATUS PATIO"] = est.patio;
+  else delete datos["ESTATUS PATIO"];
+  if (est.almacen) datos["ESTATUS ALMACEN"] = est.almacen;
+  else delete datos["ESTATUS ALMACEN"];
   const operador = Number(b.operador_id) || null;
   const ayudante = Number(b.ayudante_id) || null;
   await ensureAsistenciaSchema();

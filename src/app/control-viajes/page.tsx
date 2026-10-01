@@ -25,6 +25,12 @@ export default function ControlViajesPage() {
               descripcion="Programa los viajes por unidad: cuenta, destino, embarque, operador y seguimiento."
             />
             <MenuCard
+              href="/rutas"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><circle cx="6" cy="19" r="2.5" /><circle cx="18" cy="5" r="2.5" /><path d="M8.5 19H17a3.5 3.5 0 000-7H7a3.5 3.5 0 010-7h8.5" /></svg>}
+              titulo="Rutas"
+              descripcion="Catálogo de rutas y bono por ruta según la unidad."
+            />
+            <MenuCard
               href="/control-viajes/gastos-totales"
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
               titulo="Gastos Totales de Viajes"

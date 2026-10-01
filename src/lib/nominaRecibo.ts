@@ -28,18 +28,26 @@ ${relevantes
 }
 
 function reciboHtml(r: NominaRegistro, p: NominaPeriodo, cfg: NominaConfig, extras: ExtrasRecibo): string {
+  // Percepciones: los bonos se separan en bono por ruta (viajes foráneos) y bonos adicionales.
+  const bonoRuta = Math.min(Math.max(0, r.bonos_ruta || 0), Math.max(0, r.bonos || 0));
+  const bonoAdicional = Math.max(0, (r.bonos || 0) - bonoRuta);
   const percepciones =
     fila("Sueldo ofertado", r.sueldo_semanal) +
-    fila("Bonos", r.bonos, r.incentivos_detalle || (r.bonos_ruta ? `por ruta ${moneda(r.bonos_ruta)}` : "")) +
+    fila("Bono por ruta", bonoRuta) +
+    fila("Bonos adicionales", bonoAdicional, r.incentivos_detalle) +
     fila("Otros incentivos", r.otros_incentivos);
+  // Deducciones: cada préstamo (personal / licencia federal) aparece con su propio renglón.
+  const lineasCreditos =
+    r.creditos && r.creditos.length
+      ? r.creditos.map((c) => fila(c.concepto, c.abono)).join("")
+      : fila("Licencia federal", r.licencia_federal) + fila("Préstamo personal", r.prestamo);
   const deducciones =
     fila("Faltas y retardos", r.descuento_faltas, `${r.faltas} F · ${r.retardos} R`) +
     fila("IMSS", r.imss) +
     fila("Caja de ahorro", r.caja_ahorro) +
     fila("Fonacot", r.fonacot) +
     fila("Infonavit", r.infonavit) +
-    fila("Licencia federal", r.licencia_federal) +
-    fila("Préstamo personal", r.prestamo) +
+    lineasCreditos +
     fila("Otros descuentos", r.otros_descuentos, r.otros_descuentos_detalle);
   const vacio = `<tr><td colspan="2" class="vacio">Sin conceptos</td></tr>`;
   const caja = extras.caja[r.expediente_id];
@@ -52,7 +60,7 @@ function reciboHtml(r: NominaRegistro, p: NominaPeriodo, cfg: NominaConfig, extr
     <div><span>Empleado</span><b>${esc(r.nombre)}</b></div>
     <div><span>Puesto</span><b>${esc(r.puesto || "—")}</b></div>
     <div><span>Días trabajados</span><b>${r.dias_asistidos}</b></div>
-    <div><span>Caja de ahorro acumulada</span><b>${caja ? moneda(caja) : "—"}</b></div>
+    <div><span>Caja de ahorro (abonos capturados)</span><b>${caja ? moneda(caja) : "—"}</b></div>
   </div>
   <div class="cols">
     <table><thead><tr><th colspan="2">Percepciones</th></tr></thead><tbody>${percepciones || vacio}</tbody>

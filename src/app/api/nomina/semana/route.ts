@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureNominaSchema, errorJson, estadoCreditos, leerConfigNomina, sesionNomina } from "@/lib/nominaDB";
-import { SELECT_REGISTRO, ensureAsistenciaSchema } from "@/lib/asistenciaDB";
+import { SELECT_REGISTRO, ensureAsistenciaSchema, leerBonosRuta } from "@/lib/asistenciaDB";
 import { TIPOS_TRABAJADOS } from "@/lib/asistenciaData";
 import { CAMPOS_NUMERICOS, CAPTURA_VACIA, DEFAULTS_EMPLEADO, NominaCaptura, NominaRegistro, aNumero, calcularTotales, folioNomina, redondear, sumarCreditos } from "@/lib/nominaCalculo";
 
@@ -52,14 +52,32 @@ export async function GET(req: NextRequest) {
        FROM asistencia_diaria WHERE fecha BETWEEN $1 AND $2 GROUP BY expediente_id`,
       [periodo.fecha_inicio, periodo.fecha_fin]
     );
-    const rutas = await pool.query(`SELECT lower(nombre) AS nombre, bono FROM rutas`);
-    const bonoRuta = new Map<string, number>(rutas.rows.map((r) => [r.nombre, aNumero(r.bono)]));
+    // Bono por ruta según la unidad del viaje. Un viaje del calendario cuenta una sola vez, en la semana en que inicia.
+    const bonoDe = await leerBonosRuta();
+    const idsViaje = Array.from(new Set(asis.rows.map((r) => r.viaje_id).filter(Boolean)));
+    const viajesInfo = new Map<number, { eco: string; fecha: string }>();
+    if (idsViaje.length) {
+      const vr = await pool.query(`SELECT id, eco, to_char(fecha, 'YYYY-MM-DD') AS fecha FROM viajes_calendario WHERE id = ANY($1::int[])`, [idsViaje]);
+      for (const v of vr.rows) viajesInfo.set(v.id, { eco: v.eco, fecha: v.fecha });
+    }
     const creditos = await estadoCreditos(ids, { periodo_id: id, desde: periodo.fecha_inicio, hasta: periodo.fecha_fin });
 
     const resumenAsistencia = (eid: number) => {
-      const regs = (asistencia[eid] || []) as { tipo: string; retardo: boolean; ruta: string | null }[];
+      const regs = (asistencia[eid] || []) as { tipo: string; retardo: boolean; ruta: string | null; viaje_id: number | null }[];
       if (regs.length) {
-        const bonos = regs.filter((r) => r.tipo === "Viaje foráneo" && r.ruta).reduce((a, r) => a + (bonoRuta.get(String(r.ruta).toLowerCase()) || 0), 0);
+        let bonos = 0;
+        const contados = new Set<number>();
+        for (const r of regs as { tipo: string; ruta: string | null; viaje_id: number | null }[]) {
+          if (r.tipo !== "Viaje foráneo" || !r.ruta) continue;
+          if (r.viaje_id) {
+            const v = viajesInfo.get(r.viaje_id);
+            if (contados.has(r.viaje_id) || (v && (v.fecha < periodo.fecha_inicio || v.fecha > periodo.fecha_fin))) continue;
+            contados.add(r.viaje_id);
+            bonos += bonoDe(r.ruta, v?.eco);
+          } else {
+            bonos += bonoDe(r.ruta, null); // captura manual sin viaje: bono general por día registrado
+          }
+        }
         return {
           dias_asistidos: regs.filter((r) => TIPOS_TRABAJADOS.includes(r.tipo)).length,
           faltas: regs.filter((r) => r.tipo === "Falta").length,
@@ -109,14 +127,15 @@ export async function GET(req: NextRequest) {
     }
     registros.sort((x, y) => x.nombre.localeCompare(y.nombre, "es"));
 
-    // Caja de ahorro acumulada estimada (aportación × semanas desde el ingreso hasta el fin de la semana).
+    // Caja de ahorro acumulada: solo la suma de los abonos capturados en nómina hasta esta semana.
+    const cajaR = await pool.query(
+      `SELECT r.expediente_id, COALESCE(SUM(r.caja_ahorro), 0) AS total
+       FROM nomina_registros r JOIN nomina_periodos p ON p.id = r.periodo_id
+       WHERE p.fecha_fin <= $1 AND r.expediente_id = ANY($2::int[]) GROUP BY r.expediente_id`,
+      [periodo.fecha_fin, ids]
+    );
     const caja: Record<number, number> = {};
-    for (const e of emp.rows) {
-      if (!e.fecha_ingreso) continue;
-      const semanas = Math.max(0, Math.floor((new Date(periodo.fecha_fin + "T00:00:00Z").getTime() - new Date(e.fecha_ingreso + "T00:00:00Z").getTime()) / (7 * 86400000)));
-      const r = registros.find((x) => x.expediente_id === e.id);
-      caja[e.id] = redondear(semanas * (r ? r.caja_ahorro : 0));
-    }
+    for (const c of cajaR.rows) caja[c.expediente_id] = redondear(aNumero(c.total));
 
     return NextResponse.json({
       ok: true,

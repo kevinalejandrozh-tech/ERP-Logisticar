@@ -71,6 +71,16 @@ async function crearEsquema() {
     );
   `);
 
+  // Bono por ruta según la unidad (ECO). Si la unidad no tiene uno propio se usa el bono general de la ruta.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS rutas_bonos_unidad (
+      ruta_id INTEGER NOT NULL REFERENCES rutas(id) ON DELETE CASCADE,
+      eco TEXT NOT NULL,
+      bono NUMERIC NOT NULL DEFAULT 0,
+      PRIMARY KEY (ruta_id, eco)
+    );
+  `);
+
   // Calendario de viajes por unidad (ECO).
   await p.query(`
     CREATE TABLE IF NOT EXISTS viajes_calendario (
@@ -154,3 +164,24 @@ export async function sesionAsistencia(req: NextRequest): Promise<{ nombre: stri
 export const SELECT_REGISTRO = `expediente_id, to_char(fecha, 'YYYY-MM-DD') AS fecha, tipo, hora_entrada, hora_salida, retardo, origen, notas,
   to_char(entrada_ts, 'YYYY-MM-DD"T"HH24:MI') AS entrada_ts, to_char(salida_ts, 'YYYY-MM-DD"T"HH24:MI') AS salida_ts,
   estado_destino, ruta, viaje_id, estado_salida`;
+
+// Bono de una ruta para una unidad: el bono propio de la unidad o, si no tiene, el bono general de la ruta.
+export async function leerBonosRuta(): Promise<(ruta: string | null | undefined, eco: string | null | undefined) => number> {
+  const pool = getPool();
+  const r = await pool.query(`SELECT id, lower(nombre) AS nombre, bono FROM rutas`);
+  const u = await pool.query(`SELECT ruta_id, eco, bono FROM rutas_bonos_unidad`);
+  const general = new Map<string, number>();
+  const porId = new Map<number, string>();
+  for (const x of r.rows) {
+    general.set(x.nombre, Number(x.bono) || 0);
+    porId.set(x.id, x.nombre);
+  }
+  const porUnidad = new Map<string, number>();
+  for (const x of u.rows) porUnidad.set(`${porId.get(x.ruta_id)}|${String(x.eco).toLowerCase()}`, Number(x.bono) || 0);
+  return (ruta, eco) => {
+    const n = String(ruta || "").trim().toLowerCase();
+    if (!n) return 0;
+    const k = `${n}|${String(eco || "").toLowerCase()}`;
+    return porUnidad.has(k) ? porUnidad.get(k)! : general.get(n) || 0;
+  };
+}

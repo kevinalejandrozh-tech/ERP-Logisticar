@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { CONCEPTO_LICENCIA, CONCEPTO_PRESTAMO, CreditoEstado, fechaCorta, moneda } from "@/lib/nominaCalculo";
+import CampoMoneda from "@/components/CampoMoneda";
 
 // Sección "Nómina" del expediente: conceptos semanales, caja de ahorro, licencia federal y préstamos personales.
 
@@ -39,7 +40,8 @@ const CAMPOS: { k: keyof Empleado; t: string; ayuda?: string }[] = [
   { k: "infonavit", t: "Infonavit semanal" },
 ];
 
-export default function NominaExpediente({ expedienteId }: { expedienteId: number }) {
+// esOperacion: la licencia federal solo aplica (y solo se muestra) para personal de operación.
+export default function NominaExpediente({ expedienteId, esOperacion = true }: { expedienteId: number; esOperacion?: boolean }) {
   const [emp, setEmp] = useState<Empleado | null>(null);
   const [caja, setCaja] = useState<{ semanas: number; acumulado: number } | null>(null);
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -209,7 +211,7 @@ export default function NominaExpediente({ expedienteId }: { expedienteId: numbe
         {CAMPOS.map((c) => (
           <div key={c.k}>
             <label className={labelCls}>{c.t}</label>
-            <input type="number" min={0} step="0.01" value={emp[c.k] as number} onChange={(e) => { setEmp({ ...emp, [c.k]: Number(e.target.value) }); setGuardado(false); }} className={inputCls} />
+            <CampoMoneda valor={emp[c.k] as number} ariaLabel={c.t} onCambio={(n) => { setEmp({ ...emp, [c.k]: n }); setGuardado(false); }} />
             {c.ayuda && <p className="text-[11px] text-[var(--gray-400)] m-0 mt-0.5">{c.ayuda}</p>}
           </div>
         ))}
@@ -221,7 +223,7 @@ export default function NominaExpediente({ expedienteId }: { expedienteId: numbe
         </label>
         {caja && (
           <span className="text-[12.5px] text-[var(--gray-500)]">
-            Caja de ahorro acumulada (estimada desde el ingreso): <b className="text-[var(--navy)] font-medium">{moneda(caja.acumulado)}</b> · {caja.semanas} semanas
+            Caja de ahorro acumulada (abonos capturados en nómina): <b className="text-[var(--navy)] font-medium">{moneda(caja.acumulado)}</b> · {caja.semanas} abono(s)
           </span>
         )}
         <div className="flex-1" />
@@ -229,7 +231,7 @@ export default function NominaExpediente({ expedienteId }: { expedienteId: numbe
         <button type="button" className="btn btn-primario" disabled={ocupado} onClick={guardar}>{guardado ? "✓ Guardado" : "Guardar conceptos"}</button>
       </div>
 
-      {bloqueCreditos(CONCEPTO_LICENCIA)}
+      {esOperacion && bloqueCreditos(CONCEPTO_LICENCIA)}
       {bloqueCreditos(CONCEPTO_PRESTAMO)}
 
       {nuevo && (
@@ -237,8 +239,8 @@ export default function NominaExpediente({ expedienteId }: { expedienteId: numbe
           <div className="bg-white rounded-lg w-full max-w-[440px] p-6 shadow-xl">
             <h3 className="text-[17px] font-medium text-[var(--navy)] m-0 mb-4">{nuevo.concepto === CONCEPTO_LICENCIA ? "Licencia federal" : "Préstamo personal"}</h3>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className={labelCls}>{nuevo.concepto === CONCEPTO_LICENCIA ? "Monto total de la licencia" : "Crédito autorizado"}</label><input type="number" min={0} step="0.01" value={nuevo.monto_total} onChange={(e) => setNuevo({ ...nuevo, monto_total: e.target.value })} className={inputCls} /></div>
-              <div><label className={labelCls}>Abono semanal</label><input type="number" min={0} step="0.01" value={nuevo.abono_semanal} onChange={(e) => setNuevo({ ...nuevo, abono_semanal: e.target.value })} className={inputCls} /></div>
+              <div><label className={labelCls}>{nuevo.concepto === CONCEPTO_LICENCIA ? "Monto total de la licencia" : "Crédito autorizado"}</label><CampoMoneda valor={Number(nuevo.monto_total) || 0} onCambio={(n) => setNuevo({ ...nuevo, monto_total: String(n) })} /></div>
+              <div><label className={labelCls}>Abono semanal</label><CampoMoneda valor={Number(nuevo.abono_semanal) || 0} onCambio={(n) => setNuevo({ ...nuevo, abono_semanal: String(n) })} /></div>
               <div><label className={labelCls}>Inicio de abonos</label><input type="date" value={nuevo.fecha_inicio} onChange={(e) => setNuevo({ ...nuevo, fecha_inicio: e.target.value })} className={inputCls} /></div>
               <div><label className={labelCls}>Notas</label><input type="text" value={nuevo.notas} onChange={(e) => setNuevo({ ...nuevo, notas: e.target.value })} className={inputCls} /></div>
             </div>
@@ -260,7 +262,7 @@ export default function NominaExpediente({ expedienteId }: { expedienteId: numbe
             <p className="text-[12.5px] text-[var(--gray-500)] mb-4">{extra.credito.concepto} · saldo {moneda(extra.credito.saldo_corte)}. Se mostrará en el recibo de la semana de esa fecha.</p>
             <div className="grid grid-cols-2 gap-3">
               <div><label className={labelCls}>Fecha</label><input type="date" value={extra.fecha} onChange={(e) => setExtra({ ...extra, fecha: e.target.value })} className={inputCls} /></div>
-              <div><label className={labelCls}>Importe</label><input type="number" min={0} step="0.01" value={extra.importe} onChange={(e) => setExtra({ ...extra, importe: e.target.value })} className={inputCls} /></div>
+              <div><label className={labelCls}>Importe</label><CampoMoneda valor={Number(extra.importe) || 0} onCambio={(n) => setExtra({ ...extra, importe: String(n) })} /></div>
               <div className="col-span-2"><label className={labelCls}>Notas</label><input type="text" value={extra.notas} onChange={(e) => setExtra({ ...extra, notas: e.target.value })} className={inputCls} /></div>
             </div>
             <div className="flex justify-end gap-2 mt-6">

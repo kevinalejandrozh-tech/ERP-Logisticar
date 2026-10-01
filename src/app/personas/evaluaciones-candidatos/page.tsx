@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
-import { UMBRAL_ESTRATEGICO, UMBRAL_CONOCIMIENTO, VIDEO_MAX_BYTES, VIDEO_TAM_PARTE } from "@/lib/evaluacionCandidatosData";
+import { UMBRAL_ESTRATEGICO, UMBRAL_CONOCIMIENTO, VIDEO_MAX_BYTES, VIDEO_TAM_PARTE, type DocumentoRequerido } from "@/lib/evaluacionCandidatosData";
 import { analizarEmpleos, dinero, aNumero, type Empleo, type Credito } from "@/lib/evaluacionCandidatosAnalisis";
 
 type Resumen = {
@@ -17,6 +17,8 @@ type Resumen = {
   puntaje_conocimiento: number;
   max_conocimiento: number;
   criticos: number;
+  docs_cargados?: number;
+  docs_total?: number;
   created_at: string;
 };
 type Respuesta = { id: string; seccion: "estrategica" | "conocimiento"; categoria?: string; pregunta: string; respuesta: string; puntos: number; maximo: number; correcta?: string };
@@ -58,7 +60,15 @@ function analisisExperiencia(datos: Record<string, any>): string[] {
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const fecha = (iso: string) => new Date(iso).toLocaleDateString("es-MX", { day: "2-digit", month: "short", year: "numeric" });
 const dictamenDe = (e: { dictamen_final: string | null; dictamen_auto: string }) => e.dictamen_final || e.dictamen_auto;
-const colorPct = (p: number, umbral: number) => (p >= umbral ? "#21a866" : p >= umbral - 20 ? "#f2b134" : "#e2412c");
+// Barras y etiquetas del reporte en un solo color (azul marino).
+const AZUL_MARINO = "#16215c";
+type ArchivoDoc = { id: number; tipo: string; nombre: string | null; mime: string; created_at?: string };
+const b64aBytes = (b64: string) => {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+};
 const umbralDe = (c: Categoria) => (c.seccion === "estrategica" ? UMBRAL_ESTRATEGICO : UMBRAL_CONOCIMIENTO);
 
 const GRUPOS_DATOS: [string, [string, string][]][] = [
@@ -162,6 +172,16 @@ export default function EvaluacionesCandidatosPage() {
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [generando, setGenerando] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [pdfTitulo, setPdfTitulo] = useState("Resultado de evaluación");
+  const [pdfNombre, setPdfNombre] = useState("Evaluacion");
+  // Documentación del candidato
+  const [docsAbierto, setDocsAbierto] = useState(false);
+  const [docsToken, setDocsToken] = useState("");
+  const [docsReq, setDocsReq] = useState<DocumentoRequerido[]>([]);
+  const [docsArchivos, setDocsArchivos] = useState<ArchivoDoc[]>([]);
+  const [docsCargando, setDocsCargando] = useState(false);
+  const [docsCopiado, setDocsCopiado] = useState(false);
+  const [unirProgreso, setUnirProgreso] = useState("");
   // Video de inducción
   const [induccion, setInduccion] = useState<{ nombre: string | null; partes: number; updated_at: string | null }>({ nombre: null, partes: 0, updated_at: null });
   const [induccionAbierta, setInduccionAbierta] = useState(false);
@@ -402,9 +422,9 @@ export default function EvaluacionesCandidatosPage() {
         doc.text(etiqueta, mX, y + alto / 2 + 3);
         doc.setFillColor(238, 241, 246);
         doc.rect(x0, y, largo, alto, "F");
-        doc.setFillColor(...hex(colorPct(valor, umbral)));
+        doc.setFillColor(...hex(AZUL_MARINO));
         if (valor > 0) doc.rect(x0, y, (largo * valor) / 100, alto, "F");
-        doc.setDrawColor(22, 33, 92);
+        doc.setDrawColor(154, 161, 176);
         doc.setLineDashPattern([2, 2], 0);
         const xu = x0 + (largo * umbral) / 100;
         doc.line(xu, y - 3, xu, y + alto + 3);
@@ -448,7 +468,7 @@ export default function EvaluacionesCandidatosPage() {
         const lt = doc.splitTextToSize(p.texto, ancho - 90);
         const alto = lt.length * 12 + 8;
         saltoSi(alto);
-        const col = hex(p.nivel === "critico" ? "#e2412c" : "#f2b134");
+        const col = hex(AZUL_MARINO);
         doc.setFillColor(...col);
         doc.roundedRect(mX, y + 2, 66, 14, 3, 3, "F");
         doc.setFont("helvetica", "bold");
@@ -652,11 +672,134 @@ export default function EvaluacionesCandidatosPage() {
       doc.text("Vo. Bo. Jefe directo", 340 + 95, y + 16, { align: "center" });
 
       if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      setPdfTitulo("Resultado de evaluación");
+      setPdfNombre(`Evaluacion_${ev.nombre.replace(/\s+/g, "_")}`);
       setPdfUrl(URL.createObjectURL(doc.output("blob")));
     } catch (err: any) {
       alert(err.message || "No se pudo generar el PDF.");
     } finally {
       setGenerando(false);
+    }
+  };
+
+  const linkDocs = (t: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/personas/evaluacion-candidatos/documentos?t=${t}`;
+  const cargarDocs = async (id: number) => {
+    const r = await fetch(`/api/evaluacion-candidatos/documentos?id=${id}`, { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error);
+    setDocsReq(d.requeridos);
+    setDocsArchivos(d.archivos);
+    return d;
+  };
+  const abrirDocs = async () => {
+    if (!abierta) return;
+    setDocsAbierto(true);
+    setDocsCargando(true);
+    setDocsCopiado(false);
+    try {
+      const r = await fetch("/api/evaluacion-candidatos/documentos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accion: "enlace", id: abierta.id }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      setDocsToken(d.token);
+      await cargarDocs(abierta.id);
+    } catch (err: any) {
+      alert(err.message || "No se pudo abrir la documentación.");
+    } finally {
+      setDocsCargando(false);
+    }
+  };
+  const copiarLinkDocs = async () => {
+    try {
+      await navigator.clipboard.writeText(linkDocs(docsToken));
+      setDocsCopiado(true);
+    } catch {
+      prompt("Copia el link:", linkDocs(docsToken));
+    }
+  };
+  const verArchivo = async (archivoId: number) => {
+    const ventana = window.open("", "_blank");
+    try {
+      const r = await fetch(`/api/evaluacion-candidatos/documentos?archivo=${archivoId}`, { cache: "no-store" });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      const url = URL.createObjectURL(new Blob([b64aBytes(d.contenido)], { type: d.mime }));
+      if (ventana) ventana.location.href = url;
+      else window.location.href = url;
+    } catch (err: any) {
+      ventana?.close();
+      alert(err.message || "No se pudo abrir el archivo.");
+    }
+  };
+  const quitarArchivo = async (archivoId: number) => {
+    if (!abierta || !confirm("¿Quitar este archivo?")) return;
+    await fetch("/api/evaluacion-candidatos/documentos", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ accion: "eliminar", archivoId }) });
+    await cargarDocs(abierta.id);
+    cargar();
+  };
+
+  // Une todos los documentos cargados en un solo PDF (portada + fotos + PDFs), en el orden de la lista.
+  const unirDocumentos = async () => {
+    if (!abierta || !docsArchivos.length) return;
+    try {
+      const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+      const salida = await PDFDocument.create();
+      const fuente = await salida.embedFont(StandardFonts.Helvetica);
+      const negrita = await salida.embedFont(StandardFonts.HelveticaBold);
+      const azul = rgb(22 / 255, 33 / 255, 92 / 255);
+      const ordenados = docsReq.flatMap((d) => docsArchivos.filter((a) => a.tipo === d.id).map((a) => ({ ...a, doc: d.nombre })));
+
+      // Portada con índice
+      const portada = salida.addPage([612, 792]);
+      portada.drawText("TRANSPORTES LOGISTICAR", { x: 48, y: 730, size: 14, font: negrita, color: azul });
+      portada.drawText("Expediente de documentos del candidato", { x: 48, y: 704, size: 12, font: negrita });
+      portada.drawText(`${abierta.nombre}  -  ${abierta.puesto}`, { x: 48, y: 684, size: 11, font: fuente });
+      portada.drawText(`Folio EVC-${String(abierta.id).padStart(4, "0")}  -  ${new Date().toLocaleDateString("es-MX")}`, { x: 48, y: 668, size: 10, font: fuente, color: rgb(0.4, 0.4, 0.4) });
+      let yy = 630;
+      docsReq.forEach((d) => {
+        const n = docsArchivos.filter((a) => a.tipo === d.id).length;
+        portada.drawText(`${n ? "[X]" : "[  ]"}  ${d.nombre.replace(/—/g, "-")}${n > 1 ? ` (${n} archivos)` : ""}`, { x: 48, y: yy, size: 10, font: fuente, color: n ? rgb(0, 0, 0) : rgb(0.6, 0.6, 0.6) });
+        yy -= 18;
+      });
+
+      for (let i = 0; i < ordenados.length; i++) {
+        const a = ordenados[i];
+        setUnirProgreso(`Uniendo ${i + 1} de ${ordenados.length}…`);
+        const r = await fetch(`/api/evaluacion-candidatos/documentos?archivo=${a.id}`, { cache: "no-store" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error);
+        const bytes = b64aBytes(d.contenido);
+        if (a.mime === "application/pdf") {
+          try {
+            const origen = await PDFDocument.load(bytes, { ignoreEncryption: true });
+            const paginas = await salida.copyPages(origen, origen.getPageIndices());
+            paginas.forEach((pg) => salida.addPage(pg));
+          } catch {
+            const pg = salida.addPage([612, 792]);
+            pg.drawText(`${a.doc.replace(/—/g, "-")}: no se pudo incluir el PDF "${a.nombre || ""}".`, { x: 48, y: 740, size: 10, font: fuente });
+          }
+        } else {
+          const img = a.mime === "image/png" ? await salida.embedPng(bytes) : await salida.embedJpg(bytes);
+          const pg = salida.addPage([612, 792]);
+          pg.drawText(a.doc.replace(/—/g, "-"), { x: 36, y: 765, size: 10, font: negrita, color: azul });
+          const esc = Math.min(540 / img.width, 700 / img.height, 1.5);
+          const w = img.width * esc;
+          const h = img.height * esc;
+          pg.drawImage(img, { x: (612 - w) / 2, y: 750 - h - (700 - h) / 2, width: w, height: h });
+        }
+      }
+      const bytes = await salida.save();
+      if (pdfUrl) URL.revokeObjectURL(pdfUrl);
+      setPdfTitulo("Documentación del candidato");
+      setPdfNombre(`Documentos_${abierta.nombre.replace(/\s+/g, "_")}`);
+      setPdfUrl(URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" })));
+    } catch (err: any) {
+      alert(err.message || "No se pudieron unir los documentos.");
+    } finally {
+      setUnirProgreso("");
     }
   };
 
@@ -671,7 +814,7 @@ export default function EvaluacionesCandidatosPage() {
     if (!pdfUrl || !abierta) return;
     const a = document.createElement("a");
     a.href = pdfUrl;
-    a.download = `Evaluacion_${abierta.nombre.replace(/\s+/g, "_")}.pdf`;
+    a.download = `${pdfNombre}.pdf`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -682,8 +825,8 @@ export default function EvaluacionesCandidatosPage() {
     <div className="grid grid-cols-[150px_1fr_40px] items-center gap-2 text-[12px]">
       <span className="text-[var(--navy)] font-semibold truncate" title={etiqueta}>{etiqueta}</span>
       <div className="relative h-3 bg-[#eef1f6] rounded">
-        <div className="h-3 rounded" style={{ width: `${valor}%`, background: colorPct(valor, umbral) }} />
-        <div className="absolute -top-1 -bottom-1 border-l-2 border-dashed border-[var(--navy)]" style={{ left: `${umbral}%` }} />
+        <div className="h-3 rounded" style={{ width: `${valor}%`, background: AZUL_MARINO }} />
+        <div className="absolute -top-1 -bottom-1 border-l-2 border-dashed border-[var(--gray-400)]" style={{ left: `${umbral}%` }} />
       </div>
       <b className="text-right">{valor}%</b>
     </div>
@@ -742,6 +885,14 @@ export default function EvaluacionesCandidatosPage() {
                     <p className="text-[11.5px] text-[var(--gray-400)] m-0 mt-0.5">
                       {e.puesto} · {fecha(e.created_at)} · <b className={apto ? "text-[var(--green)]" : "text-[var(--red)]"}>{dictamenDe(e)}</b>
                     </p>
+                    {!!e.docs_total &&
+                      (e.docs_cargados === e.docs_total ? (
+                        <span className="inline-block mt-1.5 text-[11px] font-bold text-white bg-[var(--green)] rounded-md px-2 py-0.5">✓ Documentación Completa</span>
+                      ) : (
+                        <span className="inline-block mt-1.5 text-[11px] font-bold text-[var(--navy)] bg-[var(--gray-100)] rounded-md px-2 py-0.5">
+                          📄 {e.docs_cargados || 0}/{e.docs_total} documentos
+                        </span>
+                      ))}
                   </button>
                 );
               })}
@@ -854,7 +1005,7 @@ export default function EvaluacionesCandidatosPage() {
                   <div className="grid gap-1.5 max-h-[260px] overflow-y-auto">
                     {(abierta.puntos_criticos || []).map((p, i) => (
                       <div key={i} className="flex gap-2 items-start text-[12px]">
-                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white ${p.nivel === "critico" ? "bg-[var(--red)]" : "bg-[var(--amber)]"}`}>
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold text-white bg-[var(--navy)]`}>
                           {p.nivel === "critico" ? "CRÍTICO" : "ATENCIÓN"}
                         </span>
                         <span>{p.texto}</span>
@@ -973,16 +1124,92 @@ export default function EvaluacionesCandidatosPage() {
                 <button type="button" onClick={generarPdf} disabled={generando} className="bg-[var(--navy)] disabled:opacity-60 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
                   {generando ? "Generando…" : "Previsualizar resultado"}
                 </button>
+                <button type="button" onClick={abrirDocs} className="flex items-center gap-2 bg-[var(--green)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" /><path d="M14 3v6h6M9 14h6M9 17h4" /></svg>
+                  Documentación
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
+      {docsAbierto && abierta && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-50">
+          <div className="bg-white rounded-2xl w-[640px] max-w-[94%] p-5 sm:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
+            <h3 className="text-[17px] font-bold text-[var(--navy)] m-0 mb-1">Documentación — {abierta.nombre}</h3>
+            {docsCargando ? (
+              <p className="text-[13px] text-[var(--gray-400)]">Cargando…</p>
+            ) : (
+              <>
+                <p className="text-[12.5px] text-[var(--gray-400)] mb-3">Comparte este enlace con el candidato. Solo verá las opciones para subir archivos o tomar fotos.</p>
+                <div className="bg-[var(--gray-100)] rounded-lg px-3 py-2 text-[11.5px] break-all text-[var(--navy)] mb-2.5">{linkDocs(docsToken)}</div>
+                <div className="flex flex-wrap gap-2 mb-5">
+                  <button type="button" onClick={copiarLinkDocs} className="bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                    {docsCopiado ? "✓ Link copiado" : "Copiar link"}
+                  </button>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(`Hola ${abierta.nombre.split(" ")[0]}, por favor carga tu documentación para continuar con tu proceso en Transportes Logisticar: ${linkDocs(docsToken)}`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#21a866] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold"
+                  >
+                    Enviar por WhatsApp
+                  </a>
+                  <a href={linkDocs(docsToken)} target="_blank" rel="noopener noreferrer" className="bg-white text-[var(--navy)] border border-[var(--gray-200)] rounded-lg px-4 py-2 text-[12.5px] font-bold">
+                    Abrir enlace
+                  </a>
+                </div>
+
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-[13.5px] font-bold text-[var(--navy)] m-0">
+                    Documentos cargados: {docsReq.filter((d) => docsArchivos.some((a) => a.tipo === d.id)).length} de {docsReq.length}
+                  </h4>
+                  <button type="button" onClick={() => cargarDocs(abierta.id)} className="text-[12px] text-[var(--blue)] font-bold">
+                    Actualizar
+                  </button>
+                </div>
+                <div className="grid gap-1.5 max-h-[45vh] overflow-y-auto">
+                  {docsReq.map((d) => {
+                    const propios = docsArchivos.filter((a) => a.tipo === d.id);
+                    return (
+                      <div key={d.id} className="border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[12.5px]">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-4 h-4 rounded-full shrink-0 text-[10px] text-white font-bold flex items-center justify-center ${propios.length ? "bg-[var(--green)]" : "bg-[var(--gray-200)]"}`}>{propios.length ? "✓" : ""}</span>
+                          <b className="text-[var(--navy)] flex-1">{d.nombre}</b>
+                          {!propios.length && <span className="text-[var(--gray-400)]">Pendiente</span>}
+                        </div>
+                        {propios.map((a) => (
+                          <div key={a.id} className="flex items-center gap-2 mt-1 pl-6">
+                            <span>{a.mime === "application/pdf" ? "📄" : "🖼️"}</span>
+                            <span className="truncate flex-1">{a.nombre || "archivo"}</span>
+                            <button type="button" onClick={() => verArchivo(a.id)} className="text-[var(--blue)] font-bold">Ver</button>
+                            <button type="button" onClick={() => quitarArchivo(a.id)} className="text-[var(--red)] font-bold">Quitar</button>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <div className="flex flex-wrap justify-end gap-2.5 mt-5">
+              <button type="button" onClick={() => { setDocsAbierto(false); cargar(); }} className="bg-white text-[var(--gray-400)] border border-[var(--gray-200)] rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+              <button type="button" onClick={unirDocumentos} disabled={!docsArchivos.length || !!unirProgreso} className="flex items-center gap-2 bg-[var(--navy)] disabled:opacity-50 text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" /></svg>
+                {unirProgreso || "Imprimir todo en un PDF"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {pdfUrl && (
-        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-50">
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-10 z-[60]">
           <div className="bg-white rounded-2xl w-[720px] max-w-[94%] p-4 sm:p-6 md:p-7 shadow-[0_1px_3px_rgba(22,33,92,0.06)]">
-            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Previsualización — Resultado de evaluación</h3>
+            <h3 className="text-[17px] font-bold text-[var(--navy)] mb-4">Previsualización — {pdfTitulo}</h3>
             <iframe ref={iframeRef} src={pdfUrl} className="w-full h-[560px] border border-[var(--gray-200)] rounded-lg" />
             <div className="flex gap-2.5 justify-end mt-4 flex-wrap">
               <button

@@ -376,3 +376,25 @@ export const UMBRAL_CONOCIMIENTO = 60;
 // Video de inducción de la empresa: se sube y se descarga en partes para respetar el límite de Vercel.
 export const VIDEO_MAX_BYTES = 40 * 1024 * 1024; // 40 MB
 export const VIDEO_TAM_PARTE = 3_000_000; // caracteres base64 por parte (~2.2 MB)
+
+// ---- Documentación del candidato (se carga desde un enlace público con token) ----
+export type DocumentoRequerido = { id: string; nombre: string; ayuda?: string; soloOperador?: boolean; multiple?: boolean };
+export const DOCUMENTOS: DocumentoRequerido[] = [
+  { id: "acta", nombre: "Acta de nacimiento" },
+  { id: "curp", nombre: "CURP" },
+  { id: "ine_frente", nombre: "Credencial para votar (INE) — frente" },
+  { id: "ine_reverso", nombre: "Credencial para votar (INE) — reverso" },
+  { id: "sat", nombre: "Constancia de actualización de datos en el SAT" },
+  { id: "nss", nombre: "Documento que acredite tu número de Seguro Social (NSS)" },
+  { id: "domicilio", nombre: "Comprobante de domicilio", ayuda: "Con antigüedad máxima de un mes." },
+  { id: "antecedentes", nombre: "Constancia estatal de antecedentes no penales" },
+  { id: "estudios", nombre: "Certificado de estudios", ayuda: "Copia digital del original." },
+  { id: "licencia", nombre: "Licencia federal de manejo vigente", soloOperador: true, multiple: true, ayuda: "Ambos lados." },
+  { id: "medico_sct", nombre: "Comprobante del examen médico y del curso SCT vigentes", soloOperador: true, multiple: true },
+  { id: "recomendacion", nombre: "Cartas de recomendación", ayuda: "Que acrediten los últimos cuatro años de trayectoria laboral.", multiple: true },
+  { id: "bbva", nombre: "Documento bancario BBVA", ayuda: "Que acredite que eres titular de la cuenta de nómina en BBVA." },
+];
+export const esPuestoOperador = (puesto: string) => /operador/i.test(puesto || "");
+export const documentosRequeridos = (puesto: string) => DOCUMENTOS.filter((d) => !d.soloOperador || esPuestoOperador(puesto));
+export const DOC_MAX_ARCHIVOS = 6; // por documento
+export const DOC_MAX_BYTES_PDF = 3 * 1024 * 1024; // límite de body de Vercel (~4.5 MB en base64)

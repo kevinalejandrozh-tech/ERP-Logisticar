@@ -222,6 +222,18 @@ CREATE TABLE IF NOT EXISTS cuadro_basico (
 );
 `);
 
+// Archivo adjunto (Word, PDF o Excel) por fila del Cuadro Básico. Uno por fila; se reemplaza al subir otro.
+await p.query(`
+CREATE TABLE IF NOT EXISTS cuadro_basico_archivos (
+  cuadro_id INTEGER PRIMARY KEY REFERENCES cuadro_basico(id) ON DELETE CASCADE,
+  nombre_archivo TEXT,
+  mime TEXT,
+  contenido TEXT NOT NULL,
+  cargado_por TEXT,
+  fecha_carga TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+
 await p.query(`
 CREATE TABLE IF NOT EXISTS areas_personal (
   id SERIAL PRIMARY KEY,

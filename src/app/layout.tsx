@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import ZoomControls from "@/components/ZoomControls";
 import PageFooter from "@/components/PageFooter";
+import RegistroActividad from "@/components/RegistroActividad";
 
 // Roboto auto-hospedada (latin 400/500/700) — tipografía institucional del sistema
 const roboto = localFont({
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className={`${roboto.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
+        <RegistroActividad />
         <ZoomControls>
           {children}
           <PageFooter />

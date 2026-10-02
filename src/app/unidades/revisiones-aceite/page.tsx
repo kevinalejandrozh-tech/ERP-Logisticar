@@ -125,7 +125,7 @@ function descargarPdfAceite(registros: RegistroAceite[]) {
 <div class="hoja">
   <div class="cab">
     <div class="marca">
-      <img src="/logo-transportes.png" alt="Transportes Logisticar" />
+      <img src="/logo-icono.png" alt="Transportes Logisticar" />
       <span>Transportes Logisticar</span>
     </div>
     <p class="fecha">${escaparHtml(hoy)}</p>

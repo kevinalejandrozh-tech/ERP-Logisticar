@@ -6,11 +6,13 @@ import Link from "next/link";
 export default function Logo({ size = 34, enlace = true }: { size?: number; enlace?: boolean }) {
 const imagen = (
 <Image
-src="/logo-transportes.png"
+src="/logo-icono.png"
 alt="Transportes Logisticar"
 width={size}
 height={size}
 style={{ width: size, height: size, objectFit: "contain" }}
+unoptimized
+draggable={false}
 />
 );
 if (!enlace) return imagen;

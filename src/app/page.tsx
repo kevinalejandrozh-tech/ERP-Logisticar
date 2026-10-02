@@ -4,12 +4,19 @@ import Link from "next/link";
 import Logo from "@/components/Logo";
 import MenuCard from "@/components/MenuCard";
 import { useSesion } from "@/lib/useSesion";
+import { coincideBusqueda } from "@/lib/paginas";
+import BuscadorPaginas from "@/components/inicio/BuscadorPaginas";
+import CampanaNotificaciones from "@/components/inicio/CampanaNotificaciones";
+import AccesosDirectos from "@/components/inicio/AccesosDirectos";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
 export default function Home() {
 const sesion = useSesion();
 const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
 const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
+const [consulta, setConsulta] = useState("");
+// Filtra botones y tarjetas del inicio según el texto de la barra "Buscar..."
+const ver = (texto: string) => coincideBusqueda(texto, consulta);
 const iniciales = (sesion.nombre || "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 const rolEtiqueta = sesion.rol === "sysadmin" ? "Sysadmin" : sesion.rol === "supervisor_tms" ? "Supervisor TMS" : sesion.rol === "personal" ? "Personal" : "";
 const cerrarSesion = async () => {
@@ -56,23 +63,23 @@ return (
 <p className="text-[12px] md:text-[15.5px] text-[var(--gray-500)] m-0">Transportes Logisticar</p>
 </div>
 </div>
+<div className="md:hidden flex items-center gap-1.5">
+<CampanaNotificaciones />
 <button
 type="button"
 onClick={() => setMenuMovilAbierto(true)}
 aria-label="Abrir menú"
 aria-expanded={menuMovilAbierto}
 aria-controls="menu-lateral-movil"
-className="md:hidden w-10 h-10 shrink-0 flex items-center justify-center bg-white border border-[var(--gray-200)] rounded-lg"
+className="w-10 h-10 shrink-0 flex items-center justify-center bg-white border border-[var(--gray-200)] rounded-lg"
 >
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2" strokeLinecap="round"><path d="M4 6h16M4 12h16M4 18h16" /></svg>
 </button>
-<div className="hidden md:flex items-center gap-3 md:gap-5">
-<div className="hidden sm:flex items-center gap-2.5 bg-white border border-[var(--gray-200)] rounded-lg px-4 py-2.5 w-full sm:w-[220px] lg:w-[316px] text-[var(--gray-500)] text-[15px]">
-<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="2"><circle cx="11" cy="11" r="7.5" /><path d="M21 21l-4.35-4.35" /></svg>
-Buscar...
 </div>
+<div className="hidden md:flex items-center gap-3 md:gap-5">
+<BuscadorPaginas valor={consulta} onCambio={setConsulta} rol={sesion.rol} className="hidden sm:block w-full sm:w-[220px] lg:w-[316px]" />
 <div className="hidden md:block w-px h-8 bg-[var(--gray-200)]" />
-<svg className="shrink-0" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.8" strokeLinecap="round" aria-label="Notificaciones"><path d="M18 8a6 6 0 00-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 01-3.4 0" /></svg>
+<CampanaNotificaciones />
 <div className="hidden md:block w-px h-8 bg-[var(--gray-200)]" />
 
 <div className="relative">
@@ -144,10 +151,7 @@ className={`absolute right-0 top-0 h-full w-[85%] max-w-[320px] bg-white shadow-
 </div>
 </div>
 <div className="px-4 py-4 border-b border-[var(--gray-200)]">
-<div className="flex items-center gap-2 bg-white border border-[var(--gray-200)] rounded-lg px-3.5 py-2.5 text-[var(--gray-400)] text-[13.5px]">
-<svg width="16" height="16" viewBox="0 0 24 24" {...sw} stroke="#9aa1b0"><circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" /></svg>
-Buscar...
-</div>
+<BuscadorPaginas valor={consulta} onCambio={setConsulta} rol={sesion.rol} onNavegar={() => setMenuMovilAbierto(false)} />
 </div>
 {almacenamiento && (
 <div className="px-4 py-4 border-b border-[var(--gray-200)]">
@@ -187,19 +191,24 @@ Cerrar sesión
 <div className="flex flex-wrap gap-3 md:gap-4 mb-7 md:mb-9">
 {sesion.rol !== "supervisor_tms" && (
 <>
-<Link href="/planeacion-cargas" className="btn btn-primario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg! shadow-[0_2px_6px_rgba(22,33,92,0.2)]">
+{ver("Planeación y programa de cargas") && <Link href="/planeacion-cargas" className="btn btn-primario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg! shadow-[0_2px_6px_rgba(22,33,92,0.2)]">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 4v18M8 15h13" /></svg>
 Planeación y programa de cargas
-</Link>
-<Link href="/menu-dia" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
+</Link>}
+{ver("Menú del día comida") && <Link href="/menu-dia" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
-</Link>
+</Link>}
 </>
 )}
 </div>
+<AccesosDirectos consulta={consulta} />
 <div className="pb-8">
+{consulta.trim() && (
+<p className="text-[13px] text-[var(--gray-500)] m-0 mb-3">Resultados para “{consulta}” · <button type="button" onClick={() => setConsulta("")} className="text-[var(--blue)] underline">Limpiar búsqueda</button></p>
+)}
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[22px]">
+{ver("Unidades flota placas aceite eco Administra y consulta la información de las unidades.") && (
 <MenuCard
 compactoMovil
 href="/unidades"
@@ -207,7 +216,9 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="1" y="7"
 titulo="Unidades"
 descripcion="Administra y consulta la información de las unidades."
 />
+)}
 {sesion.rol === "supervisor_tms" ? (
+ver("Expedientes Consulta los expedientes del personal (cuenta TMS).") && (
 <MenuCard
 compactoMovil
 href="/personas/expedientes"
@@ -215,8 +226,10 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a
 titulo="Expedientes"
 descripcion="Consulta los expedientes del personal (cuenta TMS)."
 />
+)
 ) : (
 <>
+{ver("Recursos Humanos personas expedientes nómina capacitaciones uniformes organigrama candidatos documentos mochilas Gestiona la información del personal del sistema.") && (
 <MenuCard
 compactoMovil
 href="/personas"
@@ -224,6 +237,8 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><circle cx="9" cy
 titulo="Recursos Humanos"
 descripcion="Gestiona la información del personal del sistema."
 />
+)}
+{ver("Asistencia vacaciones descansos Registro por QR, vacaciones, permisos y faltas.") && (
 <MenuCard
 compactoMovil
 href="/asistencia"
@@ -231,6 +246,8 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="3" y="4"
 titulo="Asistencia"
 descripcion="Registro por QR, vacaciones, permisos y faltas."
 />
+)}
+{ver("Buzón de sugerencias e ideas de mejora Comparte las ideas y sugerencias de tu equipo.") && (
 <MenuCard
 compactoMovil
 href="/buzon-sugerencias"
@@ -238,6 +255,8 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M12 2C7 
 titulo="Buzón de sugerencias e ideas de mejora"
 descripcion="Comparte las ideas y sugerencias de tu equipo."
 />
+)}
+{ver("Control de Viajes rutas calendario gastos viáticos casetas combustible monitoreo Organiza y consulta la información de tus viajes.") && (
 <MenuCard
 compactoMovil
 href="/control-viajes"
@@ -245,6 +264,8 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="1" y="7"
 titulo="Control de Viajes"
 descripcion="Organiza y consulta la información de tus viajes."
 />
+)}
+{ver("Compras comparativo cotizaciones Gestiona y da seguimiento a tus compras.") && (
 <MenuCard
 compactoMovil
 href="/compras"
@@ -252,7 +273,9 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><line x1="12" y1=
 titulo="Compras"
 descripcion="Gestiona y da seguimiento a tus compras."
 />
+)}
 
+{ver("Control de inventario categorías Consulta equipos, mobiliario y sus códigos QR.") && (
 <MenuCard
 compactoMovil
 href="/inventario"
@@ -260,6 +283,7 @@ icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9
 titulo="Control de inventario"
 descripcion="Consulta equipos, mobiliario y sus códigos QR."
 />
+)}
 </>
 )}
 

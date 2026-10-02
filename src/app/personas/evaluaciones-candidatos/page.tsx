@@ -357,7 +357,7 @@ export default function EvaluacionesCandidatosPage() {
       };
 
       // Encabezado
-      const logo = await fetch("/logo-transportes.png")
+      const logo = await fetch("/logo-icono.png")
         .then((r) => r.blob())
         .then((b) => new Promise<string>((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.readAsDataURL(b); }));
       doc.addImage(logo, "PNG", mX, y - 14, 32, 32);

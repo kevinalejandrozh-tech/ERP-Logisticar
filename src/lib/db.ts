@@ -15,7 +15,20 @@ ssl: { rejectUnauthorized: false },
 }
 return pool;
 }
-export async function ensureSchema() {
+// El esquema se verifica UNA sola vez por proceso (antes se repetían ~137 consultas en cada petición).
+// Si falla, se descarta el resultado para reintentar en la siguiente petición.
+let esquemaListo: Promise<void> | null = null;
+export function ensureSchema(): Promise<void> {
+  if (!esquemaListo) {
+    esquemaListo = crearEsquema().catch((e) => {
+      esquemaListo = null;
+      throw e;
+    });
+  }
+  return esquemaListo;
+}
+
+async function crearEsquema(): Promise<void> {
 const p = getPool();
 await p.query(`
 CREATE TABLE IF NOT EXISTS checklist_unidades (

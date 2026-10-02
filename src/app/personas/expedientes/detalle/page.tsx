@@ -96,6 +96,7 @@ export default function DetalleExpedientePage() {
   const sesion = useSesion();
   const esSoloConsulta = sesion.rol === "supervisor_tms";
   const [registro, setRegistro] = useState<ExpedienteCompleto | null>(null);
+  const [indicadores, setIndicadores] = useState<{ desde: string; asistencia: number | null; puntualidad: number | null; trabajados: number; faltas: number; retardos: number } | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [editando, setEditando] = useState(false);
@@ -118,6 +119,11 @@ export default function DetalleExpedientePage() {
         if (!data.ok) throw new Error(data.error || "No se encontró el expediente.");
         const reg = { ...data.registro, documentos: data.registro.documentos || [], notas: data.registro.notas || [], cursos: data.registro.cursos || [], campos_extra: data.registro.campos_extra || {}, cursos_asignados: data.registro.cursos_asignados || [] };
         setRegistro(reg);
+        // Indicadores de asistencia y puntualidad desde el módulo Asistencia (no disponible para consulta).
+        fetch(`/api/asistencia/indicadores?expediente_id=${reg.id}`, { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => setIndicadores(d && d.ok ? d : null))
+          .catch(() => setIndicadores(null));
         fetch(`/api/capacitaciones/por-persona?nombre=${encodeURIComponent(reg.nombre)}`, { cache: "no-store" })
           .then((r) => r.json())
           .then((d) => setEvaluacionesPersona(d.porCapacitacion || {}))
@@ -421,7 +427,7 @@ export default function DetalleExpedientePage() {
                 titulo="Nómina"
                 subtitulo="Sueldo ofertado, sueldo base, deducciones semanales y créditos."
               >
-                <NominaExpediente expedienteId={registro.id} />
+                <NominaExpediente expedienteId={registro.id} esOperacion={registro.tipo_personal !== "administrativo" || /operaci/i.test(registro.area || "")} />
               </Seccion>
             )}
 
@@ -522,12 +528,12 @@ export default function DetalleExpedientePage() {
             <Seccion
               icono={<IconoSeccion path={<path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" />} />}
               titulo="Indicadores de desempeño"
-              subtitulo="Resumen del desempeño del colaborador."
+              subtitulo={indicadores ? `Asistencia y puntualidad calculadas con el módulo Asistencia desde el ${indicadores.desde.split("-").reverse().join("/")}.` : "Resumen del desempeño del colaborador."}
             >
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  ["Asistencia", registro.indicador_asistencia],
-                  ["Puntualidad", registro.indicador_puntualidad],
+                  ["Asistencia", indicadores ? (indicadores.asistencia === null ? "Sin registros" : `${indicadores.asistencia}%`) : registro.indicador_asistencia],
+                  ["Puntualidad", indicadores ? (indicadores.puntualidad === null ? "Sin registros" : `${indicadores.puntualidad}%`) : registro.indicador_puntualidad],
                   ["Rendimiento de combustible", registro.indicador_combustible],
                   ["Incidencias con clientes", registro.indicador_incidencias],
                 ].map(([label, valor]) => (
@@ -537,6 +543,11 @@ export default function DetalleExpedientePage() {
                   </div>
                 ))}
               </div>
+              {indicadores && (
+                <p className="text-[11.5px] text-[var(--gray-500)] m-0 mt-2">
+                  {indicadores.trabajados} día(s) trabajados · {indicadores.faltas} falta(s) · {indicadores.retardos} retardo(s)
+                </p>
+              )}
               <div className="mt-2 pt-1 border-t border-[var(--gray-100)]">{bloqueCamposExtra("indicadores")}</div>
             </Seccion>
 

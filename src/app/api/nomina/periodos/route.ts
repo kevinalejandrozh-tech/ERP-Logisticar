@@ -3,7 +3,7 @@ import { getPool } from "@/lib/db";
 import { ensureNominaSchema, errorJson, sesionNomina } from "@/lib/nominaDB";
 import { aNumero, calcularTotales, sumarDias } from "@/lib/nominaCalculo";
 import { leerConfigNomina } from "@/lib/nominaDB";
-import { ahoraMx, lunesSemanaIso, semanaIso } from "@/lib/asistenciaData";
+import { ahoraMx, inicioSemanaNomina, semanaNomina } from "@/lib/asistenciaData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,13 +43,12 @@ export async function POST(req: NextRequest) {
     if (body.generar === true) return await generarSemanas();
     const inicio = String(body.fecha_inicio || "").slice(0, 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio)) return NextResponse.json({ error: "Indica la fecha de inicio de la semana." }, { status: 400 });
-    const anio = Number(body.anio) || Number(inicio.slice(0, 4));
+    const anio = Number(body.anio) || semanaNomina(inicio).anio;
     await ensureNominaSchema();
     const pool = getPool();
     let semana = Number(body.semana);
     if (!semana) {
-      const m = await pool.query(`SELECT COALESCE(MAX(semana), 0) + 1 AS siguiente FROM nomina_periodos WHERE anio = $1`, [anio]);
-      semana = Number(m.rows[0].siguiente) || 1;
+      semana = semanaNomina(inicio).semana;
     }
     if (semana < 1 || semana > 53) return NextResponse.json({ error: "La semana debe estar entre 1 y 53." }, { status: 400 });
     const existe = await pool.query(`SELECT id FROM nomina_periodos WHERE anio = $1 AND semana = $2`, [anio, semana]);
@@ -106,18 +105,18 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
-// Crea las semanas ISO (lunes a domingo) desde la 1 del año en curso hasta la semana actual.
-// Las que ya existen se respetan sin modificarse.
+// Crea las semanas de nómina (domingo a sábado; se paga y se corta el sábado) desde la 1 del año en curso
+// hasta la semana actual. El número es la semana ISO del sábado de corte. Las que ya existen se respetan.
 async function generarSemanas() {
   await ensureNominaSchema();
-  const { anio, semana: actual } = semanaIso(ahoraMx().fecha);
+  const { anio, semana: actual } = semanaNomina(ahoraMx().fecha);
   const pool = getPool();
   const existentes = await pool.query(`SELECT semana FROM nomina_periodos WHERE anio = $1`, [anio]);
   const ya = new Set(existentes.rows.map((r) => Number(r.semana)));
   let creadas = 0;
   for (let s = 1; s <= actual; s++) {
     if (ya.has(s)) continue;
-    const inicio = lunesSemanaIso(anio, s);
+    const inicio = inicioSemanaNomina(anio, s);
     const r = await pool.query(
       `INSERT INTO nomina_periodos (anio, semana, fecha_inicio, fecha_fin) VALUES ($1, $2, $3, $4) ON CONFLICT (anio, semana) DO NOTHING`,
       [anio, s, inicio, sumarDias(inicio, 6)]

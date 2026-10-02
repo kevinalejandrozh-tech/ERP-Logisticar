@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 const NIVELES = [70, 80, 90, 100, 110, 125, 150];
 
 export default function ZoomControls({ children }: { children: React.ReactNode }) {
   const [zoom, setZoom] = useState(100);
   const [listo, setListo] = useState(false);
+  const esSitioPublico = usePathname()?.startsWith("/sitio") ?? false;
 
   useEffect(() => {
     const guardado = window.localStorage.getItem("zoomNivelApp");
@@ -21,6 +23,9 @@ export default function ZoomControls({ children }: { children: React.ReactNode }
   const acercar = () => setZoom((z) => NIVELES.find((n) => n > z) || z);
   const alejar = () => setZoom((z) => [...NIVELES].reverse().find((n) => n < z) || z);
   const restablecer = () => setZoom(100);
+
+  // El sitio web público no lleva los controles de zoom del sistema.
+  if (esSitioPublico) return <>{children}</>;
 
   return (
     <>

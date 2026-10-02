@@ -1,0 +1,137 @@
+/* Sitio web público (/sitio). En la capa "components" para que las utilidades de Tailwind puedan ajustarlas. */
+@layer components {
+  .sitio-web {
+    background: #fff;
+    scroll-behavior: smooth;
+  }
+  .sitio-web a,
+  .sitio-web button {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Botón de acción: acento rojo institucional sobre el estilo formal del sistema */
+  .sw-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    border-radius: 6px;
+    padding: 0.7rem 1.35rem;
+    font-size: 13.5px;
+    font-weight: 500;
+    line-height: 1.2;
+    color: #fff;
+    background: var(--red);
+    border: 1px solid var(--red);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .sw-btn:hover:not(:disabled) {
+    background: #c9361f;
+    border-color: #c9361f;
+  }
+  .sw-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* Botones de la barra de administración */
+  .sw-barra-btn {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    padding: 0.4rem 0.8rem;
+    font-size: 13px;
+    font-weight: 500;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .sw-barra-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .sw-barra-btn:disabled {
+    opacity: 0.5;
+  }
+
+  /* Modo edición: los textos editables se marcan con un contorno punteado */
+  .sw-editable {
+    outline: 1.5px dashed rgba(47, 111, 237, 0.55);
+    outline-offset: 3px;
+    border-radius: 2px;
+    cursor: text;
+    min-width: 1.5em;
+    display: inline-block;
+  }
+  .sw-editable:hover {
+    outline-color: var(--blue);
+    background: rgba(47, 111, 237, 0.06);
+  }
+  .sw-editable:focus {
+    outline: 2px solid var(--blue);
+    background: rgba(47, 111, 237, 0.08);
+  }
+  .sw-editable:empty::before {
+    content: "Escribe aquí";
+    opacity: 0.5;
+  }
+  /* Sobre fondos oscuros (portada, barra azul, pie y botones) el contorno es claro */
+  .sw-oscuro .sw-editable,
+  .sw-btn .sw-editable {
+    outline-color: rgba(255, 255, 255, 0.7);
+  }
+  .sw-oscuro .sw-editable:hover,
+  .sw-oscuro .sw-editable:focus,
+  .sw-btn .sw-editable:hover,
+  .sw-btn .sw-editable:focus {
+    outline-color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  p.sw-editable,
+  h1.sw-editable,
+  h2.sw-editable,
+  h3.sw-editable {
+    display: block;
+  }
+
+  /* Botón "Cambiar imagen" sobre cada imagen editable */
+  .sw-cambiar-imagen {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 15;
+  }
+  .sw-cambiar-imagen-suelto {
+    display: inline-flex;
+  }
+  .sw-btn-imagen {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0.75rem;
+    border-radius: 6px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--navy);
+    background: #fff;
+    border: 1px solid var(--gray-300);
+    box-shadow: 0 4px 14px rgba(15, 24, 69, 0.22);
+    cursor: pointer;
+  }
+  .sw-btn-imagen:hover:not(:disabled) {
+    border-color: var(--blue);
+    color: var(--blue);
+  }
+  .sw-btn-imagen-compacto {
+    padding: 0.4rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sitio-web,
+  .sitio-web * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

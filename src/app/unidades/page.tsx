@@ -377,7 +377,7 @@ function descargarPdfRevision(revision: Revision, unidad: string, tipoLlantas: T
 <div class="hoja">
   <div class="cab">
     <div class="marca">
-      <img src="/logo-transportes.png" alt="Transportes Logisticar" />
+      <img src="/logo-icono.png" alt="Transportes Logisticar" />
       <span>Transportes Logisticar</span>
     </div>
     <div class="folio">

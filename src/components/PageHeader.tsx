@@ -1,5 +1,6 @@
 import Logo from "@/components/Logo";
 import Link from "next/link";
+import FavoritoEstrella from "@/components/FavoritoEstrella";
 export default function PageHeader({
   titulo,
   subtitulo,
@@ -14,12 +15,15 @@ export default function PageHeader({
   icono?: React.ReactNode;
 }) {
   return (
-    <header className="bg-white border-b border-[var(--gray-200)] sticky top-0 z-30 -mx-4 sm:-mx-6 md:-mx-10 lg:-mx-14 mb-5 md:mb-7">
-      <div className="px-4 sm:px-6 md:px-10 lg:px-14 py-3.5 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+    <header className="tarjeta-encabezado sticky top-2 sm:top-3 z-30 mt-3 sm:mt-4 mb-5 md:mb-7">
+      <div className="px-4 sm:px-6 md:px-7 py-3.5 sm:py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
         <div className="flex items-center gap-3">
           <Logo size={36} />
           <div>
-            <h1 className="font-display text-[16px] sm:text-[18px] font-medium text-[var(--navy)] m-0">{titulo}</h1>
+            <div className="flex items-center gap-1">
+              <h1 className="font-display text-[16px] sm:text-[19px] font-bold text-[var(--navy)] m-0">{titulo}</h1>
+              <FavoritoEstrella titulo={titulo} />
+            </div>
             <p className="text-[11.5px] sm:text-[12.5px] text-[var(--gray-500)] m-0">{subtitulo}</p>
           </div>
         </div>

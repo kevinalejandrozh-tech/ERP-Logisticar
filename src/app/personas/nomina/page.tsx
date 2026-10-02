@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
+import CampoMoneda from "@/components/CampoMoneda";
 import { CONFIG_DEFAULT, NominaConfig, NominaPeriodo, fechaCorta, moneda, sumarDias } from "@/lib/nominaCalculo";
+import { ahoraMx, semanaNomina } from "@/lib/asistenciaData";
 
 type Empleado = {
   expediente_id: number;
@@ -27,11 +29,9 @@ const ESTILO_ESTADO: Record<string, string> = {
   Pagada: "bg-[#e7f6ee] text-[var(--green)]",
 };
 
-function lunesDeHoy(): string {
-  const d = new Date();
-  const dia = (d.getDay() + 6) % 7; // 0 = lunes
-  d.setDate(d.getDate() - dia);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+// Domingo de inicio de la semana de nómina actual (se paga y se corta el sábado).
+function inicioSemanaActual(): string {
+  return semanaNomina(ahoraMx().fecha).inicio;
 }
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
@@ -87,9 +87,8 @@ export default function NominaPage() {
 
   const abrirNuevaSemana = () => {
     const ultima = periodos[0];
-    const inicio = ultima ? sumarDias(ultima.fecha_fin, 1) : lunesDeHoy();
-    const anio = Number(inicio.slice(0, 4));
-    const siguiente = ultima && ultima.anio === anio ? ultima.semana + 1 : 1;
+    const inicio = ultima ? sumarDias(ultima.fecha_fin, 1) : inicioSemanaActual();
+    const siguiente = semanaNomina(inicio).semana;
     setNuevaInicio(inicio);
     setNuevaSemana(String(siguiente));
     setModalSemana(true);
@@ -110,7 +109,7 @@ export default function NominaPage() {
   };
 
   const generarSemanas = async () => {
-    if (!confirm("Se crearán las semanas faltantes desde la semana 1 del año hasta la semana en curso (lunes a domingo, numeración ISO). Las existentes no se modifican. ¿Continuar?")) return;
+    if (!confirm("Se crearán las semanas faltantes desde la semana 1 del año hasta la semana en curso (domingo a sábado: se paga y se corta el sábado). Las existentes no se modifican. ¿Continuar?")) return;
     setGuardando(true);
     try {
       const r = await pedir<{ anio: number; hasta_semana: number; creadas: number }>("/api/nomina/periodos", { method: "POST", body: JSON.stringify({ generar: true }) });
@@ -188,6 +187,7 @@ export default function NominaPage() {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
             Nueva semana
           </button>
+          <Link href="/personas/nomina/dashboard" className="btn btn-secundario">Dashboard</Link>
           <button type="button" className="btn btn-secundario" onClick={generarSemanas} disabled={cargando || guardando}>
             Generar semanas del año
           </button>
@@ -268,11 +268,11 @@ export default function NominaPage() {
                         <td className="px-4 py-2.5 font-medium text-[var(--navy)]"><Link href={`/personas/expedientes/detalle?id=${e.expediente_id}`} className="hover:underline">{e.nombre}</Link></td>
                         <td className="px-4 py-2.5 text-[var(--gray-500)]">{e.puesto || "—"}</td>
                         <td className="px-4 py-2.5">
-                          <input type="number" min={0} step="0.01" value={e.sueldo_semanal} onChange={(ev) => editarEmpleado(e0, { sueldo_semanal: Number(ev.target.value) })} className={`${inputCls} max-w-[150px] py-1.5`} />
+                          <CampoMoneda valor={e.sueldo_semanal} ariaLabel="Sueldo ofertado semanal" onCambio={(n) => editarEmpleado(e0, { sueldo_semanal: n })} className="max-w-[160px]" />
                           {!e0.configurado && !sucio && <span className="block text-[11px] text-[var(--amber)] mt-0.5">Sugerido, sin guardar</span>}
                         </td>
                         <td className="px-4 py-2.5">
-                          <input type="number" min={0} step="0.01" value={e.sueldo_base} onChange={(ev) => editarEmpleado(e0, { sueldo_base: Number(ev.target.value) })} className={`${inputCls} max-w-[130px] py-1.5`} />
+                          <CampoMoneda valor={e.sueldo_base} ariaLabel="Sueldo base" onCambio={(n) => editarEmpleado(e0, { sueldo_base: n })} className="max-w-[150px]" />
                         </td>
                         <td className="px-4 py-2.5 text-center">
                           <input type="checkbox" checked={e.incluir} onChange={(ev) => editarEmpleado(e0, { incluir: ev.target.checked })} className="w-4 h-4 accent-[var(--navy)]" />
@@ -314,7 +314,7 @@ export default function NominaPage() {
                 <input type="date" value={nuevaInicio} onChange={(e) => setNuevaInicio(e.target.value)} className={inputCls} />
               </div>
             </div>
-            {nuevaInicio && <p className="text-[12.5px] text-[var(--gray-500)] mt-3">Periodo: {fechaCorta(nuevaInicio)} al {fechaCorta(sumarDias(nuevaInicio, 6))}</p>}
+            {nuevaInicio && <p className="text-[12.5px] text-[var(--gray-500)] mt-3">Periodo: {fechaCorta(nuevaInicio)} al {fechaCorta(sumarDias(nuevaInicio, 6))} · corte y pago en sábado</p>}
             <div className="flex justify-end gap-2 mt-6">
               <button type="button" className="btn btn-secundario" onClick={() => setModalSemana(false)}>Cancelar</button>
               <button type="button" className="btn btn-primario" disabled={guardando || !nuevaInicio} onClick={crearSemana}>{guardando ? "Creando…" : "Crear semana"}</button>

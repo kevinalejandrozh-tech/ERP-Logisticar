@@ -18,7 +18,8 @@ import {
   moneda,
   redondear,
 } from "@/lib/nominaCalculo";
-import { AsistenciaRegistro, DIAS_CORTOS, ESTILO_TIPO, claveVisual, sumarDiasIso } from "@/lib/asistenciaData";
+import { AsistenciaRegistro, ESTADOS_MX, ESTILO_TIPO, TIPOS_ASISTENCIA, TipoAsistencia, claveVisual, diaCorto, sumarDiasIso } from "@/lib/asistenciaData";
+import CampoMoneda from "@/components/CampoMoneda";
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: "no-store", ...init, headers: { "Content-Type": "application/json", ...(init?.headers || {}) } });
@@ -48,23 +49,24 @@ const inputCls = "w-full border border-[var(--gray-300)] rounded-md px-3 py-2 te
 const labelCls = "block text-[12px] font-medium text-[var(--text)] mb-1";
 const h4Cls = "text-[12px] font-medium text-[var(--gray-500)] uppercase tracking-wide mb-2";
 
-type CampoNum = { campo: keyof NominaCaptura; etiqueta: string; paso?: string };
+type CampoNum = { campo: keyof NominaCaptura; etiqueta: string; paso?: string; moneda?: boolean };
+type EdicionAsistencia = { fecha: string; tipo: TipoAsistencia; entrada_ts: string; salida_ts: string; estado_destino: string; ruta: string; notas: string; existe: boolean };
 const ASISTENCIA: CampoNum[] = [
   { campo: "dias_asistidos", etiqueta: "Días trabajados", paso: "0.5" },
   { campo: "faltas", etiqueta: "Faltas", paso: "0.5" },
   { campo: "retardos", etiqueta: "Retardos", paso: "1" },
 ];
 const PERCEPCIONES: CampoNum[] = [
-  { campo: "sueldo_semanal", etiqueta: "Sueldo ofertado (semanal)" },
-  { campo: "bonos", etiqueta: "Bonos" },
-  { campo: "otros_incentivos", etiqueta: "Otros incentivos" },
+  { campo: "sueldo_semanal", etiqueta: "Sueldo ofertado (semanal)", moneda: true },
+  { campo: "bonos", etiqueta: "Bonos", moneda: true },
+  { campo: "otros_incentivos", etiqueta: "Otros incentivos", moneda: true },
 ];
 const DEDUCCIONES: CampoNum[] = [
-  { campo: "imss", etiqueta: "IMSS" },
-  { campo: "caja_ahorro", etiqueta: "Caja de ahorro" },
-  { campo: "fonacot", etiqueta: "Fonacot" },
-  { campo: "infonavit", etiqueta: "Infonavit" },
-  { campo: "otros_descuentos", etiqueta: "Otros descuentos" },
+  { campo: "imss", etiqueta: "IMSS", moneda: true },
+  { campo: "caja_ahorro", etiqueta: "Caja de ahorro", moneda: true },
+  { campo: "fonacot", etiqueta: "Fonacot", moneda: true },
+  { campo: "infonavit", etiqueta: "Infonavit", moneda: true },
+  { campo: "otros_descuentos", etiqueta: "Otros descuentos", moneda: true },
 ];
 
 export default function NominaSemanaPage() {
@@ -84,16 +86,20 @@ function SemanaNomina() {
   const [editando, setEditando] = useState<NominaRegistro | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [baseSemana, setBaseSemana] = useState("");
+  const [diaEdit, setDiaEdit] = useState<EdicionAsistencia | null>(null);
+  const [guardandoDia, setGuardandoDia] = useState(false);
 
   // Sin setState antes del primer await (evita renders en cascada al montarse).
-  const cargar = useCallback(async (id: number) => {
+  const cargar = useCallback(async (id: number): Promise<Datos | null> => {
     try {
       const r = await pedir<Datos>(`/api/nomina/semana?id=${id}`);
       setError("");
       setD(r);
       setBaseSemana(String(r.periodo.sueldo_base ?? DEFAULTS_EMPLEADO.sueldo_base));
+      return r;
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la semana.");
+      return null;
     } finally {
       setCargando(false);
     }
@@ -234,6 +240,7 @@ function SemanaNomina() {
     for (const c of d?.creditos[r.expediente_id] || []) {
       if (!base.creditos.some((x) => x.prestamo_id === c.id) && c.estado === "Activo") base.creditos.push({ prestamo_id: c.id, concepto: c.concepto, abono: 0 });
     }
+    setDiaEdit(null);
     setEditando(base);
   };
 
@@ -241,9 +248,78 @@ function SemanaNomina() {
     editando && (
       <div key={c.campo}>
         <label className={labelCls}>{c.etiqueta}</label>
-        <input type="number" min={0} step={c.paso || "0.01"} disabled={!abierta} value={editando[c.campo] as number} onChange={(e) => setCampo(c.campo, e.target.value)} className={inputCls} />
+        {c.moneda ? (
+          <CampoMoneda valor={editando[c.campo] as number} deshabilitado={!abierta} ariaLabel={c.etiqueta} onCambio={(n) => setCampo(c.campo, String(n))} />
+        ) : (
+          <input type="number" min={0} step={c.paso || "0.01"} disabled={!abierta} value={editando[c.campo] as number} onChange={(e) => setCampo(c.campo, e.target.value)} className={inputCls} />
+        )}
       </div>
     );
+
+  // ---- Modificar la asistencia del día desde la ventana Capturar (se guarda en el módulo Asistencia) ----
+  const abrirDia = (fecha: string) => {
+    if (!editando || !abierta) return;
+    const reg = (d?.asistencia[editando.expediente_id] || []).find((x) => x.fecha === fecha);
+    setDiaEdit({
+      fecha,
+      tipo: reg?.tipo || "Asistencia",
+      entrada_ts: reg?.entrada_ts || `${fecha}T08:00`,
+      salida_ts: reg?.salida_ts || "",
+      estado_destino: reg?.estado_destino || "",
+      ruta: reg?.ruta || "",
+      notas: reg?.notas || "",
+      existe: !!reg,
+    });
+  };
+
+  // Tras cambiar la asistencia se recargan los datos y se actualizan días, faltas, retardos y bono por ruta de la captura.
+  const refrescarTrasAsistencia = async () => {
+    if (!periodoId || !editando) return;
+    const r = await cargar(periodoId);
+    const p = r?.propuestas[editando.expediente_id];
+    if (p) setEditando((e) => (e ? { ...e, dias_asistidos: p.dias_asistidos, faltas: p.faltas, retardos: p.retardos, bonos_ruta: p.bonos_ruta, bonos: Math.max(e.bonos - e.bonos_ruta, 0) + p.bonos_ruta } : e));
+  };
+
+  const guardarDia = async () => {
+    if (!diaEdit || !editando) return;
+    setGuardandoDia(true);
+    try {
+      const conHoras = diaEdit.tipo === "Asistencia" || diaEdit.tipo === "Viaje foráneo";
+      await pedir("/api/asistencia", {
+        method: "PUT",
+        body: JSON.stringify({
+          expediente_id: editando.expediente_id,
+          fecha: diaEdit.fecha,
+          tipo: diaEdit.tipo,
+          entrada_ts: conHoras ? diaEdit.entrada_ts : "",
+          salida_ts: conHoras ? diaEdit.salida_ts : "",
+          estado_destino: diaEdit.estado_destino,
+          ruta: diaEdit.ruta,
+          notas: diaEdit.notas,
+        }),
+      });
+      setDiaEdit(null);
+      await refrescarTrasAsistencia();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo guardar la asistencia.");
+    } finally {
+      setGuardandoDia(false);
+    }
+  };
+
+  const quitarDia = async () => {
+    if (!diaEdit || !editando || !confirm("¿Quitar el registro de asistencia de este día?")) return;
+    setGuardandoDia(true);
+    try {
+      await pedir(`/api/asistencia?expediente_id=${editando.expediente_id}&fecha=${diaEdit.fecha}`, { method: "DELETE" });
+      setDiaEdit(null);
+      await refrescarTrasAsistencia();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo quitar.");
+    } finally {
+      setGuardandoDia(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[var(--gray-50)]">
@@ -266,7 +342,7 @@ function SemanaNomina() {
                 <span className="text-[12.5px] text-[var(--gray-500)]">Sueldo base semanal (BBVA)</span>
                 {abierta ? (
                   <>
-                    <input type="number" min={0} step="0.01" value={baseSemana} onChange={(e) => setBaseSemana(e.target.value)} className={`${inputCls} w-[110px] py-1`} />
+                    <CampoMoneda valor={Number(baseSemana) || 0} onCambio={(n) => setBaseSemana(String(n))} className="w-[140px]" ariaLabel="Sueldo base semanal" />
                     <button type="button" className="btn btn-primario py-1.5" onClick={() => aplicarBase(false)}>Aplicar a todos</button>
                     {periodo.sueldo_base !== null && periodo.sueldo_base !== undefined && (
                       <button type="button" className="btn-enlace text-[12px]" onClick={() => aplicarBase(true)}>Usar el individual</button>
@@ -322,8 +398,8 @@ function SemanaNomina() {
                       <th className="px-3 py-3 font-medium text-right">Percepciones</th>
                       <th className="px-3 py-3 font-medium text-right">Deducciones</th>
                       <th className="px-3 py-3 font-medium text-right">Neto</th>
-                      <th className="px-3 py-3 font-medium text-right">Depósito BBVA</th>
-                      <th className="px-3 py-3 font-medium text-right">Depósito viáticos</th>
+                      <th className="px-3 py-3 font-medium text-right text-[var(--blue)]">Depósito BBVA</th>
+                      <th className="px-3 py-3 font-medium text-right text-[#13784a]">Depósito viáticos</th>
                       <th className="px-3 py-3 font-medium">Estado</th>
                       <th className="px-3 py-3" />
                     </tr>
@@ -340,8 +416,12 @@ function SemanaNomina() {
                         <td className="px-3 py-2.5 text-right">{moneda(r.total_percepciones)}</td>
                         <td className="px-3 py-2.5 text-right text-[var(--red)]">{r.total_deducciones ? `−${moneda(r.total_deducciones)}` : moneda(0)}</td>
                         <td className="px-3 py-2.5 text-right font-medium">{moneda(r.neto)}</td>
-                        <td className="px-3 py-2.5 text-right">{moneda(r.deposito_bbva)}</td>
-                        <td className="px-3 py-2.5 text-right">{moneda(r.deposito_viaticos)}</td>
+                        <td className="px-2 py-1.5 text-right">
+                          <span className="block rounded-lg bg-[rgba(47,111,237,0.10)] border border-[rgba(47,111,237,0.18)] px-2.5 py-1.5 font-medium text-[var(--navy)] tabular-nums">{moneda(r.deposito_bbva)}</span>
+                        </td>
+                        <td className="px-2 py-1.5 text-right">
+                          <span className="block rounded-lg bg-[rgba(33,168,102,0.10)] border border-[rgba(33,168,102,0.20)] px-2.5 py-1.5 font-medium text-[#13784a] tabular-nums">{moneda(r.deposito_viaticos)}</span>
+                        </td>
                         <td className="px-3 py-2.5">
                           <span className={`text-[11.5px] font-medium ${r.id !== null ? "text-[var(--green)]" : "text-[#a46b00]"}`}>{r.id !== null ? "Guardado" : "Propuesta"}</span>
                         </td>
@@ -366,7 +446,7 @@ function SemanaNomina() {
             <div className="px-6 py-4 border-b border-[var(--gray-200)] flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-[17px] font-medium text-[var(--navy)] m-0">{editando.nombre}</h3>
-                <p className="text-[12.5px] text-[var(--gray-500)] m-0">{editando.puesto || "—"} · Semana {periodo.semana} · Folio {editando.folio}</p>
+                <p className="text-[12.5px] text-[var(--gray-500)] m-0">{editando.puesto || "—"} · Semana {periodo.semana} (corte sábado {fechaCorta(periodo.fecha_fin)}) · Folio {editando.folio}</p>
               </div>
               {abierta && <button type="button" className="btn btn-secundario py-1.5" onClick={recalcular}>Recalcular desde asistencia</button>}
             </div>
@@ -374,12 +454,20 @@ function SemanaNomina() {
               <section>
                 <h4 className={h4Cls}>Asistencia de la semana</h4>
                 <div className="grid grid-cols-7 gap-1.5">
-                  {dias.map((f, i) => {
+                  {dias.map((f) => {
                     const reg = (d.asistencia[editando.expediente_id] || []).find((x) => x.fecha === f);
                     const e = reg ? ESTILO_TIPO[claveVisual(reg)] : null;
                     return (
-                      <div key={f} className="rounded-md border p-1.5 min-h-[72px] text-[11px] leading-tight" style={e ? { background: e.fondo, color: e.texto, borderColor: e.borde } : { borderColor: "var(--gray-200)", color: "var(--gray-400)" }}>
-                        <p className="m-0 font-medium">{DIAS_CORTOS[i]} {f.slice(8)}</p>
+                      <button
+                        key={f}
+                        type="button"
+                        disabled={!abierta}
+                        onClick={() => abrirDia(f)}
+                        title={abierta ? "Modificar asistencia de este día" : undefined}
+                        className={`text-left rounded-md border p-1.5 min-h-[72px] text-[11px] leading-tight ${abierta ? "hover:ring-2 hover:ring-[var(--blue)] cursor-pointer" : "cursor-default"} ${diaEdit?.fecha === f ? "ring-2 ring-[var(--blue)]" : ""}`}
+                        style={e ? { background: e.fondo, color: e.texto, borderColor: e.borde } : { borderColor: "var(--gray-200)", color: "var(--gray-400)", background: "#fff" }}
+                      >
+                        <p className="m-0 font-medium">{diaCorto(f)} {f.slice(8)}</p>
                         {reg ? (
                           <>
                             <p className="m-0">{claveVisual(reg)}</p>
@@ -390,10 +478,60 @@ function SemanaNomina() {
                         ) : (
                           <p className="m-0">Sin registro</p>
                         )}
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
+                {abierta && !diaEdit && <p className="text-[11.5px] text-[var(--gray-500)] m-0 mt-1.5">Da clic en un día para modificar la asistencia.</p>}
+                {diaEdit && (
+                  <div className="mt-3 border border-[var(--blue)] bg-[#f7f9ff] rounded-lg p-3 grid gap-3">
+                    <p className="m-0 text-[12.5px] font-medium text-[var(--navy)]">Asistencia del {diaCorto(diaEdit.fecha)} {fechaCorta(diaEdit.fecha)}</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className={labelCls}>Tipo</label>
+                        <select value={diaEdit.tipo} onChange={(e) => setDiaEdit({ ...diaEdit, tipo: e.target.value as TipoAsistencia })} className={inputCls}>
+                          {TIPOS_ASISTENCIA.map((t) => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </div>
+                      {(diaEdit.tipo === "Asistencia" || diaEdit.tipo === "Viaje foráneo") && (
+                        <>
+                          <div>
+                            <label className={labelCls}>Entrada{diaEdit.tipo === "Viaje foráneo" ? " (opcional)" : ""}</label>
+                            <input type="datetime-local" value={diaEdit.entrada_ts} onChange={(e) => setDiaEdit({ ...diaEdit, entrada_ts: e.target.value })} className={inputCls} />
+                          </div>
+                          <div>
+                            <label className={labelCls}>Salida</label>
+                            <input type="datetime-local" value={diaEdit.salida_ts} min={diaEdit.entrada_ts} onChange={(e) => setDiaEdit({ ...diaEdit, salida_ts: e.target.value })} className={inputCls} />
+                          </div>
+                        </>
+                      )}
+                      {diaEdit.tipo === "Viaje foráneo" && (
+                        <>
+                          <div>
+                            <label className={labelCls}>Estado destino</label>
+                            <select value={diaEdit.estado_destino} onChange={(e) => setDiaEdit({ ...diaEdit, estado_destino: e.target.value })} className={inputCls}>
+                              <option value="">Selecciona</option>
+                              {ESTADOS_MX.map((x) => <option key={x} value={x}>{x}</option>)}
+                            </select>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className={labelCls}>Ruta</label>
+                            <input type="text" value={diaEdit.ruta} onChange={(e) => setDiaEdit({ ...diaEdit, ruta: e.target.value })} className={inputCls} />
+                          </div>
+                        </>
+                      )}
+                      <div className="sm:col-span-3">
+                        <label className={labelCls}>Notas</label>
+                        <input type="text" value={diaEdit.notas} onChange={(e) => setDiaEdit({ ...diaEdit, notas: e.target.value })} className={inputCls} />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {diaEdit.existe && <button type="button" className="mr-auto text-[12.5px] text-[var(--red)] hover:underline" disabled={guardandoDia} onClick={quitarDia}>Quitar registro</button>}
+                      <button type="button" className="btn btn-secundario py-1.5" onClick={() => setDiaEdit(null)}>Cancelar</button>
+                      <button type="button" className="btn btn-primario py-1.5" disabled={guardandoDia} onClick={guardarDia}>{guardandoDia ? "Guardando…" : "Guardar asistencia"}</button>
+                    </div>
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-3 mt-3">{ASISTENCIA.map(campoNumero)}</div>
               </section>
               <section>
@@ -446,7 +584,7 @@ function SemanaNomina() {
                           </div>
                           <div>
                             <label className={labelCls}>Abono de esta semana</label>
-                            <input type="number" min={0} step="0.01" disabled={!abierta} value={c.abono} onChange={(e) => setAbono(c.prestamo_id, e.target.value)} className={inputCls} />
+                            <CampoMoneda valor={c.abono} deshabilitado={!abierta} ariaLabel={`Abono ${c.concepto}`} onCambio={(n) => setAbono(c.prestamo_id, String(n))} />
                           </div>
                         </div>
                       );
@@ -461,7 +599,7 @@ function SemanaNomina() {
                 </div>
                 <div>
                   <label className={labelCls}>Sueldo base (depósito BBVA)</label>
-                  <input type="number" min={0} step="0.01" disabled={!abierta} value={editando.sueldo_base} onChange={(e) => setCampo("sueldo_base", e.target.value)} className={inputCls} />
+                  <CampoMoneda valor={editando.sueldo_base} deshabilitado={!abierta} ariaLabel="Sueldo base" onCambio={(n) => setCampo("sueldo_base", String(n))} />
                 </div>
               </section>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-[var(--gray-50)] border border-[var(--gray-200)] rounded-lg p-4">
@@ -475,7 +613,7 @@ function SemanaNomina() {
             </div>
             <div className="px-6 py-4 border-t border-[var(--gray-200)] flex flex-wrap justify-end gap-2">
               {abierta && editando.id !== null && <button type="button" className="mr-auto text-[12.5px] text-[var(--red)] hover:underline" onClick={descartar}>Descartar captura</button>}
-              <button type="button" className="btn btn-secundario" onClick={() => setEditando(null)}>{abierta ? "Cancelar" : "Cerrar"}</button>
+              <button type="button" className="btn btn-secundario" onClick={() => { setEditando(null); setDiaEdit(null); }}>{abierta ? "Cancelar" : "Cerrar"}</button>
               {abierta && <button type="button" className="btn btn-primario" disabled={guardando} onClick={guardarEdicion}>{guardando ? "Guardando…" : "Guardar"}</button>}
             </div>
           </div>

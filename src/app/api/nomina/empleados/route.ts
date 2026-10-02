@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureNominaSchema, errorJson, sesionNomina } from "@/lib/nominaDB";
 import { DEFAULTS_EMPLEADO, aNumero, redondear } from "@/lib/nominaCalculo";
-import { ahoraMx } from "@/lib/asistenciaData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,12 +34,13 @@ function mapear(f: Record<string, unknown>) {
   };
 }
 
-// Caja de ahorro acumulada estimada: aportación semanal × semanas completas desde la fecha de ingreso.
-function cajaAcumulada(fechaIngreso: string | null, semanal: number): { semanas: number; acumulado: number } {
-  if (!fechaIngreso) return { semanas: 0, acumulado: 0 };
-  const dias = (new Date(ahoraMx().fecha + "T00:00:00Z").getTime() - new Date(fechaIngreso + "T00:00:00Z").getTime()) / 86400000;
-  const semanas = Math.max(0, Math.floor(dias / 7));
-  return { semanas, acumulado: redondear(semanas * semanal) };
+// Caja de ahorro acumulada: suma de los abonos (deducción) capturados en las nóminas guardadas.
+async function cajaAcumulada(expedienteId: number): Promise<{ semanas: number; acumulado: number }> {
+  const r = await getPool().query(
+    `SELECT COUNT(*) FILTER (WHERE caja_ahorro > 0)::int AS semanas, COALESCE(SUM(caja_ahorro), 0) AS total FROM nomina_registros WHERE expediente_id = $1`,
+    [expedienteId]
+  );
+  return { semanas: r.rows[0]?.semanas || 0, acumulado: redondear(aNumero(r.rows[0]?.total)) };
 }
 
 export async function GET(req: NextRequest) {
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       const r = await getPool().query(`${SELECT} WHERE e.id = $1`, [id]);
       if (!r.rows[0]) return NextResponse.json({ error: "El expediente no existe." }, { status: 404 });
       const emp = mapear(r.rows[0]);
-      return NextResponse.json({ ok: true, empleado: emp, caja: cajaAcumulada(emp.fecha_ingreso, emp.caja_ahorro) });
+      return NextResponse.json({ ok: true, empleado: emp, caja: await cajaAcumulada(id) });
     }
     const r = await getPool().query(`${SELECT} WHERE COALESCE(e.estatus_laboral, 'Activo') != 'Baja' ORDER BY e.nombre ASC`);
     return NextResponse.json({ ok: true, empleados: r.rows.map(mapear) });

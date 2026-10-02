@@ -1,4 +1,9 @@
+"use client";
+import { usePathname } from "next/navigation";
+
 export default function PageFooter() {
+// El sitio web público tiene su propio pie de página.
+if (usePathname()?.startsWith("/sitio")) return null;
 return (
 <footer className="print:hidden w-full bg-[var(--navy)] mt-6">
 <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 py-3.5 md:py-4 flex flex-col sm:flex-row items-center justify-between gap-1.5 sm:gap-2 text-[11px] md:text-[12.5px] text-center sm:text-left">

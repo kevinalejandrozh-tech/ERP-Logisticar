@@ -12,6 +12,7 @@ export type PaginaSistema = {
 
 export const PAGINAS_SISTEMA: PaginaSistema[] = [
   { ruta: "/", titulo: "Inicio", seccion: "General", palabras: "menu principal centro de operaciones", supervisor: true },
+  { ruta: "/sitio", titulo: "Sitio web", seccion: "General", palabras: "pagina web publica empresa boletin editar sitio" },
   { ruta: "/unidades", titulo: "Unidades", seccion: "Unidades", palabras: "flota eco placas camiones parque vehicular", supervisor: true },
   { ruta: "/unidades/revisiones-aceite", titulo: "Revisiones de aceite", seccion: "Unidades", palabras: "aceite mantenimiento", supervisor: true },
   { ruta: "/ordenes-servicio/cambios-aceite", titulo: "Cambios de aceite", seccion: "Unidades", palabras: "ordenes servicio mantenimiento aceite" },

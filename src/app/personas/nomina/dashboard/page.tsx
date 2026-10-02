@@ -102,7 +102,7 @@ export default function DashboardNominaPage() {
                   {Array.from(new Set([d.anio, ...d.anios])).sort((a, b) => b - a).map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
               </label>
-              <span className="text-[12.5px] text-[var(--gray-500)]">{d.totales.semanas_capturadas} semana(s) con captura · solo se consideran capturas guardadas · corte de semana en sábado</span>
+              <span className="text-[12.5px] text-[var(--gray-500)]">{d.totales.semanas_capturadas} semana(s) con captura · solo se consideran capturas guardadas · corte de semana en viernes</span>
               <div className="flex-1" />
               <Link href="/personas/nomina" className="btn btn-secundario py-1.5">Ir a Nómina</Link>
             </div>
@@ -144,7 +144,7 @@ export default function DashboardNominaPage() {
               )}
               {d.totales.ultima && (
                 <p className="text-[12.5px] text-[var(--gray-500)] m-0 mt-3">
-                  Última semana capturada: <b className="text-[var(--navy)] font-medium">Semana {d.totales.ultima.semana}</b> (pago sábado {fechaCorta(d.totales.ultima.fecha_fin)}) · {d.totales.ultima.empleados} persona(s) · {moneda(d.totales.ultima.neto)}
+                  Última semana capturada: <b className="text-[var(--navy)] font-medium">Semana {d.totales.ultima.semana}</b> (pago viernes {fechaCorta(d.totales.ultima.fecha_fin)}) · {d.totales.ultima.empleados} persona(s) · {moneda(d.totales.ultima.neto)}
                 </p>
               )}
             </div>

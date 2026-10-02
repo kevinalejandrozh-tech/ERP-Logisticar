@@ -148,12 +148,24 @@ async function crearEsquema() {
   );
   await p.query(`CREATE INDEX IF NOT EXISTS idx_nomina_caja_exp ON nomina_caja_ahorro (expediente_id);`);
 
-  // ---------- v3: la semana se paga y se corta el sábado (domingo a sábado) ----------
-  // Las semanas abiertas creadas de lunes a domingo se recorren un día. Las cerradas/pagadas se respetan.
-  await p.query(
-    `UPDATE nomina_periodos SET fecha_inicio = fecha_inicio - 1, fecha_fin = fecha_fin - 1, updated_at = now()
-     WHERE estado = 'Abierta' AND EXTRACT(ISODOW FROM fecha_inicio) = 1`
-  );
+  // ---------- v3/v4: la semana de nómina va de sábado a viernes (se corta y se paga el viernes) ----------
+  // Se ejecuta UNA sola vez (marca semana_sab_vie en nomina_config) para no mover semanas creadas después.
+  // Solo semanas Abiertas; las Cerradas/Pagadas se respetan.
+  //  - Empiezan en lunes (formato original)  → pasan al sábado de la misma semana ISO (+5 días).
+  //  - Empiezan en domingo (formato anterior) → pasan al sábado de la misma semana ISO (+6 días).
+  await p.query(`ALTER TABLE nomina_config ADD COLUMN IF NOT EXISTS semana_sab_vie BOOLEAN NOT NULL DEFAULT false;`);
+  const v4 = await p.query(`SELECT semana_sab_vie FROM nomina_config WHERE id = 1`);
+  if (!v4.rows[0]?.semana_sab_vie) {
+    await p.query(
+      `UPDATE nomina_periodos SET fecha_inicio = fecha_inicio + 5, fecha_fin = fecha_fin + 5, updated_at = now()
+       WHERE estado = 'Abierta' AND EXTRACT(ISODOW FROM fecha_inicio) = 1`
+    );
+    await p.query(
+      `UPDATE nomina_periodos SET fecha_inicio = fecha_inicio + 6, fecha_fin = fecha_fin + 6, updated_at = now()
+       WHERE estado = 'Abierta' AND EXTRACT(ISODOW FROM fecha_inicio) = 7`
+    );
+    await p.query(`UPDATE nomina_config SET semana_sab_vie = true WHERE id = 1`);
+  }
 }
 
 export function ensureNominaSchema(): Promise<void> {

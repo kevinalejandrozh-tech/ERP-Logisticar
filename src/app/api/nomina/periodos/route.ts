@@ -105,8 +105,8 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
-// Crea las semanas de nómina (domingo a sábado; se paga y se corta el sábado) desde la 1 del año en curso
-// hasta la semana actual. El número es la semana ISO del sábado de corte. Las que ya existen se respetan.
+// Crea las semanas de nómina (sábado a viernes; se corta y se paga el viernes) desde la 1 del año en curso
+// hasta la semana actual. El número es la semana ISO del sábado de inicio. Las que ya existen se respetan.
 async function generarSemanas() {
   await ensureNominaSchema();
   const { anio, semana: actual } = semanaNomina(ahoraMx().fecha);

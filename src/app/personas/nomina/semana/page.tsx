@@ -446,7 +446,7 @@ function SemanaNomina() {
             <div className="px-6 py-4 border-b border-[var(--gray-200)] flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-[17px] font-medium text-[var(--navy)] m-0">{editando.nombre}</h3>
-                <p className="text-[12.5px] text-[var(--gray-500)] m-0">{editando.puesto || "—"} · Semana {periodo.semana} (corte sábado {fechaCorta(periodo.fecha_fin)}) · Folio {editando.folio}</p>
+                <p className="text-[12.5px] text-[var(--gray-500)] m-0">{editando.puesto || "—"} · Semana {periodo.semana} (corte viernes {fechaCorta(periodo.fecha_fin)}) · Folio {editando.folio}</p>
               </div>
               {abierta && <button type="button" className="btn btn-secundario py-1.5" onClick={recalcular}>Recalcular desde asistencia</button>}
             </div>

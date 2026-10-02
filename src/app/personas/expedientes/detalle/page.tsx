@@ -197,7 +197,12 @@ export default function DetalleExpedientePage() {
   const eliminar = async () => {
     if (!registro || !confirm(`¿Eliminar el expediente de ${registro.nombre}? Esta acción no se puede deshacer.`)) return;
     try {
-      await fetch("/api/expedientes/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id }) });
+      const res = await fetch("/api/expedientes/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: registro.id }) });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        alert(j.error || "No se pudo eliminar el expediente.");
+        return;
+      }
       window.location.href = "/personas/expedientes";
     } catch {
       alert("No se pudo eliminar el expediente.");

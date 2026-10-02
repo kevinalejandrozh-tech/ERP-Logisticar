@@ -20,7 +20,9 @@ export async function GET(req: NextRequest) {
              to_char(p.fecha_fin, 'YYYY-MM-DD') AS fecha_fin, p.estado, p.sueldo_base,
              COALESCE(SUM(r.neto), 0) AS total_neto, COUNT(r.id)::int AS empleados,
              (SELECT COUNT(*)::int FROM expedientes e LEFT JOIN nomina_empleados n ON n.expediente_id = e.id
-               WHERE COALESCE(e.estatus_laboral, 'Activo') != 'Baja' AND COALESCE(n.incluir, true) = true
+               WHERE (COALESCE(e.estatus_laboral, 'Activo') != 'Baja'
+                      OR (e.fecha_baja IS NOT NULL AND (e.fecha_baja AT TIME ZONE 'America/Mexico_City')::date >= p.fecha_inicio))
+                 AND COALESCE(n.incluir, true) = true
                  AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= p.fecha_fin)) AS total_personal
       FROM nomina_periodos p
       LEFT JOIN nomina_registros r ON r.periodo_id = p.id

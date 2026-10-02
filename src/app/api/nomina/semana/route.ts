@@ -31,14 +31,18 @@ export async function GET(req: NextRequest) {
     periodo.sueldo_base = periodo.sueldo_base === null ? null : aNumero(periodo.sueldo_base);
     const config = await leerConfigNomina();
 
+    // Personal de la semana: ingresó a más tardar al corte y, si está de baja, se fue en esta semana o después
+    // (así las bajas siguen apareciendo en las semanas donde sí trabajaron).
     const emp = await pool.query(
       `SELECT e.id, e.nombre, e.puesto, e.sueldo_ofertado, to_char(e.fecha_ingreso, 'YYYY-MM-DD') AS fecha_ingreso,
               n.sueldo_semanal, n.sueldo_base, n.imss, n.caja_ahorro, n.fonacot, n.infonavit, (n.expediente_id IS NOT NULL) AS configurado
        FROM expedientes e LEFT JOIN nomina_empleados n ON n.expediente_id = e.id
-       WHERE COALESCE(e.estatus_laboral, 'Activo') != 'Baja' AND COALESCE(n.incluir, true) = true
+       WHERE (COALESCE(e.estatus_laboral, 'Activo') != 'Baja'
+              OR (e.fecha_baja IS NOT NULL AND (e.fecha_baja AT TIME ZONE 'America/Mexico_City')::date >= $2::date))
+         AND COALESCE(n.incluir, true) = true
          AND (e.fecha_ingreso IS NULL OR e.fecha_ingreso <= $1)
        ORDER BY e.nombre ASC`,
-      [periodo.fecha_fin]
+      [periodo.fecha_fin, periodo.fecha_inicio]
     );
     const guardados = await pool.query(`SELECT * FROM nomina_registros WHERE periodo_id = $1`, [id]);
     const ids = Array.from(new Set([...emp.rows.map((e) => e.id as number), ...guardados.rows.map((g) => g.expediente_id as number)]));

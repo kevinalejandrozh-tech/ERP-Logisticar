@@ -137,7 +137,7 @@ export default function UniformesPage() {
       const marginX = 48;
       let y = 50;
 
-      const logoImg = await fetch("/logo-transportes.png")
+      const logoImg = await fetch("/logo-icono.png")
         .then((r) => r.blob())
         .then(
           (b) =>

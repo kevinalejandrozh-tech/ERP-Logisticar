@@ -38,7 +38,12 @@ const PREFIJOS_PERMITIDOS_SUPERVISOR = [
   "/api/cuadro-basico",
   "/api/areas-personal",
   "/api/organigrama",
+  "/api/favoritos",
+  "/api/notificaciones",
 ];
+
+// Escrituras permitidas al supervisor: solo sus propios favoritos y marcar notificaciones como vistas.
+const API_ESCRITURA_PERSONAL = new Set(["/api/favoritos", "/api/notificaciones"]);
 
 function rutaPermitidaParaSupervisor(pathname: string): boolean {
   if (pathname === "/") return true;
@@ -84,7 +89,7 @@ export async function middleware(req: NextRequest) {
 
   if (sesion.rol === "supervisor_tms") {
     // Solo puede consultar (GET). Cualquier escritura queda bloqueada.
-    if (pathname.startsWith("/api/") && req.method !== "GET") {
+    if (pathname.startsWith("/api/") && req.method !== "GET" && !API_ESCRITURA_PERSONAL.has(pathname)) {
       return NextResponse.json({ error: "Tu usuario solo tiene permisos de consulta." }, { status: 403 });
     }
     // Y solo dentro de Unidades y Expedientes.

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import FavoritoEstrella from "@/components/FavoritoEstrella";
 interface FilaProducto {
   id: string;
   cantidad: string;
@@ -340,9 +341,12 @@ export default function ComprasPage() {
           <div className="flex items-center gap-3">
             <Logo size={36} />
             <div>
-              <h1 className="font-display text-[16px] sm:text-[18px] font-bold text-[var(--navy)] m-0">
-                Gestión de Compras
-              </h1>
+              <div className="flex items-center gap-1">
+                <h1 className="font-display text-[16px] sm:text-[18px] font-bold text-[var(--navy)] m-0">
+                  Gestión de Compras
+                </h1>
+                <FavoritoEstrella titulo="Compras" />
+              </div>
               <p className="text-[11px] sm:text-[12px] text-[var(--gray-400)] m-0">Transportes Logisticar</p>
             </div>
           </div>

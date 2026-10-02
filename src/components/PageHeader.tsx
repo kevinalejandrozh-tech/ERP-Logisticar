@@ -1,5 +1,6 @@
 import Logo from "@/components/Logo";
 import Link from "next/link";
+import FavoritoEstrella from "@/components/FavoritoEstrella";
 export default function PageHeader({
   titulo,
   subtitulo,
@@ -19,7 +20,10 @@ export default function PageHeader({
         <div className="flex items-center gap-3">
           <Logo size={36} />
           <div>
-            <h1 className="font-display text-[16px] sm:text-[19px] font-bold text-[var(--navy)] m-0">{titulo}</h1>
+            <div className="flex items-center gap-1">
+              <h1 className="font-display text-[16px] sm:text-[19px] font-bold text-[var(--navy)] m-0">{titulo}</h1>
+              <FavoritoEstrella titulo={titulo} />
+            </div>
             <p className="text-[11.5px] sm:text-[12.5px] text-[var(--gray-500)] m-0">{subtitulo}</p>
           </div>
         </div>

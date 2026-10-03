@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { claveUsuario, usuarioDesdeNombre } from "@/lib/auth";
-import { ensurePermisosSchema, sesionSoloSysadmin } from "@/lib/permisosDB";
-import { ROLES_SISTEMA } from "@/lib/permisos";
+import { ensurePermisosSchema, sesionSoloSysadmin, rolExiste } from "@/lib/permisosDB";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,7 +32,7 @@ export async function PUT(req: NextRequest) {
     const nombre = String(b.nombre || "").replace(/\s+/g, " ").trim();
     if (!nombre) return NextResponse.json({ error: "Falta el nombre." }, { status: 400 });
     const rol = String(b.rol || "");
-    if (!ROLES_SISTEMA.some((r) => r.rol === rol)) return NextResponse.json({ error: "Rol no válido." }, { status: 400 });
+    if (!(await rolExiste(rol))) return NextResponse.json({ error: "Rol no válido." }, { status: 400 });
     if (id === s.userId && rol !== "sysadmin") return NextResponse.json({ error: "No puedes quitarte el rol de sysadmin a ti mismo." }, { status: 400 });
     const correo = String(b.correo || "").trim().toLowerCase() || null;
     const usuario = String(b.usuario || "").trim() ? usuarioDesdeNombre(String(b.usuario)) : null;

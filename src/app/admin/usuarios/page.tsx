@@ -38,6 +38,25 @@ export default function GestionUsuariosPage() {
   const [catalogo, setCatalogo] = useState<SeccionInfo[]>([]);
   const [borradorRoles, setBorradorRoles] = useState<Record<string, string[] | null>>({});
   const [mensajeRol, setMensajeRol] = useState<Record<string, string>>({});
+  const [nuevoRol, setNuevoRol] = useState<{ nombre: string; secciones: string[] }>({ nombre: "", secciones: [] });
+  const [mensajeNuevoRol, setMensajeNuevoRol] = useState("");
+  // "Todas" (null) no incluye las secciones explícitas (p. ej. Notas): se activan rol por rol.
+  const EXPLICITAS = ["notas"];
+  const marcadasDe = (sel: string[] | null | undefined) => (sel === null || sel === undefined ? catalogo.map((c) => c.clave).filter((c) => !EXPLICITAS.includes(c)) : sel);
+
+  const crearRolNuevo = async () => {
+    setMensajeNuevoRol("");
+    try {
+      const res = await fetch("/api/auth/roles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(nuevoRol) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "No se pudo crear el rol.");
+      setNuevoRol({ nombre: "", secciones: [] });
+      setMensajeNuevoRol("Rol creado. Ya puedes asignarlo a usuarios.");
+      cargar();
+    } catch (err: any) {
+      setMensajeNuevoRol(err.message || "No se pudo crear el rol.");
+    }
+  };
 
   const cargar = () => {
     fetch("/api/auth/usuarios", { cache: "no-store" })
@@ -75,17 +94,17 @@ export default function GestionUsuariosPage() {
 
   const alternarSeccion = (rolClave: string, clave: string) => {
     setBorradorRoles((prev) => {
-      const actual = prev[rolClave] ?? catalogo.map((c) => c.clave);
+      const actual = marcadasDe(prev[rolClave]);
       const nueva = actual.includes(clave) ? actual.filter((c) => c !== clave) : [...actual, clave];
       return { ...prev, [rolClave]: nueva };
     });
   };
 
   const guardarRol = async (rolClave: string) => {
-    const secciones = borradorRoles[rolClave];
-    const todas = secciones === null || (secciones && secciones.length === catalogo.length);
+    // Se guarda la lista explícita de lo marcado (así una sección explícita como Notas no se pierde).
+    const secciones = marcadasDe(borradorRoles[rolClave]);
     try {
-      const res = await fetch("/api/auth/roles", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rol: rolClave, secciones: todas ? null : secciones }) });
+      const res = await fetch("/api/auth/roles", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rol: rolClave, secciones }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo guardar.");
       setMensajeRol((m) => ({ ...m, [rolClave]: "Guardado. Aplica cuando cada usuario vuelva a iniciar sesión." }));
@@ -181,6 +200,7 @@ export default function GestionUsuariosPage() {
                   <option value="sysadmin">Sysadmin (acceso total: ver, editar y consultar todo)</option>
                   <option value="supervisor_tms">Supervisor TMS (solo consulta)</option>
                   <option value="personal">Personal</option>
+                  {roles.filter((r) => !["sysadmin", "supervisor_tms", "personal"].includes(r.rol)).map((r) => <option key={r.rol} value={r.rol}>{r.etiqueta}</option>)}
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -264,7 +284,7 @@ export default function GestionUsuariosPage() {
             <div className="grid gap-4">
               {roles.map((r) => {
                 const sel = borradorRoles[r.rol];
-                const marcadas = sel === null || sel === undefined ? catalogo.map((c) => c.clave) : sel;
+                const marcadas = marcadasDe(sel);
                 return (
                   <div key={r.rol} className="border border-[var(--gray-200)] rounded-xl p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
@@ -292,6 +312,20 @@ export default function GestionUsuariosPage() {
                   </div>
                 );
               })}
+              <div className="border-2 border-dashed border-[var(--gray-200)] rounded-xl p-4">
+                <p className="text-[14px] font-bold text-[var(--navy)] m-0 mb-2">Crear rol</p>
+                <input value={nuevoRol.nombre} onChange={(e) => setNuevoRol({ ...nuevoRol, nombre: e.target.value })} placeholder="Nombre del rol (ej. Almacenista)" className="w-full sm:w-[340px] border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] mb-3" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-1.5 mb-3">
+                  {catalogo.map((c) => (
+                    <label key={c.clave} className="flex items-start gap-2 text-[12.5px] text-[var(--text)]" title={c.descripcion}>
+                      <input type="checkbox" className="mt-0.5" checked={nuevoRol.secciones.includes(c.clave)} onChange={(e) => setNuevoRol((p) => ({ ...p, secciones: e.target.checked ? [...p.secciones, c.clave] : p.secciones.filter((x) => x !== c.clave) }))} />
+                      <span>{c.titulo}</span>
+                    </label>
+                  ))}
+                </div>
+                <button type="button" disabled={!nuevoRol.nombre.trim()} onClick={crearRolNuevo} className="bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold disabled:opacity-40">Guardar rol nuevo</button>
+                {mensajeNuevoRol && <p className="text-[12px] text-[var(--blue)] font-semibold mt-2 mb-0">{mensajeNuevoRol}</p>}
+              </div>
             </div>
           </div>
         )}

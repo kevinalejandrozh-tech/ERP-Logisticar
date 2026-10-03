@@ -1,6 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
 
-export type Rol = "sysadmin" | "supervisor_tms" | "personal";
+// Roles base + roles creados por el sysadmin (Gestión de usuarios → Crear rol).
+export type Rol = "sysadmin" | "supervisor_tms" | "personal" | (string & {});
 // secciones: permisos del rol al iniciar sesión (null = todas). Si falta (tokens anteriores), se usan los valores por defecto del rol.
 export type SesionPayload = { userId: number; nombre: string; correo: string; rol: Rol; secciones?: string[] | null };
 

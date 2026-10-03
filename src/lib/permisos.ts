@@ -73,7 +73,11 @@ export const SECCIONES_SISTEMA: SeccionSistema[] = [
   { clave: "inventario", titulo: "Control de inventario", descripcion: "Equipos, mobiliario y QR", paginas: ["/inventario"], apis: ["/api/inventario"] },
   { clave: "buzon", titulo: "Buzón de sugerencias", descripcion: "Ideas y sugerencias del equipo", paginas: ["/buzon-sugerencias"], apis: ["/api/buzon-sugerencias"] },
   { clave: "menu_dia", titulo: "Menú del día", descripcion: "Pedidos de comida", paginas: ["/menu-dia"], apis: ["/api/menu-dia"] },
+  { clave: "notas", titulo: "Notas", descripcion: "Notas personales (solo si se activa en el rol)", paginas: ["/notas"], apis: ["/api/notas"] },
 ];
+
+// Secciones que NO se incluyen con "todas las secciones" (null): el rol debe tenerlas marcadas explícitamente.
+export const SECCIONES_EXPLICITAS = ["notas"];
 
 export const CLAVES_SECCIONES = SECCIONES_SISTEMA.map((s) => s.clave);
 
@@ -104,6 +108,11 @@ export const SECCIONES_DEFAULT: Record<string, string[] | null> = {
   supervisor_tms: ["unidades", "expedientes", "organigrama"],
 };
 
+// Roles creados por el sysadmin sin configuración: sin secciones (nunca acceso total por omisión).
+export function seccionesPorDefecto(rol: string): string[] | null {
+  return rol in SECCIONES_DEFAULT ? SECCIONES_DEFAULT[rol] : [];
+}
+
 function coincide(pathname: string, prefijo: string): boolean {
   if (prefijo.startsWith("=")) return pathname === prefijo.slice(1);
   return pathname === prefijo || pathname.startsWith(prefijo + "/");
@@ -117,19 +126,24 @@ export function esSoloSysadmin(pathname: string): boolean {
 export function rutaPermitida(pathname: string, rol: string, secciones: string[] | null | undefined): boolean {
   if (rol === "sysadmin") return true;
   if (esSoloSysadmin(pathname)) return false;
-  const lista = secciones === undefined ? SECCIONES_DEFAULT[rol] ?? null : secciones;
-  if (lista === null) return true;
+  const lista = secciones === undefined ? seccionesPorDefecto(rol) : secciones;
   if (pathname === "/" || pathname === "/sitio") return true;
   const esApi = pathname.startsWith("/api/");
   if (esApi && API_COMUNES.some((p) => coincide(pathname, p))) return true;
-  return SECCIONES_SISTEMA.some((s) => lista.includes(s.clave) && (esApi ? s.apis : s.paginas).some((p) => coincide(pathname, p)));
+  const ruta = (s: SeccionSistema) => (esApi ? s.apis : s.paginas).some((p) => coincide(pathname, p));
+  // Rutas de secciones explícitas: solo si el rol las tiene marcadas.
+  const explicita = SECCIONES_SISTEMA.find((s) => SECCIONES_EXPLICITAS.includes(s.clave) && ruta(s));
+  if (explicita) return Array.isArray(lista) && lista.includes(explicita.clave);
+  if (lista === null) return true;
+  return SECCIONES_SISTEMA.some((s) => lista.includes(s.clave) && ruta(s));
 }
 
 // Para el inicio y el buscador: ¿mostrar el acceso a esta sección?
 export function puedeVerSeccion(clave: string, rol: string | undefined, secciones: string[] | null | undefined): boolean {
   if (!rol) return false;
   if (rol === "sysadmin") return true;
-  const lista = secciones === undefined ? SECCIONES_DEFAULT[rol] ?? null : secciones;
+  const lista = secciones === undefined ? seccionesPorDefecto(rol) : secciones;
+  if (SECCIONES_EXPLICITAS.includes(clave)) return Array.isArray(lista) && lista.includes(clave);
   return lista === null || lista.includes(clave);
 }
 

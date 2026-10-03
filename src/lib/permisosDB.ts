@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, getPool } from "./db";
 import { COOKIE_SESION, SesionPayload, verificarTokenSesion } from "./sesion";
-import { ROLES_SISTEMA, SECCIONES_DEFAULT, normalizarSecciones } from "./permisos";
+import { ROLES_SISTEMA, normalizarSecciones, seccionesPorDefecto } from "./permisos";
 
 // Esquema de permisos por rol y foto de perfil. Separado de db.ts para no tocar el esquema de otros módulos.
 let esquemaListo: Promise<void> | null = null;
@@ -17,6 +17,15 @@ async function crearEsquema() {
     );
   `);
   await p.query(`ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS foto TEXT;`);
+  // Roles creados por el sysadmin.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS roles_personalizados (
+      rol TEXT PRIMARY KEY,
+      etiqueta TEXT NOT NULL,
+      descripcion TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
 }
 
 export function ensurePermisosSchema(): Promise<void> {
@@ -34,7 +43,7 @@ export async function seccionesDeRol(rol: string): Promise<string[] | null> {
   if (rol === "sysadmin") return null;
   await ensurePermisosSchema();
   const r = await getPool().query(`SELECT secciones FROM roles_permisos WHERE rol = $1`, [rol]);
-  if (!r.rows[0]) return SECCIONES_DEFAULT[rol] ?? null;
+  if (!r.rows[0]) return seccionesPorDefecto(rol);
   return normalizarSecciones(r.rows[0].secciones);
 }
 
@@ -43,12 +52,13 @@ export async function todosLosRoles() {
   const p = getPool();
   const conf = await p.query(`SELECT rol, secciones FROM roles_permisos`);
   const cuentas = await p.query(`SELECT rol, COUNT(*)::int AS n FROM usuarios GROUP BY rol`);
-  return ROLES_SISTEMA.map((r) => {
+  const propios = await p.query(`SELECT rol, etiqueta, COALESCE(descripcion, 'Rol creado por el sysadmin.') AS descripcion FROM roles_personalizados ORDER BY created_at`);
+  return [...ROLES_SISTEMA, ...propios.rows].map((r) => {
     const fila = conf.rows.find((c) => c.rol === r.rol);
     return {
       ...r,
       usuarios: cuentas.rows.find((c) => c.rol === r.rol)?.n || 0,
-      secciones: r.rol === "sysadmin" ? null : fila ? normalizarSecciones(fila.secciones) : SECCIONES_DEFAULT[r.rol] ?? null,
+      secciones: r.rol === "sysadmin" ? null : fila ? normalizarSecciones(fila.secciones) : seccionesPorDefecto(r.rol),
       editable: r.rol !== "sysadmin",
     };
   });
@@ -73,4 +83,28 @@ export async function sesionSoloSysadmin(req: NextRequest): Promise<SesionPayloa
   const s = await sesionDe(req);
   if (!s || s.rol !== "sysadmin") return NextResponse.json({ error: "Solo el administrador puede gestionar usuarios." }, { status: 403 });
   return s;
+}
+
+// ¿Existe el rol? (base o creado por el sysadmin)
+export async function rolExiste(rol: string): Promise<boolean> {
+  if (ROLES_SISTEMA.some((r) => r.rol === rol)) return true;
+  await ensurePermisosSchema();
+  const r = await getPool().query(`SELECT 1 FROM roles_personalizados WHERE rol = $1`, [rol]);
+  return (r.rowCount || 0) > 0;
+}
+
+export async function crearRol(etiqueta: string, descripcion: string | null, secciones: string[]): Promise<string> {
+  await ensurePermisosSchema();
+  const base = etiqueta
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 40) || "rol";
+  let rol = `r_${base}`;
+  for (let i = 2; await rolExiste(rol); i++) rol = `r_${base}_${i}`;
+  await getPool().query(`INSERT INTO roles_personalizados (rol, etiqueta, descripcion) VALUES ($1, $2, $3)`, [rol, etiqueta, descripcion]);
+  await guardarSeccionesRol(rol, secciones);
+  return rol;
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { describirAccion, ensureActividadSchema, sesionDeRequest } from "@/lib/actividadDB";
+import { ensureNotasSchema } from "@/lib/notasDB";
+import { puedeVerSeccion } from "@/lib/permisos";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,7 +35,18 @@ export async function GET(req: NextRequest) {
       fecha: r.updated_at,
       nueva: !vistoHasta || new Date(r.updated_at) > new Date(vistoHasta),
     }));
-    return NextResponse.json({ ok: true, noLeidas: conteo.rows[0]?.n ?? 0, items });
+    // Notas vencidas del usuario (se muestran hasta marcarlas como terminadas).
+    let vencidas: typeof items = [];
+    if (puedeVerSeccion("notas", sesion.rol, sesion.secciones)) {
+      try {
+        await ensureNotasSchema();
+        const n = await p.query(`SELECT id, titulo, vence_en FROM notas WHERE usuario_id = $1 AND NOT terminada AND vence_en IS NOT NULL AND vence_en <= now() ORDER BY vence_en LIMIT 10`, [sesion.userId]);
+        vencidas = n.rows.map((r) => ({ id: -Number(r.id), usuario: "Recordatorio", accion: `Nota vencida: ${r.titulo}`, pagina: "/notas", paginaTitulo: "Notas", veces: 1, fecha: r.vence_en, nueva: true }));
+      } catch {
+        /* sin tabla de notas aún */
+      }
+    }
+    return NextResponse.json({ ok: true, noLeidas: (conteo.rows[0]?.n ?? 0) + vencidas.length, items: [...vencidas, ...items] });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Error al leer notificaciones." }, { status: 500 });
   }

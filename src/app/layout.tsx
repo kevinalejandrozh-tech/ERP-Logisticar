@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import AvisoNotasVencidas from "@/components/AvisoNotasVencidas";
 import localFont from "next/font/local";
 import "./globals.css";
 import ZoomControls from "@/components/ZoomControls";
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="es" className={`${roboto.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <RegistroActividad />
+        <AvisoNotasVencidas />
         <ZoomControls>
           {children}
           <PageFooter />

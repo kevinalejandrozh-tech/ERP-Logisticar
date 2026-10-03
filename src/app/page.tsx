@@ -232,6 +232,10 @@ Monitoreo de Rutas
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
 </Link>}
+{sec("notas") && ver("Notas recordatorios") && <Link href="/notas" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
+<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>
+Notas
+</Link>}
 </>
 )}
 </div>

@@ -429,6 +429,24 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 `);
 await p.query(`ALTER TABLE tareas_gastos ALTER COLUMN tarea_id DROP NOT NULL;`);
 
+// ---- Historial de mantenimientos: la tabla se crea ANTES de agregarle columnas (en una BD nueva fallaba) ----
+await p.query(`
+CREATE TABLE IF NOT EXISTS historial_mantenimientos (
+id SERIAL PRIMARY KEY,
+estado TEXT,
+folio TEXT,
+eco_unidad TEXT,
+unidad TEXT,
+tipo_mantenimiento TEXT,
+reporte_falla TEXT,
+fecha_ingreso_taller TEXT,
+costo NUMERIC,
+orden DOUBLE PRECISION NOT NULL DEFAULT 0,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS evidencias JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS reportado_por TEXT;`);
 // ---- Historial de mantenimientos: columnas nuevas ----
 await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS detalle_servicio TEXT;`);
 await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS evidencia_reparacion JSONB NOT NULL DEFAULT '[]'::jsonb;`);
@@ -610,23 +628,6 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 
-await p.query(`
-CREATE TABLE IF NOT EXISTS historial_mantenimientos (
-id SERIAL PRIMARY KEY,
-estado TEXT,
-folio TEXT,
-eco_unidad TEXT,
-unidad TEXT,
-tipo_mantenimiento TEXT,
-reporte_falla TEXT,
-fecha_ingreso_taller TEXT,
-costo NUMERIC,
-orden DOUBLE PRECISION NOT NULL DEFAULT 0,
-updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-`);
-await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS evidencias JSONB NOT NULL DEFAULT '[]'::jsonb;`);
-await p.query(`ALTER TABLE historial_mantenimientos ADD COLUMN IF NOT EXISTS reportado_por TEXT;`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS revision_semanal_comentarios (

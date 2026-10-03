@@ -116,6 +116,19 @@ async function crearEsquema() {
     );
   `);
 
+  // Configuración de la semana SOLO para el Calendario de viajes (no afecta Asistencia, Nómina ni otras páginas).
+  // dia_inicio / dia_fin: 0 = domingo … 6 = sábado.
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS viajes_calendario_config (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      dia_inicio INTEGER NOT NULL DEFAULT 1,
+      dia_fin INTEGER NOT NULL DEFAULT 0,
+      actualizado_por TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      CHECK (id = 1)
+    );
+  `);
+
   // Carga única de la Semana 40 (PDF) al calendario de viajes. No interrumpe el esquema si falla.
   await aplicarSeedViajesSemana40();
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import CampoMoneda from "@/components/CampoMoneda";
 import { exportarExcel } from "@/lib/exportExcel";
-import { ESTADOS_MX, ahoraMx, lunesDe, sumarDiasIso } from "@/lib/asistenciaData";
+import { ESTADOS_MX, ahoraMx, sumarDiasIso } from "@/lib/asistenciaData";
 import { moneda } from "@/lib/nominaCalculo";
 import { CAMPOS_VIAJE, GASTOS_VIAJE, GRUPOS_VIAJE, OPCIONES_TIPO_SERVICIO, Viaje, calcularEstatusViaje, esViajeLocal, etiquetaViaje } from "@/lib/viajesData";
 
@@ -25,6 +25,10 @@ const etiquetaDia = (iso: string) => `${MESES[Number(iso.slice(5, 7)) - 1]} ${Nu
 const nombreDia = (iso: string) => DIAS[new Date(iso + "T00:00:00Z").getUTCDay()];
 const diasEntre = (a: string, b: string) => Math.round((new Date(b + "T00:00:00Z").getTime() - new Date(a + "T00:00:00Z").getTime()) / 86400000);
 const MAX_DIAS = 62;
+// Semana configurable SOLO para esta página (0 = domingo … 6 = sábado).
+const diaSemana = (iso: string) => new Date(iso + "T00:00:00Z").getUTCDay();
+const largoSemana = (ini: number, fin: number) => ((fin - ini + 7) % 7) + 1;
+const inicioSemana = (iso: string, ini: number) => sumarDiasIso(iso, -((diaSemana(iso) - ini + 7) % 7));
 const ANCHO_DIA = 150; // ancho fijo de cada columna de día (las etiquetas no lo modifican)
 const ANCHO_UNIDAD = 190;
 const inputCls = "w-full border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13.5px] bg-white";
@@ -33,8 +37,49 @@ const labelCls = "block text-[12px] font-medium text-[var(--text)] mb-1";
 
 export default function CalendarioViajesPage() {
   const hoy = ahoraMx().fecha;
-  const [desde, setDesde] = useState(lunesDe(hoy));
-  const [hasta, setHasta] = useState(sumarDiasIso(lunesDe(hoy), 6));
+  const [semanaCfg, setSemanaCfg] = useState({ dia_inicio: 1, dia_fin: 0 });
+  const [modo, setModo] = useState<"semana" | "rango">("semana");
+  const [desde, setDesde] = useState(inicioSemana(hoy, 1));
+  const [hasta, setHasta] = useState(sumarDiasIso(inicioSemana(hoy, 1), 6));
+  const [configAbierta, setConfigAbierta] = useState(false);
+  const [cfgTmp, setCfgTmp] = useState({ dia_inicio: 1, dia_fin: 0 });
+  const [guardandoCfg, setGuardandoCfg] = useState(false);
+
+  // Coloca el rango en la semana (según la configuración) que contiene la fecha dada.
+  const aplicarSemana = useCallback((fecha: string, cfg: { dia_inicio: number; dia_fin: number }) => {
+    const ini = inicioSemana(fecha, cfg.dia_inicio);
+    setDesde(ini);
+    setHasta(sumarDiasIso(ini, largoSemana(cfg.dia_inicio, cfg.dia_fin) - 1));
+  }, []);
+
+  useEffect(() => {
+    pedir<{ dia_inicio: number; dia_fin: number }>("/api/viajes-calendario/config")
+      .then((c) => {
+        const cfg = { dia_inicio: c.dia_inicio, dia_fin: c.dia_fin };
+        setSemanaCfg(cfg);
+        aplicarSemana(hoy, cfg);
+      })
+      .catch(() => {});
+  }, [hoy, aplicarSemana]);
+
+  const cambiarModo = (m: "semana" | "rango") => {
+    setModo(m);
+    if (m === "semana") aplicarSemana(desde, semanaCfg);
+  };
+
+  const guardarConfig = async () => {
+    setGuardandoCfg(true);
+    try {
+      await pedir("/api/viajes-calendario/config", { method: "PUT", body: JSON.stringify(cfgTmp) });
+      setSemanaCfg(cfgTmp);
+      if (modo === "semana") aplicarSemana(desde, cfgTmp);
+      setConfigAbierta(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo guardar.");
+    } finally {
+      setGuardandoCfg(false);
+    }
+  };
   const [unidades, setUnidades] = useState<Unidad[]>([]);
   const [viajes, setViajes] = useState<Viaje[]>([]);
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -85,13 +130,21 @@ export default function CalendarioViajesPage() {
     setHasta(v);
   };
   const mover = (sentido: 1 | -1) => {
+    if (modo === "semana") {
+      aplicarSemana(sumarDiasIso(desde, sentido * 7), semanaCfg);
+      return;
+    }
     const n = dias.length;
     setDesde(sumarDiasIso(desde, sentido * n));
     setHasta(sumarDiasIso(ultimo, sentido * n));
   };
   const irHoy = () => {
+    if (modo === "semana") {
+      aplicarSemana(hoy, semanaCfg);
+      return;
+    }
     const n = dias.length;
-    const ini = n === 7 ? lunesDe(hoy) : hoy;
+    const ini = hoy;
     setDesde(ini);
     setHasta(sumarDiasIso(ini, n - 1));
   };
@@ -229,6 +282,33 @@ export default function CalendarioViajesPage() {
           backLabel="Control de Viajes"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="1" y="6" width="14" height="10" rx="1" /><path d="M15 9h4l3 3v4h-7" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></svg>}
         />
+        {configAbierta && (
+          <div className="fixed inset-0 bg-[rgba(22,33,92,0.5)] flex items-center justify-center p-4 z-50" onClick={() => setConfigAbierta(false)}>
+            <div className="bg-white rounded-xl w-full max-w-[380px] shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-[15px] font-bold text-[var(--navy)] m-0 mb-1">Configurar semana</h3>
+              <p className="text-[12px] text-[var(--gray-500)] m-0 mb-4">Aplica solo al Calendario de viajes.</p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <label className="block">
+                  <span className={labelCls}>Inicia el</span>
+                  <select value={cfgTmp.dia_inicio} onChange={(e) => setCfgTmp({ ...cfgTmp, dia_inicio: Number(e.target.value) })} className={inputCls}>
+                    {DIAS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className={labelCls}>Termina el</span>
+                  <select value={cfgTmp.dia_fin} onChange={(e) => setCfgTmp({ ...cfgTmp, dia_fin: Number(e.target.value) })} className={inputCls}>
+                    {DIAS.map((d, i) => <option key={d} value={i}>{d}</option>)}
+                  </select>
+                </label>
+              </div>
+              <p className="text-[12px] text-[var(--gray-500)] m-0 mb-4">La semana mostrará {largoSemana(cfgTmp.dia_inicio, cfgTmp.dia_fin)} día(s).</p>
+              <div className="flex justify-end gap-2">
+                <button type="button" className="btn btn-secundario py-1.5" onClick={() => setConfigAbierta(false)}>Cancelar</button>
+                <button type="button" className="btn btn-primario py-1.5" disabled={guardandoCfg} onClick={guardarConfig}>{guardandoCfg ? "Guardando…" : "Guardar"}</button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="bg-white border border-[var(--gray-200)] rounded-lg mb-8">
           <div className="flex flex-wrap items-center gap-2.5 p-3 border-b border-[var(--gray-200)]">
             <div className="flex items-center gap-1">
@@ -236,6 +316,17 @@ export default function CalendarioViajesPage() {
               <button type="button" className="btn btn-secundario py-1.5" onClick={irHoy}>Hoy</button>
               <button type="button" aria-label="Rango siguiente" className="btn btn-secundario px-2.5 py-1.5" onClick={() => mover(1)}>›</button>
             </div>
+            <div className="flex items-center rounded-md border border-[var(--gray-300)] overflow-hidden text-[12.5px]">
+              {(["semana", "rango"] as const).map((m) => (
+                <button key={m} type="button" onClick={() => cambiarModo(m)} className={`px-3 py-1.5 font-medium ${modo === m ? "bg-[var(--navy)] text-white" : "bg-white text-[var(--navy)]"}`}>
+                  {m === "semana" ? "Semana" : "Rango"}
+                </button>
+              ))}
+            </div>
+            <button type="button" title="Configurar semana" aria-label="Configurar semana" onClick={() => { setCfgTmp(semanaCfg); setConfigAbierta(true); }} className="btn btn-secundario px-2.5 py-1.5">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><circle cx="12" cy="16" r="2" /></svg>
+            </button>
+            {modo === "rango" && (<>
             <label className="flex items-center gap-1.5 text-[12.5px] text-[var(--gray-500)]">
               Desde
               <input type="date" value={desde} onChange={(e) => cambiarDesde(e.target.value)} className={barraCls} />
@@ -244,7 +335,11 @@ export default function CalendarioViajesPage() {
               Hasta
               <input type="date" value={ultimo} min={desde} max={sumarDiasIso(desde, MAX_DIAS - 1)} onChange={(e) => cambiarHasta(e.target.value)} className={barraCls} />
             </label>
-            <p className="m-0 text-[13px] font-medium text-[var(--navy)]">{etiquetaDia(desde)} – {etiquetaDia(ultimo)} {ultimo.slice(0, 4)} · {dias.length} día(s)</p>
+            </>)}
+            <p className="m-0 text-[13px] font-medium text-[var(--navy)]">
+              {modo === "semana" && <span className="text-[var(--gray-500)] font-normal">{nombreDia(desde)} a {nombreDia(ultimo)} · </span>}
+              {etiquetaDia(desde)} – {etiquetaDia(ultimo)} {ultimo.slice(0, 4)} · {dias.length} día(s)
+            </p>
             <div className="flex-1" />
             <input type="search" placeholder="Buscar ECO, unidad o placas" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className={`${barraCls} w-[220px]`} />
             <button type="button" className="btn btn-secundario py-1.5" onClick={exportar} disabled={!viajes.length}>Exportar Excel</button>

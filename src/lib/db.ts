@@ -836,6 +836,22 @@ hashSupervisor,
 await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS num_proveedores INTEGER;`);
 await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS total_general NUMERIC;`);
 await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS productos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
+// Flujo de autorización: datos de la ruta (combustible, viáticos, justificación…), solicitante y autorización.
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS datos JSONB NOT NULL DEFAULT '{}'::jsonb;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS solicitado_por TEXT;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS autorizado_por TEXT;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS autorizado_en TIMESTAMPTZ;`);
+// Catálogo de proveedores (alta desde la captura de la OC).
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS maps_url TEXT;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS tiempo_traslado TEXT;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS a_domicilio BOOLEAN NOT NULL DEFAULT false;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS catalogo TEXT;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS costos TEXT;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS pagos_saldos TEXT;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS creditos TEXT;`);
+await p.query(`ALTER TABLE proveedores ADD COLUMN IF NOT EXISTS foto_mapa TEXT;`);
+// Roles (además del sysadmin) que pueden autorizar órdenes de compra.
+await p.query(`CREATE TABLE IF NOT EXISTS compras_autorizadores (rol TEXT PRIMARY KEY);`);
 
 await p.query(`
 CREATE TABLE IF NOT EXISTS productos_orden_compra (

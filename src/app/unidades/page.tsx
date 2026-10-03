@@ -212,9 +212,9 @@ async function leerJson(res: Response) {
   return data;
 }
 
-async function obtenerUnidades(): Promise<{ registros: RegistroUnidad[]; conImagen: string[] }> {
+async function obtenerUnidades(): Promise<{ registros: RegistroUnidad[]; conImagen: string[]; noDisponibles: string[] }> {
   const data = await leerJson(await fetch("/api/unidades/list", { cache: "no-store" }));
-  return { registros: data.registros || [], conImagen: data.conImagen || [] };
+  return { registros: data.registros || [], conImagen: data.conImagen || [], noDisponibles: data.noDisponibles || [] };
 }
 
 async function obtenerImagen(eco: string): Promise<string | null> {
@@ -455,6 +455,17 @@ export default function UnidadesPage() {
   const [aviso, setAviso] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [seleccion, setSeleccion] = useState<string | null>(null); // ECO seleccionado
+  const [noDisponibles, setNoDisponibles] = useState<Set<string>>(new Set());
+  const [cambiandoDisp, setCambiandoDisp] = useState(false);
+  // Si se llegó desde el Calendario de viajes (?eco=X&desde=calendario): abre esa unidad y muestra el regreso.
+  const ecoInicial = useRef<string | null>(null);
+  const [desdeCalendario, setDesdeCalendario] = useState(false);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    ecoInicial.current = q.get("eco");
+    setDesdeCalendario(q.get("desde") === "calendario");
+    if (ecoInicial.current) setSeleccion(ecoInicial.current);
+  }, []);
 
   // Cachés por ECO (undefined = aún no se consulta)
   const [imagenes, setImagenes] = useState<Record<string, string | null>>({});
@@ -498,9 +509,10 @@ export default function UnidadesPage() {
   const [histConsulta, setHistConsulta] = useState<{ eco: string; desde: string; hasta: string } | null>(null);
 
   // ---------- Carga de unidades ----------
-  const aplicarLista = useCallback((datos: { registros: RegistroUnidad[]; conImagen: string[] }) => {
+  const aplicarLista = useCallback((datos: { registros: RegistroUnidad[]; conImagen: string[]; noDisponibles: string[] }) => {
     setRegistros(datos.registros);
     setConImagen(new Set(datos.conImagen));
+    setNoDisponibles(new Set(datos.noDisponibles));
     setSeleccion((prev) => (prev && datos.registros.some((r) => r["ECO"] === prev) ? prev : datos.registros[0]?.["ECO"] ?? null));
   }, []);
 
@@ -555,6 +567,26 @@ export default function UnidadesPage() {
     const t = setTimeout(() => setAviso(""), 3500);
     return () => clearTimeout(t);
   }, [aviso]);
+
+  const cambiarDisponible = async (eco: string, disponible: boolean) => {
+    if (!eco) return;
+    setCambiandoDisp(true);
+    try {
+      const res = await fetch("/api/unidades/disponible", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ eco, disponible }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo actualizar.");
+      setNoDisponibles((prev) => {
+        const n = new Set(prev);
+        if (disponible) n.delete(eco);
+        else n.add(eco);
+        return n;
+      });
+    } catch (e) {
+      setMensaje(e instanceof Error ? e.message : "No se pudo actualizar la disponibilidad.");
+    } finally {
+      setCambiandoDisp(false);
+    }
+  };
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -1017,6 +1049,14 @@ export default function UnidadesPage() {
           backHref="/"
           backLabel="Menú principal"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
+          extra={
+            desdeCalendario ? (
+              <Link href="/control-viajes/calendario" className="text-[13px] sm:text-[13.5px] font-medium text-[var(--blue)] underline underline-offset-[3px] hover:text-[var(--navy)] flex items-center gap-1.5">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+                Calendario de viajes
+              </Link>
+            ) : undefined
+          }
         />
 
         {mensaje && <p className="text-[12.5px] text-[var(--red)] mb-3">{mensaje}</p>}
@@ -1128,6 +1168,18 @@ export default function UnidadesPage() {
                       {ecoActual}
                     </span>
                     <span className="hidden sm:block text-[13px] text-[var(--gray-400)]">{actual["Unidad"] || ""}</span>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={!noDisponibles.has(ecoActual)}
+                      disabled={soloConsulta || cambiandoDisp}
+                      onClick={() => cambiarDisponible(ecoActual, noDisponibles.has(ecoActual))}
+                      title={soloConsulta ? "Solo consulta" : "Cambiar disponibilidad"}
+                      className={`inline-flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-[12px] font-bold text-white transition-colors disabled:opacity-70 ${noDisponibles.has(ecoActual) ? "bg-[var(--red)]" : "bg-[var(--green)]"}`}
+                    >
+                      <span className="w-5 h-5 rounded-full bg-white shadow" />
+                      {noDisponibles.has(ecoActual) ? "No disponible" : "Disponible"}
+                    </button>
                   </div>
                   <div className="flex flex-col items-end gap-2">
                     <span className="text-[11.5px] text-[var(--text)] text-right">

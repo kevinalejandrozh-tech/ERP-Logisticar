@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import CampoMoneda from "@/components/CampoMoneda";
 import { exportarExcel } from "@/lib/exportExcel";
@@ -7,7 +8,14 @@ import { ESTADOS_MX, ahoraMx, sumarDiasIso } from "@/lib/asistenciaData";
 import { moneda } from "@/lib/nominaCalculo";
 import { CAMPOS_VIAJE, GASTOS_VIAJE, GRUPOS_VIAJE, OPCIONES_TIPO_SERVICIO, Viaje, calcularEstatusViaje, esViajeLocal, etiquetaViaje } from "@/lib/viajesData";
 
-type Unidad = { eco: string; unidad: string | null; placas: string | null };
+type Unidad = { eco: string; unidad: string | null; placas: string | null; capacidad: string | null; disponible: boolean };
+type Conciliacion = {
+  totalImportados: number;
+  ecosFaltantes: { eco: string; viajes: number; sugerencias: string[] }[];
+  operadoresFaltantes: { nombre: string; viajes: number; sugerencias: { id: number; nombre: string; puntaje: number }[] }[];
+  ecos: string[];
+  personas: { id: number; nombre: string }[];
+};
 type Persona = { id: number; nombre: string; puesto: string | null };
 type Ruta = { nombre: string; estado_destino: string | null; bono: number; bonos_unidad: Record<string, number> };
 type Edicion = { id: number | null; eco: string; fecha: string; datos: Record<string, string>; operador_id: number | null; ayudante_id: number | null };
@@ -29,6 +37,13 @@ const MAX_DIAS = 62;
 const diaSemana = (iso: string) => new Date(iso + "T00:00:00Z").getUTCDay();
 const largoSemana = (ini: number, fin: number) => ((fin - ini + 7) % 7) + 1;
 const inicioSemana = (iso: string, ini: number) => sumarDiasIso(iso, -((diaSemana(iso) - ini + 7) % 7));
+// Número de semana: referencia fija — la semana (según la configuración) que contiene el 3 de octubre de 2026 es la 40.
+const FECHA_REF = "2026-10-03";
+const SEMANA_REF = 40;
+const numeroSemana = (iso: string, ini: number) => {
+  const k = Math.floor(diasEntre(inicioSemana(FECHA_REF, ini), inicioSemana(iso, ini)) / 7);
+  return ((((SEMANA_REF - 1 + k) % 52) + 52) % 52) + 1;
+};
 const ANCHO_DIA = 150; // ancho fijo de cada columna de día (las etiquetas no lo modifican)
 const ANCHO_UNIDAD = 190;
 const inputCls = "w-full border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13.5px] bg-white";
@@ -87,6 +102,14 @@ export default function CalendarioViajesPage() {
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [filtroAsignacion, setFiltroAsignacion] = useState<"todas" | "con" | "sin">("todas");
+  const [ecosElegidos, setEcosElegidos] = useState<string[]>([]);
+  const [selectorEcosAbierto, setSelectorEcosAbierto] = useState(false);
+  const [conciliacion, setConciliacion] = useState<Conciliacion | null>(null);
+  const [conciliarAbierto, setConciliarAbierto] = useState(false);
+  const [mapaEcos, setMapaEcos] = useState<Record<string, string>>({});
+  const [mapaOperadores, setMapaOperadores] = useState<Record<string, string>>({});
+  const [aplicando, setAplicando] = useState(false);
   const [edicion, setEdicion] = useState<Edicion | null>(null);
   const [gastoAbierto, setGastoAbierto] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -159,10 +182,53 @@ export default function CalendarioViajesPage() {
     return m;
   }, [viajes]);
 
+  const conViajes = useMemo(() => new Set(viajes.map((v) => v.eco)), [viajes]);
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
-    return q ? unidades.filter((u) => `${u.eco} ${u.unidad || ""} ${u.placas || ""}`.toLowerCase().includes(q)) : unidades;
-  }, [unidades, busqueda]);
+    return unidades.filter((u) => {
+      if (q && !`${u.eco} ${u.unidad || ""} ${u.placas || ""} ${u.capacidad || ""}`.toLowerCase().includes(q)) return false;
+      if (filtroAsignacion === "con" && !conViajes.has(u.eco)) return false;
+      if (filtroAsignacion === "sin" && conViajes.has(u.eco)) return false;
+      if (ecosElegidos.length && !ecosElegidos.includes(u.eco)) return false;
+      return true;
+    });
+  }, [unidades, busqueda, filtroAsignacion, conViajes, ecosElegidos]);
+
+  // Conciliación de la importación de la Semana 40 (ECO y operadores que no coincidieron).
+  const cargarConciliacion = useCallback(async () => {
+    try {
+      const r = await pedir<Conciliacion>("/api/viajes-calendario/importacion");
+      setConciliacion(r);
+      setMapaEcos(Object.fromEntries(r.ecosFaltantes.map((x) => [x.eco, x.sugerencias[0] || ""])));
+      setMapaOperadores(Object.fromEntries(r.operadoresFaltantes.map((x) => [x.nombre, x.sugerencias[0] ? String(x.sugerencias[0].id) : ""])));
+    } catch {
+      setConciliacion(null);
+    }
+  }, []);
+  useEffect(() => {
+    cargarConciliacion();
+  }, [cargarConciliacion]);
+  const pendientesImportacion = conciliacion ? conciliacion.ecosFaltantes.length + conciliacion.operadoresFaltantes.length : 0;
+  const aplicarConciliacion = async () => {
+    setAplicando(true);
+    try {
+      const r = await pedir<{ actualizados: number }>("/api/viajes-calendario/importacion", {
+        method: "POST",
+        body: JSON.stringify({
+          ecos: Object.fromEntries(Object.entries(mapaEcos).filter(([, v]) => v)),
+          operadores: Object.fromEntries(Object.entries(mapaOperadores).filter(([, v]) => v).map(([k, v]) => [k, Number(v)])),
+        }),
+      });
+      alert(`Listo: ${r.actualizados} viaje(s) actualizados.`);
+      setConciliarAbierto(false);
+      await cargarConciliacion();
+      await cargar(desde, ultimo);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo aplicar.");
+    } finally {
+      setAplicando(false);
+    }
+  };
 
   const nuevo = (eco: string, fecha: string) => {
     setGastoAbierto(null);
@@ -282,6 +348,51 @@ export default function CalendarioViajesPage() {
           backLabel="Control de Viajes"
           icono={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><rect x="1" y="6" width="14" height="10" rx="1" /><path d="M15 9h4l3 3v4h-7" /><circle cx="6" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></svg>}
         />
+        {conciliarAbierto && conciliacion && (
+          <div className="fixed inset-0 bg-[rgba(22,33,92,0.5)] flex items-center justify-center p-4 z-50" onClick={() => setConciliarAbierto(false)}>
+            <div className="bg-white rounded-xl w-full max-w-[640px] max-h-[85vh] overflow-y-auto shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-[15px] font-bold text-[var(--navy)] m-0 mb-1">Relacionar importación Semana 40</h3>
+              <p className="text-[12px] text-[var(--gray-500)] m-0 mb-4">Se propone la relación más parecida. Cámbiala si no es correcta o déjala en blanco para no aplicarla.</p>
+              {conciliacion.ecosFaltantes.length > 0 && (
+                <>
+                  <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-500)] m-0 mb-2">ECO del PDF → Unidad registrada</p>
+                  <div className="grid gap-2 mb-5">
+                    {conciliacion.ecosFaltantes.map((x) => (
+                      <div key={x.eco} className="grid grid-cols-[1fr_1.4fr] items-center gap-3">
+                        <span className="text-[13px] text-[var(--navy)] font-medium">{x.eco} <span className="text-[var(--gray-500)] font-normal">· {x.viajes} viaje(s)</span></span>
+                        <select value={mapaEcos[x.eco] || ""} onChange={(e) => setMapaEcos({ ...mapaEcos, [x.eco]: e.target.value })} className={inputCls}>
+                          <option value="">Sin relacionar</option>
+                          {conciliacion.ecos.map((e) => <option key={e} value={e}>{e}{x.sugerencias.includes(e) ? " (sugerida)" : ""}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              {conciliacion.operadoresFaltantes.length > 0 && (
+                <>
+                  <p className="text-[12px] font-bold uppercase tracking-wide text-[var(--gray-500)] m-0 mb-2">Operador del PDF → Expediente</p>
+                  <div className="grid gap-2 mb-5">
+                    {conciliacion.operadoresFaltantes.map((x) => (
+                      <div key={x.nombre} className="grid grid-cols-[1fr_1.4fr] items-center gap-3">
+                        <span className="text-[13px] text-[var(--navy)] font-medium">{x.nombre} <span className="text-[var(--gray-500)] font-normal">· {x.viajes}</span></span>
+                        <select value={mapaOperadores[x.nombre] || ""} onChange={(e) => setMapaOperadores({ ...mapaOperadores, [x.nombre]: e.target.value })} className={inputCls}>
+                          <option value="">Sin relacionar</option>
+                          {x.sugerencias.map((p) => <option key={`s${p.id}`} value={p.id}>★ {p.nombre}</option>)}
+                          {conciliacion.personas.filter((p) => !x.sugerencias.some((q) => q.id === p.id)).map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+              <div className="flex justify-end gap-2">
+                <button type="button" className="btn btn-secundario py-1.5" onClick={() => setConciliarAbierto(false)}>Cancelar</button>
+                <button type="button" className="btn btn-primario py-1.5" disabled={aplicando} onClick={aplicarConciliacion}>{aplicando ? "Aplicando…" : "Aplicar relaciones"}</button>
+              </div>
+            </div>
+          </div>
+        )}
         {configAbierta && (
           <div className="fixed inset-0 bg-[rgba(22,33,92,0.5)] flex items-center justify-center p-4 z-50" onClick={() => setConfigAbierta(false)}>
             <div className="bg-white rounded-xl w-full max-w-[380px] shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
@@ -336,15 +447,60 @@ export default function CalendarioViajesPage() {
               <input type="date" value={ultimo} min={desde} max={sumarDiasIso(desde, MAX_DIAS - 1)} onChange={(e) => cambiarHasta(e.target.value)} className={barraCls} />
             </label>
             </>)}
+            <span className="rounded-md bg-[var(--navy)] text-white text-[12.5px] font-bold px-2.5 py-1">
+              {(() => {
+                const a = numeroSemana(desde, semanaCfg.dia_inicio);
+                const b = numeroSemana(ultimo, semanaCfg.dia_inicio);
+                return a === b ? `Semana ${a}` : `Semanas ${a}–${b}`;
+              })()}
+            </span>
             <p className="m-0 text-[13px] font-medium text-[var(--navy)]">
               {modo === "semana" && <span className="text-[var(--gray-500)] font-normal">{nombreDia(desde)} a {nombreDia(ultimo)} · </span>}
               {etiquetaDia(desde)} – {etiquetaDia(ultimo)} {ultimo.slice(0, 4)} · {dias.length} día(s)
             </p>
             <div className="flex-1" />
-            <input type="search" placeholder="Buscar ECO, unidad o placas" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className={`${barraCls} w-[220px]`} />
+            <select value={filtroAsignacion} onChange={(e) => setFiltroAsignacion(e.target.value as "todas" | "con" | "sin")} className={barraCls} title="Filtrar por viajes en el periodo visible">
+              <option value="todas">Todas las unidades</option>
+              <option value="con">Con viajes asignados</option>
+              <option value="sin">Sin viajes asignados</option>
+            </select>
+            <div className="relative">
+              <button type="button" className={`btn btn-secundario py-1.5 ${ecosElegidos.length ? "border-[var(--blue)]! text-[var(--blue)]!" : ""}`} onClick={() => setSelectorEcosAbierto((v) => !v)}>
+                {ecosElegidos.length ? `ECO (${ecosElegidos.length})` : "Elegir ECO"}
+              </button>
+              {selectorEcosAbierto && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setSelectorEcosAbierto(false)} />
+                  <div className="absolute right-0 top-10 z-50 w-[220px] bg-white border border-[var(--gray-200)] rounded-lg shadow-lg p-2">
+                    <div className="flex justify-between px-1 pb-2 mb-1 border-b border-[var(--gray-200)] text-[12px]">
+                      <button type="button" className="text-[var(--blue)] font-medium" onClick={() => setEcosElegidos(unidades.map((u) => u.eco))}>Todas</button>
+                      <button type="button" className="text-[var(--gray-500)] font-medium" onClick={() => setEcosElegidos([])}>Limpiar</button>
+                    </div>
+                    <div className="max-h-[280px] overflow-y-auto">
+                      {unidades.map((u) => (
+                        <label key={u.eco} className="flex items-center gap-2 px-1 py-1 text-[12.5px] cursor-pointer hover:bg-[var(--gray-100)] rounded">
+                          <input type="checkbox" checked={ecosElegidos.includes(u.eco)} onChange={(e) => setEcosElegidos((prev) => (e.target.checked ? [...prev, u.eco] : prev.filter((x) => x !== u.eco)))} />
+                          <span className="font-medium text-[var(--navy)]">{u.eco}</span>
+                          {u.capacidad && <span className="text-[var(--gray-500)] truncate">{u.capacidad}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+            <input type="search" placeholder="Buscar ECO, unidad o placas" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className={`${barraCls} w-[200px]`} />
             <button type="button" className="btn btn-secundario py-1.5" onClick={exportar} disabled={!viajes.length}>Exportar Excel</button>
           </div>
           {error && <p className="m-4 text-[13px] text-[var(--red)]">{error}</p>}
+          {pendientesImportacion > 0 && (
+            <div className="flex flex-wrap items-center gap-3 mx-3 mt-3 rounded-md border border-[#f4d08a] bg-[#fdf6e3] px-3 py-2 text-[12.5px] text-[#7a5200]">
+              <span>
+                Importación Semana 40: {conciliacion!.ecosFaltantes.length} ECO no existen en Unidades y {conciliacion!.operadoresFaltantes.length} operador(es) sin expediente. Esos viajes no se ven hasta relacionarlos.
+              </span>
+              <button type="button" className="btn btn-secundario py-1 text-[12.5px]!" onClick={() => setConciliarAbierto(true)}>Revisar y relacionar</button>
+            </div>
+          )}
           {cargando ? (
             <p className="p-6 text-[13px] text-[var(--gray-500)]">Cargando…</p>
           ) : (
@@ -368,13 +524,15 @@ export default function CalendarioViajesPage() {
                 </thead>
                 <tbody>
                   {visibles.map((u) => (
-                    <tr key={u.eco} className="group">
-                      <td className="sticky left-0 z-10 bg-white group-hover:bg-[var(--gray-50)] px-4 py-2 border-b border-r border-[var(--gray-200)] align-top">
-                        <p className="m-0 font-medium text-[var(--navy)]">{u.eco}</p>
-                        <p className="m-0 text-[11.5px] text-[var(--gray-500)] truncate">{[u.unidad, u.placas].filter(Boolean).join(" · ") || "—"}</p>
+                    <tr key={u.eco} className={`group ${u.disponible === false ? "opacity-60" : ""}`} title={u.disponible === false ? "Unidad no disponible" : undefined}>
+                      <td className={`sticky left-0 z-10 px-4 py-2 border-b border-r border-[var(--gray-200)] align-top ${u.disponible === false ? "bg-[#fbeceb]" : "bg-white group-hover:bg-[var(--gray-50)]"}`}>
+                        <Link href={`/unidades?eco=${encodeURIComponent(u.eco)}&desde=calendario`} className="block no-underline hover:underline" title="Ver unidad">
+                          <span className={`block font-medium ${u.disponible === false ? "text-[#b4443c]" : "text-[var(--navy)]"}`}>{u.eco}</span>
+                          <span className="block text-[11.5px] text-[var(--gray-500)] truncate">{u.capacidad || "—"}</span>
+                        </Link>
                       </td>
                       {dias.map((d) => (
-                        <td key={d} className={`px-1.5 py-1.5 border-b border-[var(--gray-200)] align-top overflow-hidden ${d === hoy ? "bg-[#f7f9ff]" : "bg-white group-hover:bg-[var(--gray-50)]"}`}>
+                        <td key={d} className={`px-1.5 py-1.5 border-b border-[var(--gray-200)] align-top overflow-hidden ${u.disponible === false ? "bg-[#fdf3f2]" : d === hoy ? "bg-[#f7f9ff]" : "bg-white group-hover:bg-[var(--gray-50)]"}`}>
                           <div className="grid gap-1 min-w-0">
                             {(porCelda.get(`${u.eco}|${d}`) || []).map((v) => {
                               const et = etiquetaViaje(v.datos);
@@ -398,7 +556,7 @@ export default function CalendarioViajesPage() {
                       ))}
                     </tr>
                   ))}
-                  {visibles.length === 0 && <tr><td colSpan={dias.length + 1} className="px-4 py-8 text-center text-[var(--gray-500)]">No hay unidades. Agrégalas en la sección Unidades.</td></tr>}
+                  {visibles.length === 0 && <tr><td colSpan={dias.length + 1} className="px-4 py-8 text-center text-[var(--gray-500)]">{unidades.length ? "Ninguna unidad coincide con los filtros." : "No hay unidades. Agrégalas en la sección Unidades."}</td></tr>}
                 </tbody>
               </table>
             </div>

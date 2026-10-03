@@ -66,7 +66,7 @@ export async function GET(req: NextRequest) {
     }
     await ensureAsistenciaSchema();
     const pool = getPool();
-    const unidades = await pool.query(`SELECT eco, datos->>'Unidad' AS unidad, datos->>'Placas' AS placas FROM unidades ORDER BY eco ASC`);
+    const unidades = await pool.query(`SELECT eco, datos->>'Unidad' AS unidad, datos->>'Placas' AS placas, datos->>'Ref. Capacidad' AS capacidad, disponible FROM unidades ORDER BY eco ASC`);
     const viajes = await pool.query(
       `SELECT id, eco, to_char(fecha, 'YYYY-MM-DD') AS fecha, datos, operador_id, ayudante_id FROM viajes_calendario WHERE fecha BETWEEN $1 AND $2 ORDER BY id`,
       [desde, hasta]

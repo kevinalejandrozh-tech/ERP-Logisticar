@@ -73,6 +73,8 @@ updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`ALTER TABLE unidades ADD COLUMN IF NOT EXISTS imagen TEXT;`);
+// Disponible / No disponible (botón en la vista de la unidad; se refleja en el Calendario de viajes).
+await p.query(`ALTER TABLE unidades ADD COLUMN IF NOT EXISTS disponible BOOLEAN NOT NULL DEFAULT true;`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS unidades_revisiones (
 id SERIAL PRIMARY KEY,

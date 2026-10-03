@@ -7,6 +7,7 @@ import { getPool } from "./db";
 // - Carta porte y algunos No. de embarque venían truncados en el PDF ("A-1", "###"): se omiten.
 // - Se aplica una sola vez (marcador en seeds_aplicados) y no duplica viajes ya capturados.
 const CLAVE_SEED = "viajes_semana_40_2026";
+export const REGISTRADO_POR_SEED = "Importación PDF Semana 40";
 
 type ViajeSeed = { eco: string; fecha: string; datos: Record<string, string> };
 
@@ -56,7 +57,7 @@ export const VIAJES_SEMANA_40: ViajeSeed[] = [
   {"eco": "L-71", "fecha": "2026-10-02", "datos": {"CARGA PLANEADA X CLIENTE": "2026-10-02T14:00", "CARGA PLANEADA X LOGISTICAR": "2026-10-02T13:00", "INICIO DE RUTA PROGRAMADO": "2026-10-02T16:30", "NOMBRE CUENTA": "TCL", "No EMBARQUE": "6657831", "ESTADO DESTINO": "ESTADO DE MÉXICO", "RUTA O DESTINO": "TULTITLAN / CITY CLUB", "N° DE CAJAS": "9", "TIPO MERCANCIA": "PALLETS", "TIROS": "1", "TIPO DE SERVICIO": "LOCAL", "TIPO": "TORTON", "ECO": "L-71", "OPERADOR": "DANIEL SÁNCHEZ ESTRADA", "HORARIO ARRIBO PATIO": "2026-10-02T12:00", "ARRIBO ALMACEN (CARGA)": "2026-10-02T14:15", "INICIO DE RUTA": "2026-10-02T17:25", "ESTATUS PATIO": "A Tiempo", "ESTATUS ALMACEN": "Tarde"}}
 ];
 
-function normalizar(s: string): string {
+export function normalizar(s: string): string {
   return s
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -76,6 +77,36 @@ function buscarPersona(nombre: string, personas: { id: number; n: string }[]): n
     return tokens.every((x) => t.has(x));
   });
   return parcial.length === 1 ? parcial[0].id : null;
+}
+
+// Asistencia "Viaje foráneo" para los viajes dados (no locales, con operador): misma regla que el guardado manual
+// del calendario — desde la fecha del viaje hasta el término del servicio, máx. 14 días; no pisa otros registros.
+export async function sincronizarAsistenciaViajes(c: PoolClient, ids: number[]) {
+  if (!ids.length) return;
+  await c.query(`DELETE FROM asistencia_registros WHERE viaje_id = ANY($1) AND origen = 'Viaje'`, [ids]);
+  await c.query(
+      `WITH dias AS (
+         SELECT v.id AS viaje_id, v.operador_id AS persona, d::date AS fecha, v.datos
+         FROM viajes_calendario v
+         CROSS JOIN LATERAL (
+           SELECT CASE WHEN substr(COALESCE(v.datos->>'TERMINO DE SERVICIO', v.datos->>'TERMINO ESTIMADO DE TERMINO DEL SERVICIO', ''), 1, 10) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+                       THEN substr(COALESCE(v.datos->>'TERMINO DE SERVICIO', v.datos->>'TERMINO ESTIMADO DE TERMINO DEL SERVICIO'), 1, 10)::date END AS fin
+         ) f
+         CROSS JOIN LATERAL generate_series(v.fecha, CASE WHEN f.fin IS NULL OR f.fin < v.fecha THEN v.fecha ELSE LEAST(f.fin, v.fecha + 13) END, interval '1 day') d
+         WHERE v.id = ANY($1) AND v.operador_id IS NOT NULL AND upper(COALESCE(v.datos->>'TIPO DE SERVICIO', '')) <> 'LOCAL'
+       ), ins AS (
+         INSERT INTO asistencia_registros (expediente_id, fecha, tipo, estado_destino, ruta, viaje_id, origen, notas, registrado_por)
+         SELECT persona, fecha, 'Viaje foráneo', datos->>'ESTADO DESTINO', datos->>'RUTA O DESTINO', viaje_id, 'Viaje',
+                CASE WHEN datos->>'NOMBRE CUENTA' IS NOT NULL THEN 'Cuenta: ' || (datos->>'NOMBRE CUENTA') END, 'Control de viajes'
+         FROM dias
+         ON CONFLICT (expediente_id, fecha) DO NOTHING
+         RETURNING expediente_id, fecha
+       )
+       INSERT INTO asistencia_diaria (expediente_id, fecha, presente)
+       SELECT expediente_id, fecha, true FROM ins
+       ON CONFLICT (expediente_id, fecha) DO UPDATE SET presente = true`,
+    [ids]
+  );
 }
 
 async function aplicar(c: PoolClient) {
@@ -107,7 +138,7 @@ async function aplicar(c: PoolClient) {
     const operadorId = datos.OPERADOR ? buscarPersona(datos.OPERADOR, personas) : null;
     if (datos.OPERADOR && !operadorId) sinOperador.add(datos.OPERADOR);
     const i = valores.length;
-    tuplas.push(`($${i + 1}, $${i + 2}::date, $${i + 3}::jsonb, $${i + 4}::int, 'Importación PDF Semana 40')`);
+    tuplas.push(`($${i + 1}, $${i + 2}::date, $${i + 3}::jsonb, $${i + 4}::int, '${REGISTRADO_POR_SEED}')`);
     valores.push(v.eco, v.fecha, JSON.stringify(datos), operadorId);
   }
 
@@ -123,30 +154,7 @@ async function aplicar(c: PoolClient) {
       `UPDATE viajes_calendario v SET datos = jsonb_set(v.datos, '{OPERADOR}', to_jsonb(e.nombre)) FROM expedientes e WHERE v.id = ANY($1) AND e.id = v.operador_id`,
       [insertados]
     );
-    // Asistencia "Viaje foráneo" para viajes no locales (misma regla que el guardado manual: hasta el término, máx. 14 días).
-    await c.query(
-      `WITH dias AS (
-         SELECT v.id AS viaje_id, v.operador_id AS persona, d::date AS fecha, v.datos
-         FROM viajes_calendario v
-         CROSS JOIN LATERAL (
-           SELECT CASE WHEN substr(COALESCE(v.datos->>'TERMINO DE SERVICIO', v.datos->>'TERMINO ESTIMADO DE TERMINO DEL SERVICIO', ''), 1, 10) ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
-                       THEN substr(COALESCE(v.datos->>'TERMINO DE SERVICIO', v.datos->>'TERMINO ESTIMADO DE TERMINO DEL SERVICIO'), 1, 10)::date END AS fin
-         ) f
-         CROSS JOIN LATERAL generate_series(v.fecha, CASE WHEN f.fin IS NULL OR f.fin < v.fecha THEN v.fecha ELSE LEAST(f.fin, v.fecha + 13) END, interval '1 day') d
-         WHERE v.id = ANY($1) AND v.operador_id IS NOT NULL AND upper(COALESCE(v.datos->>'TIPO DE SERVICIO', '')) <> 'LOCAL'
-       ), ins AS (
-         INSERT INTO asistencia_registros (expediente_id, fecha, tipo, estado_destino, ruta, viaje_id, origen, notas, registrado_por)
-         SELECT persona, fecha, 'Viaje foráneo', datos->>'ESTADO DESTINO', datos->>'RUTA O DESTINO', viaje_id, 'Viaje',
-                CASE WHEN datos->>'NOMBRE CUENTA' IS NOT NULL THEN 'Cuenta: ' || (datos->>'NOMBRE CUENTA') END, 'Control de viajes'
-         FROM dias
-         ON CONFLICT (expediente_id, fecha) DO NOTHING
-         RETURNING expediente_id, fecha
-       )
-       INSERT INTO asistencia_diaria (expediente_id, fecha, presente)
-       SELECT expediente_id, fecha, true FROM ins
-       ON CONFLICT (expediente_id, fecha) DO UPDATE SET presente = true`,
-      [insertados]
-    );
+    await sincronizarAsistenciaViajes(c, insertados);
   }
   const detalle = {
     insertados: insertados.length,

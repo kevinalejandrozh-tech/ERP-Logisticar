@@ -446,7 +446,7 @@ function IconoUnidad({ size = 120 }: { size?: number }) {
 export default function UnidadesPage() {
   const sesion = useSesion();
   const soloConsulta = sesion.rol === "supervisor_tms";
-  const esAdmin = sesion.rol === "sysadmin" || sesion.rol === "personal";
+  const esAdmin = !!sesion.rol && sesion.rol !== "supervisor_tms";
 
   const [registros, setRegistros] = useState<RegistroUnidad[]>([]);
   const [conImagen, setConImagen] = useState<Set<string>>(new Set());

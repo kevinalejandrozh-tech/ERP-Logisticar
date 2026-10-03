@@ -5,9 +5,10 @@ export type Rol = "sysadmin" | "supervisor_tms" | "personal" | (string & {});
 // secciones: permisos del rol al iniciar sesión (null = todas). Si falta (tokens anteriores), se usan los valores por defecto del rol.
 export type SesionPayload = { userId: number; nombre: string; correo: string; rol: Rol; secciones?: string[] | null };
 
-// Permisos operativos completos: sysadmin y personal (el personal NO puede gestionar usuarios ni contraseñas).
+// Permisos operativos completos: todos los roles excepto Supervisor TMS (único rol de solo lectura).
+// Incluye los roles creados por el sysadmin. Qué ve cada rol lo define su lista de secciones.
 export function tienePermisosAdmin(rol?: string | null): boolean {
-  return rol === "sysadmin" || rol === "personal";
+  return !!rol && rol !== "supervisor_tms";
 }
 
 export const COOKIE_SESION = "gl_sesion";

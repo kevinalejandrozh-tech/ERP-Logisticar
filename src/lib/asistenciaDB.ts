@@ -116,6 +116,22 @@ async function crearEsquema() {
     );
   `);
 
+  // Datos de ruta: origen/destino, km, tiempos estimados y catálogos asociados (ids de catalogos_ruta).
+  for (const col of [
+    "origen TEXT",
+    "destino TEXT",
+    "km NUMERIC",
+    "horas_ida NUMERIC",
+    "horas_regreso_vacio NUMERIC",
+    "horas_regreso_devolucion NUMERIC",
+    "casetas JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "resguardos JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "alimentos JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "gasolineras JSONB NOT NULL DEFAULT '[]'::jsonb",
+  ]) {
+    await p.query(`ALTER TABLE rutas ADD COLUMN IF NOT EXISTS ${col};`);
+  }
+
   // Configuración de la semana SOLO para el Calendario de viajes (no afecta Asistencia, Nómina ni otras páginas).
   // dia_inicio / dia_fin: 0 = domingo … 6 = sábado.
   await p.query(`

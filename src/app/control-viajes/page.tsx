@@ -31,6 +31,12 @@ export default function ControlViajesPage() {
               descripcion="Catálogo de rutas y bono por ruta según la unidad."
             />
             <MenuCard
+              href="/catalogos-ruta"
+              icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M4 6h16M4 12h16M4 18h10" /></svg>}
+              titulo="Catálogos de ruta"
+              descripcion="Resguardos, casetas, alimentos, gasolineras, mecánicos, contactos y documentos."
+            />
+            <MenuCard
               href="/control-viajes/gastos-totales"
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M3 3v18h18M8 17V9M13 17V5M18 17v-7" /></svg>}
               titulo="Gastos Totales de Viajes"

@@ -9,5 +9,5 @@ export async function GET(req: NextRequest) {
   if (!token) return NextResponse.json({ ok: false });
   const sesion = await verificarTokenSesion(token);
   if (!sesion) return NextResponse.json({ ok: false });
-  return NextResponse.json({ ok: true, nombre: sesion.nombre, correo: sesion.correo, rol: sesion.rol });
+  return NextResponse.json({ ok: true, nombre: sesion.nombre, correo: sesion.correo, rol: sesion.rol, secciones: sesion.secciones });
 }

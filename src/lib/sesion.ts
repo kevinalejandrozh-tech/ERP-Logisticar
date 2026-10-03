@@ -1,7 +1,8 @@
 import { SignJWT, jwtVerify } from "jose";
 
 export type Rol = "sysadmin" | "supervisor_tms" | "personal";
-export type SesionPayload = { userId: number; nombre: string; correo: string; rol: Rol };
+// secciones: permisos del rol al iniciar sesión (null = todas). Si falta (tokens anteriores), se usan los valores por defecto del rol.
+export type SesionPayload = { userId: number; nombre: string; correo: string; rol: Rol; secciones?: string[] | null };
 
 // Permisos operativos completos: sysadmin y personal (el personal NO puede gestionar usuarios ni contraseñas).
 export function tienePermisosAdmin(rol?: string | null): boolean {

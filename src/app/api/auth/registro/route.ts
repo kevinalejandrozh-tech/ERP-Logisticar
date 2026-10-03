@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     if (!correo || !String(correo).trim()) return NextResponse.json({ error: "Falta el correo." }, { status: 400 });
     if (!password || password.length < 8) return NextResponse.json({ error: "La contraseña debe tener al menos 8 caracteres." }, { status: 400 });
     if (password !== confirmarPassword) return NextResponse.json({ error: "Las contraseñas no coinciden." }, { status: 400 });
-    if (rol !== "sysadmin" && rol !== "supervisor_tms") return NextResponse.json({ error: "Rol inválido." }, { status: 400 });
+    if (rol !== "sysadmin" && rol !== "supervisor_tms" && rol !== "personal") return NextResponse.json({ error: "Rol inválido." }, { status: 400 });
 
     await ensureSchema();
     const pool = getPool();

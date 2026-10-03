@@ -121,11 +121,50 @@ function DatoContacto({ tipo, className = "" }: { tipo: "telefono" | "correo"; c
   );
 }
 
+// Junto al teléfono: botón de llamada directa e íconos de Facebook y Google Maps (enlaces editables por el sysadmin).
+function AccesosTelefono({ compacto = false }: { compacto?: boolean }) {
+  const { contenido, editando } = useSitio();
+  const tel = contenido.contacto.telefono.replace(/[^\d+]/g, "");
+  const icono = "w-7 h-7 rounded-md flex items-center justify-center text-white/90 hover:text-white hover:bg-white/15";
+  const iconoClaro = "w-9 h-9 rounded-md flex items-center justify-center text-[var(--navy)] hover:bg-[var(--gray-100)] border border-[var(--gray-200)]";
+  const cls = compacto ? iconoClaro : icono;
+  const enlace = (url: string, nombre: string, svg: React.ReactNode) =>
+    url ? (
+      <a href={editando ? undefined : url} onClick={(e) => editando && e.preventDefault()} target="_blank" rel="noopener noreferrer" aria-label={nombre} title={nombre} className={cls}>
+        {svg}
+      </a>
+    ) : null;
+  return (
+    <span className="flex items-center gap-1.5">
+      {tel && (
+        <a
+          href={editando ? undefined : `tel:${tel}`}
+          onClick={(e) => editando && e.preventDefault()}
+          className={compacto ? "btn btn-primario py-1.5 text-[13px]" : "rounded-full bg-white/15 hover:bg-white/25 text-white text-[11.5px] font-medium px-2.5 py-0.5"}
+          aria-label="Llamar ahora"
+        >
+          Llamar
+        </a>
+      )}
+      {enlace(
+        contenido.accesos.facebook,
+        "Facebook",
+        <svg width={compacto ? 18 : 16} height={compacto ? 18 : 16} viewBox="0 0 24 24" aria-hidden="true">{ICONOS_RED.facebook.path}</svg>
+      )}
+      {enlace(
+        contenido.accesos.maps,
+        "Ubicación en Google Maps",
+        <IconoUbicacion size={compacto ? 18 : 16} />
+      )}
+    </span>
+  );
+}
+
 function Marca({ claro = false }: { claro?: boolean }) {
   return (
     <span className="flex items-center gap-2.5">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo-icono.png" alt="" width={42} height={42} className="w-[42px] h-[42px] object-contain" draggable={false} />
+      <img src="/logo-icono.png" alt="" width={53} height={53} className="w-[53px] h-[53px] object-contain" draggable={false} />
       <span className="flex flex-col leading-none">
         <span className={`text-[10px] tracking-[0.22em] font-medium ${claro ? "text-[#a9c2ee]" : "text-[var(--red)]"}`}>TRANSPORTES</span>
         <span className={`text-[19px] font-bold tracking-[0.02em] mt-1 ${claro ? "text-white" : "text-[var(--navy)]"}`}>LOGISTICAR</span>
@@ -159,6 +198,7 @@ function Encabezado({ sesionActiva }: { sesionActiva: boolean }) {
             <span className="flex items-center gap-2">
               <IconoTelefono size={14} />
               <DatoContacto tipo="telefono" />
+              <AccesosTelefono />
             </span>
             <span className="flex items-center gap-2">
               <IconoCorreo size={14} />
@@ -201,7 +241,11 @@ function Encabezado({ sesionActiva }: { sesionActiva: boolean }) {
               <Texto ruta={["menu", s.clave]} />
             </a>
           ))}
-          <div className="pt-3">{enlaceSesion}</div>
+          <div className="pt-3 flex flex-wrap items-center gap-2">
+            <AccesosTelefono compacto />
+            <span className="flex-1" />
+            {enlaceSesion}
+          </div>
         </nav>
       )}
     </header>
@@ -765,8 +809,9 @@ export default function SitioWeb({ inicial }: { inicial: SitioContenido }) {
         {panel === "redes" && (
           <PanelRedes
             redes={contenido.redes}
+            accesos={contenido.accesos}
             onCerrar={() => setPanel(null)}
-            onAplicar={(redes) => setContenido((c) => ({ ...c, redes }))}
+            onAplicar={(redes, accesos) => setContenido((c) => ({ ...c, redes, accesos }))}
           />
         )}
         {panel === "suscriptores" && <PanelSuscriptores onCerrar={() => setPanel(null)} />}

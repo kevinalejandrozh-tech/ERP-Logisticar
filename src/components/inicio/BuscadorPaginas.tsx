@@ -2,18 +2,21 @@
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAGINAS_SISTEMA, coincideBusqueda } from "@/lib/paginas";
+import { rutaPermitida } from "@/lib/permisos";
 
 // Barra "Buscar...": filtra las tarjetas del inicio (vía onCambio) y sugiere páginas de todo el sistema.
 export default function BuscadorPaginas({
   valor,
   onCambio,
   rol,
+  secciones,
   className = "",
   onNavegar,
 }: {
   valor: string;
   onCambio: (v: string) => void;
   rol?: string;
+  secciones?: string[] | null;
   className?: string;
   onNavegar?: () => void;
 }) {
@@ -28,9 +31,10 @@ export default function BuscadorPaginas({
       if (p.ruta === "/") return false;
       if (rol === "supervisor_tms" && !p.supervisor) return false;
       if (p.ruta === "/admin/usuarios" && rol !== "sysadmin") return false;
+      if (rol && !rutaPermitida(p.ruta, rol, secciones)) return false;
       return coincideBusqueda(`${p.titulo} ${p.seccion} ${p.palabras || ""}`, valor);
     }).slice(0, 8);
-  }, [valor, rol]);
+  }, [valor, rol, secciones]);
 
   const ir = (ruta: string) => {
     setEnfocado(false);

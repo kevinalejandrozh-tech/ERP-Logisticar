@@ -114,7 +114,7 @@ export default function PlaneacionCargasPage() {
     <div className="min-h-screen bg-[#eef1f6]">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14 pt-6 md:pt-10">
         <PageHeader
-          titulo="Planeación y Programa de Cargas"
+          titulo="Monitoreo de Rutas"
           subtitulo="Tablero principal de programación de cargas: agrega columnas y filas, y edita directamente."
           backHref="/"
           backLabel="Menú principal"

@@ -119,24 +119,25 @@ export function diaCorto(iso: string): string {
   return DIAS_CORTOS[(f.getUTCDay() + 6) % 7];
 }
 
-// ---------------- Semana de nómina: sábado a viernes (se corta y se paga el viernes) ----------------
+// ---------------- Semana de nómina: lunes a domingo (semana ISO) ----------------
+// Semana 1 de 2026: lunes 29-dic-2025 a domingo 04-ene-2026.
 
-// Sábado de inicio de la semana de nómina que contiene la fecha (el mismo día si ya es sábado).
+// Sábado anterior o igual a la fecha (se conserva por compatibilidad; ya no define la semana de nómina).
 export function sabadoInicio(iso: string): string {
   const f = new Date(iso.slice(0, 10) + "T00:00:00Z");
   const desdeSabado = (f.getUTCDay() + 1) % 7; // sáb=0, dom=1, lun=2 … vie=6
   return sumarDiasIso(iso, -desdeSabado);
 }
 
-// Número de semana de nómina = semana ISO del sábado de inicio (semana 1 de 2026: sáb 03-ene a vie 09-ene).
+// Semana de nómina que contiene la fecha: lunes a domingo, número = semana ISO.
 export function semanaNomina(iso: string): { anio: number; semana: number; inicio: string; fin: string } {
-  const inicio = sabadoInicio(iso);
+  const inicio = lunesDe(iso);
   return { ...semanaIso(inicio), inicio, fin: sumarDiasIso(inicio, 6) };
 }
 
-// Sábado de inicio de la semana de nómina N (el sábado de la semana ISO N; termina el viernes siguiente).
+// Lunes de inicio de la semana de nómina N (termina el domingo siguiente).
 export function inicioSemanaNomina(anio: number, semana: number): string {
-  return sumarDiasIso(lunesSemanaIso(anio, semana), 5);
+  return lunesSemanaIso(anio, semana);
 }
 
 // ---------------- Fecha-hora de entrada/salida (turnos que cruzan días) ----------------

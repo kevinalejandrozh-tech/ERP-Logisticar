@@ -141,8 +141,20 @@ export async function GET(req: NextRequest) {
     const caja: Record<number, number> = {};
     for (const c of cajaR.rows) caja[c.expediente_id] = redondear(aNumero(c.total));
 
+    // Personas dadas de baja que aparecen en esta semana (fecha de baja editable desde la tabla de nómina).
+    const bajasR = ids.length
+      ? await pool.query(
+          `SELECT id, motivo_baja, to_char((fecha_baja AT TIME ZONE 'America/Mexico_City')::date, 'YYYY-MM-DD') AS fecha_baja
+           FROM expedientes WHERE id = ANY($1::int[]) AND COALESCE(estatus_laboral, 'Activo') = 'Baja'`,
+          [ids]
+        )
+      : { rows: [] as { id: number; motivo_baja: string | null; fecha_baja: string | null }[] };
+    const bajas: Record<number, { fecha_baja: string | null; motivo_baja: string | null }> = {};
+    for (const b of bajasR.rows) bajas[b.id] = { fecha_baja: b.fecha_baja, motivo_baja: b.motivo_baja };
+
     return NextResponse.json({
       ok: true,
+      bajas,
       periodo,
       config,
       registros,

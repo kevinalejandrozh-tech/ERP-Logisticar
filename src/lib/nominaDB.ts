@@ -166,6 +166,29 @@ async function crearEsquema() {
     );
     await p.query(`UPDATE nomina_config SET semana_sab_vie = true WHERE id = 1`);
   }
+
+  // ---------- v5: la semana de nómina va de LUNES a DOMINGO (semana ISO) ----------
+  // Semana 1 de 2026 = lunes 29-dic-2025 a domingo 04-ene-2026. Se ejecuta UNA sola vez (marca semana_lun_dom).
+  // Cada semana conserva su número, año, estado y capturas; solo se recalculan sus fechas a partir del número.
+  // Después se crean las semanas 1 a 40 de 2026 que falten.
+  await p.query(`ALTER TABLE nomina_config ADD COLUMN IF NOT EXISTS semana_lun_dom BOOLEAN NOT NULL DEFAULT false;`);
+  const v5 = await p.query(`SELECT semana_lun_dom FROM nomina_config WHERE id = 1`);
+  if (!v5.rows[0]?.semana_lun_dom) {
+    await p.query(
+      `UPDATE nomina_periodos
+         SET fecha_inicio = to_date(anio::text || '-' || semana::text || '-1', 'IYYY-IW-ID'),
+             fecha_fin = to_date(anio::text || '-' || semana::text || '-1', 'IYYY-IW-ID') + 6,
+             updated_at = now()
+       WHERE semana BETWEEN 1 AND 53`
+    );
+    await p.query(
+      `INSERT INTO nomina_periodos (anio, semana, fecha_inicio, fecha_fin)
+       SELECT 2026, s, to_date('2026-' || s::text || '-1', 'IYYY-IW-ID'), to_date('2026-' || s::text || '-1', 'IYYY-IW-ID') + 6
+       FROM generate_series(1, 40) AS s
+       ON CONFLICT (anio, semana) DO NOTHING`
+    );
+    await p.query(`UPDATE nomina_config SET semana_lun_dom = true WHERE id = 1`);
+  }
 }
 
 export function ensureNominaSchema(): Promise<void> {

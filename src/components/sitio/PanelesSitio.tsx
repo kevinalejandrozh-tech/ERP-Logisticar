@@ -36,21 +36,33 @@ const REDES: { clave: keyof SitioContenido["redes"]; nombre: string; ejemplo: st
   { clave: "whatsapp", nombre: "WhatsApp", ejemplo: "https://wa.me/525500000000" },
 ];
 
-// Enlaces de redes sociales (el teléfono, correo y dirección se editan directo en la página).
+const ACCESOS: { clave: keyof SitioContenido["accesos"]; nombre: string; ejemplo: string }[] = [
+  { clave: "facebook", nombre: "Ícono de Facebook (junto al teléfono)", ejemplo: "https://www.facebook.com/tu-pagina" },
+  { clave: "maps", nombre: "Ícono de Google Maps (junto al teléfono)", ejemplo: "https://maps.app.goo.gl/..." },
+];
+const RE_HTTPS = /^https:\/\/\S{3,}$/;
+
+// Enlaces de redes sociales y de los íconos junto al teléfono (el teléfono, correo y dirección se editan directo en la página).
 export function PanelRedes({
   redes,
+  accesos,
   onAplicar,
   onCerrar,
 }: {
   redes: SitioContenido["redes"];
-  onAplicar: (redes: SitioContenido["redes"]) => void;
+  accesos: SitioContenido["accesos"];
+  onAplicar: (redes: SitioContenido["redes"], accesos: SitioContenido["accesos"]) => void;
   onCerrar: () => void;
 }) {
   const [valores, setValores] = useState(redes);
-  const invalidas = REDES.filter((r) => valores[r.clave].trim() !== "" && !/^https:\/\/\S{3,}$/.test(valores[r.clave].trim()));
+  const [valoresAccesos, setValoresAccesos] = useState(accesos);
+  const invalidas = [
+    ...REDES.filter((r) => valores[r.clave].trim() !== "" && !RE_HTTPS.test(valores[r.clave].trim())),
+    ...ACCESOS.filter((r) => valoresAccesos[r.clave].trim() !== "" && !RE_HTTPS.test(valoresAccesos[r.clave].trim())),
+  ];
 
   return (
-    <Modal titulo="Redes sociales" onCerrar={onCerrar}>
+    <Modal titulo="Redes sociales y enlaces" onCerrar={onCerrar}>
       <p className="text-[13px] text-[var(--gray-500)] mb-4">
         Pega el enlace completo de cada red. Las que dejes vacías no se muestran en el sitio.
       </p>
@@ -66,6 +78,22 @@ export function PanelRedes({
               value={valores[r.clave]}
               placeholder={r.ejemplo}
               onChange={(e) => setValores({ ...valores, [r.clave]: e.target.value })}
+              className="w-full border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13.5px]"
+            />
+          </div>
+        ))}
+        <p className="text-[12px] font-medium text-[var(--navy)] mt-2 mb-0">Íconos junto al teléfono</p>
+        {ACCESOS.map((r) => (
+          <div key={r.clave}>
+            <label htmlFor={`acceso-${r.clave}`} className="block text-[12.5px] font-medium mb-1.5">
+              {r.nombre}
+            </label>
+            <input
+              id={`acceso-${r.clave}`}
+              type="url"
+              value={valoresAccesos[r.clave]}
+              placeholder={r.ejemplo}
+              onChange={(e) => setValoresAccesos({ ...valoresAccesos, [r.clave]: e.target.value })}
               className="w-full border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13.5px]"
             />
           </div>
@@ -89,6 +117,9 @@ export function PanelRedes({
               instagram: valores.instagram.trim(),
               linkedin: valores.linkedin.trim(),
               whatsapp: valores.whatsapp.trim(),
+            }, {
+              facebook: valoresAccesos.facebook.trim(),
+              maps: valoresAccesos.maps.trim(),
             });
             onCerrar();
           }}

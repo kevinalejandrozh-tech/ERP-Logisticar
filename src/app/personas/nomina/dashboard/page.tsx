@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import { fechaCorta, moneda } from "@/lib/nominaCalculo";
 
@@ -19,6 +20,7 @@ type Datos = {
 };
 
 const AZUL = "#2f6fed";
+const NAVY = "#16215c";
 const VERDE = "#21a866";
 const COLORES = ["#16215c", "#2f6fed", "#21a866", "#f2b134", "#e2412c", "#7c5cd6", "#0f766e", "#8a91a0"];
 
@@ -102,7 +104,7 @@ export default function DashboardNominaPage() {
                   {Array.from(new Set([d.anio, ...d.anios])).sort((a, b) => b - a).map((a) => <option key={a} value={a}>{a}</option>)}
                 </select>
               </label>
-              <span className="text-[12.5px] text-[var(--gray-500)]">{d.totales.semanas_capturadas} semana(s) con captura · solo se consideran capturas guardadas · corte de semana en viernes</span>
+              <span className="text-[12.5px] text-[var(--gray-500)]">{d.totales.semanas_capturadas} semana(s) con captura · solo se consideran capturas guardadas · semana de lunes a domingo</span>
               <div className="flex-1" />
               <Link href="/personas/nomina" className="btn btn-secundario py-1.5">Ir a Nómina</Link>
             </div>
@@ -120,31 +122,19 @@ export default function DashboardNominaPage() {
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h3 className="text-[15px] font-bold text-[var(--navy)] m-0">Pago por semana</h3>
                 <div className="flex items-center gap-4 text-[12px] text-[var(--gray-500)]">
-                  <span className="flex items-center gap-1.5"><i className="inline-block w-3 h-3 rounded-sm" style={{ background: AZUL }} />BBVA</span>
-                  <span className="flex items-center gap-1.5"><i className="inline-block w-3 h-3 rounded-sm" style={{ background: VERDE }} />Viáticos</span>
+                  <span className="flex items-center gap-1.5"><i className="inline-block w-4 h-[3px] rounded-sm" style={{ background: NAVY }} />Total</span>
+                  <span className="flex items-center gap-1.5"><i className="inline-block w-4 h-[3px] rounded-sm" style={{ background: AZUL }} />BBVA</span>
+                  <span className="flex items-center gap-1.5"><i className="inline-block w-4 h-[3px] rounded-sm" style={{ background: VERDE }} />Viáticos</span>
                 </div>
               </div>
               {semanas.length === 0 ? (
                 <p className="text-[12.5px] text-[var(--gray-400)] m-0">Aún no hay semanas capturadas en {d.anio}.</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <div className="flex items-end gap-2 h-[220px] min-w-max px-1 pt-5">
-                    {semanas.map((s) => (
-                      <Link key={s.id} href={`/personas/nomina/semana?id=${s.id}`} className="flex flex-col items-center gap-1 w-[42px] h-full justify-end group" title={`Semana ${s.semana} (${fechaCorta(s.fecha_inicio)} – ${fechaCorta(s.fecha_fin)}): ${moneda(s.neto)}`}>
-                        <span className="text-[10px] text-[var(--gray-500)] tabular-nums opacity-0 group-hover:opacity-100">{Math.round(s.neto / 1000)}k</span>
-                        <div className="w-[28px] flex flex-col justify-end rounded-t-md overflow-hidden" style={{ height: `${((s.bbva + s.viaticos) / maxNeto) * 170}px` }}>
-                          <div style={{ height: `${(s.viaticos / Math.max(1, s.bbva + s.viaticos)) * 100}%`, background: VERDE }} />
-                          <div style={{ height: `${(s.bbva / Math.max(1, s.bbva + s.viaticos)) * 100}%`, background: AZUL }} />
-                        </div>
-                        <span className="text-[11px] text-[var(--gray-500)]">S{s.semana}</span>
-                      </Link>
-                    ))}
-                  </div>
-                </div>
+                <GraficaLineas semanas={semanas} maximo={maxNeto} />
               )}
               {d.totales.ultima && (
                 <p className="text-[12.5px] text-[var(--gray-500)] m-0 mt-3">
-                  Última semana capturada: <b className="text-[var(--navy)] font-medium">Semana {d.totales.ultima.semana}</b> (pago viernes {fechaCorta(d.totales.ultima.fecha_fin)}) · {d.totales.ultima.empleados} persona(s) · {moneda(d.totales.ultima.neto)}
+                  Última semana capturada: <b className="text-[var(--navy)] font-medium">Semana {d.totales.ultima.semana}</b> (cierre domingo {fechaCorta(d.totales.ultima.fecha_fin)}) · {d.totales.ultima.empleados} persona(s) · {moneda(d.totales.ultima.neto)}
                 </p>
               )}
             </div>
@@ -198,6 +188,51 @@ export default function DashboardNominaPage() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// Gráfica de líneas "Pago por semana": total, depósitos BBVA y viáticos. Cada punto abre la semana.
+function GraficaLineas({ semanas, maximo }: { semanas: Semana[]; maximo: number }) {
+  const router = useRouter();
+  const PASO = 56;
+  const ALTO = 220;
+  const M = { izq: 54, der: 18, arr: 18, aba: 30 };
+  const ancho = Math.max(640, M.izq + M.der + (semanas.length - 1) * PASO + 20);
+  const altoUtil = ALTO - M.arr - M.aba;
+  const tope = Math.ceil(maximo / 5000) * 5000 || 1;
+  const x = (i: number) => M.izq + 10 + i * PASO;
+  const y = (v: number) => M.arr + altoUtil - (v / tope) * altoUtil;
+  const ruta = (f: (s: Semana) => number) => semanas.map((s, i) => `${i ? "L" : "M"}${x(i)},${y(f(s))}`).join(" ");
+  const series: { nombre: string; color: string; f: (s: Semana) => number; grosor: number }[] = [
+    { nombre: "Total", color: NAVY, f: (s) => s.bbva + s.viaticos, grosor: 2.6 },
+    { nombre: "BBVA", color: AZUL, f: (s) => s.bbva, grosor: 2 },
+    { nombre: "Viáticos", color: VERDE, f: (s) => s.viaticos, grosor: 2 },
+  ];
+  const marcas = [0, 0.25, 0.5, 0.75, 1].map((p) => p * tope);
+  return (
+    <div className="overflow-x-auto">
+      <svg width={ancho} height={ALTO} viewBox={`0 0 ${ancho} ${ALTO}`} role="img" aria-label="Pago por semana" className="block">
+        {marcas.map((m) => (
+          <g key={m}>
+            <line x1={M.izq} x2={ancho - M.der} y1={y(m)} y2={y(m)} stroke="#e5e7eb" strokeDasharray={m ? "3 4" : undefined} />
+            <text x={M.izq - 8} y={y(m) + 4} textAnchor="end" fontSize="10.5" fill="#8a91a0">{`${Math.round(m / 1000)}k`}</text>
+          </g>
+        ))}
+        {series.map((se) => (
+          <path key={se.nombre} d={ruta(se.f)} fill="none" stroke={se.color} strokeWidth={se.grosor} strokeLinejoin="round" strokeLinecap="round" />
+        ))}
+        {semanas.map((s, i) => (
+          <g key={s.id} className="cursor-pointer" onClick={() => router.push(`/personas/nomina/semana?id=${s.id}`)}>
+            <title>{`Semana ${s.semana} (${fechaCorta(s.fecha_inicio)} – ${fechaCorta(s.fecha_fin)})\nTotal: ${moneda(s.bbva + s.viaticos)}\nBBVA: ${moneda(s.bbva)}\nViáticos: ${moneda(s.viaticos)}`}</title>
+            <rect x={x(i) - PASO / 2} y={M.arr} width={PASO} height={altoUtil} fill="transparent" />
+            {series.map((se) => (
+              <circle key={se.nombre} cx={x(i)} cy={y(se.f(s))} r={3.4} fill="#fff" stroke={se.color} strokeWidth={2} />
+            ))}
+            <text x={x(i)} y={ALTO - 10} textAnchor="middle" fontSize="11" fill="#6b7280">{`S${s.semana}`}</text>
+          </g>
+        ))}
+      </svg>
     </div>
   );
 }

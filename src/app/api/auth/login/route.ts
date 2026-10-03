@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, getPool } from "@/lib/db";
 import { verificarPassword, claveUsuario } from "@/lib/auth";
+import { seccionesDeRol } from "@/lib/permisosDB";
 import { crearTokenSesion, COOKIE_SESION, DURACION_SESION_SEGUNDOS, Rol } from "@/lib/sesion";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +36,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Tu acceso está deshabilitado. Contacta al administrador." }, { status: 403 });
     }
 
-    const token = await crearTokenSesion({ userId: usuario.id, nombre: usuario.nombre, correo: usuario.correo || "", rol: usuario.rol as Rol });
+    const secciones = await seccionesDeRol(usuario.rol);
+    const token = await crearTokenSesion({ userId: usuario.id, nombre: usuario.nombre, correo: usuario.correo || "", rol: usuario.rol as Rol, secciones });
 
     const expiraEn = new Date(Date.now() + DURACION_SESION_SEGUNDOS * 1000);
     await pool.query(`INSERT INTO sesiones (token, usuario_id, expira_en) VALUES ($1,$2,$3)`, [token, usuario.id, expiraEn]);

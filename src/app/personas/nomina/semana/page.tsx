@@ -37,7 +37,17 @@ type Datos = {
   creditos: Record<number, CreditoEstado[]>;
   caja: Record<number, number>;
   total_personal: number;
+  bajas?: Record<number, { fecha_baja: string | null; motivo_baja: string | null }>;
 };
+
+type PersonaDisponible = { id: number; nombre: string; puesto: string | null; estatus_laboral: string; fecha_ingreso: string | null; fecha_baja: string | null; incluir: boolean };
+type EdicionBaja = { expediente_id: number; nombre: string; modo: "baja" | "fecha_baja"; fecha: string; motivo: string };
+type NuevaPersona = { nombre: string; puesto: string; fecha_ingreso: string; sueldo_semanal: number };
+
+// Fecha de hoy en la Ciudad de México (YYYY-MM-DD).
+function hoyMx(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
+}
 
 const ESTILO_ESTADO: Record<string, string> = {
   Abierta: "bg-[#eef3fd] text-[var(--blue)]",
@@ -88,6 +98,12 @@ function SemanaNomina() {
   const [baseSemana, setBaseSemana] = useState("");
   const [diaEdit, setDiaEdit] = useState<EdicionAsistencia | null>(null);
   const [guardandoDia, setGuardandoDia] = useState(false);
+  const [agregarAbierto, setAgregarAbierto] = useState(false);
+  const [disponibles, setDisponibles] = useState<PersonaDisponible[] | null>(null);
+  const [buscaPersona, setBuscaPersona] = useState("");
+  const [nueva, setNueva] = useState<NuevaPersona | null>(null);
+  const [baja, setBaja] = useState<EdicionBaja | null>(null);
+  const [procesando, setProcesando] = useState(false);
 
   // Sin setState antes del primer await (evita renders en cascada al montarse).
   const cargar = useCallback(async (id: number): Promise<Datos | null> => {
@@ -321,6 +337,77 @@ function SemanaNomina() {
     }
   };
 
+  // ---- Alta y baja de personas desde la tabla de la semana ----
+  const abrirAgregar = async () => {
+    setAgregarAbierto(true);
+    setNueva(null);
+    setBuscaPersona("");
+    setDisponibles(null);
+    try {
+      const r = await pedir<{ personas: PersonaDisponible[] }>("/api/nomina/personal");
+      setDisponibles(r.personas);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo cargar el personal.");
+      setAgregarAbierto(false);
+    }
+  };
+
+  const enSemana = useMemo(() => new Set(registros.map((r) => r.expediente_id)), [registros]);
+  const candidatos = useMemo(() => {
+    const q = buscaPersona.trim().toLowerCase();
+    return (disponibles || [])
+      .filter((p) => !enSemana.has(p.id))
+      .filter((p) => !q || p.nombre.toLowerCase().includes(q) || (p.puesto || "").toLowerCase().includes(q));
+  }, [disponibles, enSemana, buscaPersona]);
+
+  const accionPersonal = async (cuerpo: Record<string, unknown>) => {
+    if (!periodoId) return false;
+    setProcesando(true);
+    try {
+      await pedir("/api/nomina/personal", { method: "POST", body: JSON.stringify(cuerpo) });
+      await cargar(periodoId);
+      return true;
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "No se pudo completar la acción.");
+      return false;
+    } finally {
+      setProcesando(false);
+    }
+  };
+
+  const agregarExistente = async (p: PersonaDisponible) => {
+    if (periodo && p.fecha_ingreso && p.fecha_ingreso > periodo.fecha_fin) {
+      return alert(`${p.nombre} ingresó el ${fechaCorta(p.fecha_ingreso)}, después de esta semana. Corrige su fecha de ingreso en el expediente.`);
+    }
+    const msg = p.estatus_laboral === "Baja" ? `${p.nombre} está dado(a) de baja. Se reactivará y se incluirá en la nómina. ¿Continuar?` : `¿Agregar a ${p.nombre} a la nómina?`;
+    if (!confirm(msg)) return;
+    if (await accionPersonal({ accion: "agregar", expediente_id: p.id })) setAgregarAbierto(false);
+  };
+
+  const crearNueva = async () => {
+    if (!nueva) return;
+    if (await accionPersonal({ accion: "nueva", ...nueva })) {
+      setNueva(null);
+      setAgregarAbierto(false);
+    }
+  };
+
+  const abrirBaja = (r: NominaRegistro) => {
+    const b = d?.bajas?.[r.expediente_id];
+    setBaja(
+      b
+        ? { expediente_id: r.expediente_id, nombre: r.nombre, modo: "fecha_baja", fecha: b.fecha_baja || hoyMx(), motivo: b.motivo_baja || "" }
+        : { expediente_id: r.expediente_id, nombre: r.nombre, modo: "baja", fecha: hoyMx(), motivo: "" }
+    );
+  };
+
+  const guardarBaja = async () => {
+    if (!baja) return;
+    if (baja.modo === "baja" && !baja.motivo.trim()) return alert("Escribe el motivo de baja.");
+    if (baja.modo === "baja" && !confirm(`¿Dar de baja a ${baja.nombre} con fecha ${fechaCorta(baja.fecha)}? Pierde el acceso al sistema y deja de aparecer en semanas posteriores.`)) return;
+    if (await accionPersonal({ accion: baja.modo, expediente_id: baja.expediente_id, fecha_baja: baja.fecha, motivo_baja: baja.motivo })) setBaja(null);
+  };
+
   return (
     <div className="min-h-screen bg-[var(--gray-50)]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14">
@@ -353,6 +440,7 @@ function SemanaNomina() {
                 )}
               </div>
               <div className="flex-1" />
+              <button type="button" className="btn btn-secundario" onClick={abrirAgregar}>+ Agregar persona</button>
               {abierta && pendientes > 0 && (
                 <button type="button" className="btn btn-secundario" disabled={guardando} onClick={guardarPendientes}>Guardar propuestas ({pendientes})</button>
               )}
@@ -410,6 +498,11 @@ function SemanaNomina() {
                         <td className="px-4 py-2.5">
                           <Link href={`/personas/expedientes/detalle?id=${r.expediente_id}`} className="m-0 font-medium text-[var(--navy)] hover:underline">{r.nombre}</Link>
                           <p className="m-0 text-[11.5px] text-[var(--gray-500)]">{r.puesto || "—"}</p>
+                          {d.bajas?.[r.expediente_id] && (
+                            <span className="inline-block mt-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium bg-[rgba(226,65,44,0.10)] text-[var(--red)]">
+                              Baja {d.bajas[r.expediente_id].fecha_baja ? fechaCorta(d.bajas[r.expediente_id].fecha_baja as string) : ""}
+                            </span>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right">{moneda(r.sueldo_semanal)}</td>
                         <td className="px-3 py-2.5 text-center text-[var(--gray-500)]">{r.dias_asistidos} / {r.faltas} / {r.retardos}</td>
@@ -428,6 +521,9 @@ function SemanaNomina() {
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           <button type="button" className="btn btn-secundario py-1.5" onClick={() => abrir(r)}>{abierta ? "Capturar" : "Ver"}</button>
                           {r.id !== null && <button type="button" className="btn-enlace text-[12.5px] ml-3" onClick={() => recibos([r])}>Recibo</button>}
+                          <button type="button" className="btn-enlace text-[12.5px] ml-3 text-[var(--red)]" onClick={() => abrirBaja(r)}>
+                            {d.bajas?.[r.expediente_id] ? "Fecha de baja" : "Dar de baja"}
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -446,7 +542,7 @@ function SemanaNomina() {
             <div className="px-6 py-4 border-b border-[var(--gray-200)] flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-[17px] font-medium text-[var(--navy)] m-0">{editando.nombre}</h3>
-                <p className="text-[12.5px] text-[var(--gray-500)] m-0">{editando.puesto || "—"} · Semana {periodo.semana} (corte viernes {fechaCorta(periodo.fecha_fin)}) · Folio {editando.folio}</p>
+                <p className="text-[12.5px] text-[var(--gray-500)] m-0">{editando.puesto || "—"} · Semana {periodo.semana} (cierre domingo {fechaCorta(periodo.fecha_fin)}) · Folio {editando.folio}</p>
               </div>
               {abierta && <button type="button" className="btn btn-secundario py-1.5" onClick={recalcular}>Recalcular desde asistencia</button>}
             </div>
@@ -615,6 +711,101 @@ function SemanaNomina() {
               {abierta && editando.id !== null && <button type="button" className="mr-auto text-[12.5px] text-[var(--red)] hover:underline" onClick={descartar}>Descartar captura</button>}
               <button type="button" className="btn btn-secundario" onClick={() => { setEditando(null); setDiaEdit(null); }}>{abierta ? "Cancelar" : "Cerrar"}</button>
               {abierta && <button type="button" className="btn btn-primario" disabled={guardando} onClick={guardarEdicion}>{guardando ? "Guardando…" : "Guardar"}</button>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {agregarAbierto && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-50 px-4" onClick={() => setAgregarAbierto(false)}>
+          <div className="bg-white rounded-lg w-full max-w-[560px] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-[var(--gray-200)] flex items-center justify-between">
+              <h3 className="text-[17px] font-medium text-[var(--navy)] m-0">Agregar persona a la nómina</h3>
+              <button type="button" className="text-[var(--gray-500)] text-[20px] leading-none" aria-label="Cerrar" onClick={() => setAgregarAbierto(false)}>×</button>
+            </div>
+            <div className="px-6 py-4">
+              {!nueva ? (
+                <>
+                  <div className="flex gap-2 mb-3">
+                    <input type="search" placeholder="Buscar en expedientes" value={buscaPersona} onChange={(e) => setBuscaPersona(e.target.value)} className={inputCls} />
+                    <button type="button" className="btn btn-primario whitespace-nowrap" onClick={() => setNueva({ nombre: "", puesto: "", fecha_ingreso: periodo?.fecha_inicio || hoyMx(), sueldo_semanal: 0 })}>Nueva persona</button>
+                  </div>
+                  {!disponibles && <p className="text-[13px] text-[var(--gray-500)]">Cargando…</p>}
+                  {disponibles && candidatos.length === 0 && <p className="text-[13px] text-[var(--gray-500)]">No hay expedientes fuera de esta semana. Usa “Nueva persona”.</p>}
+                  <div className="max-h-[360px] overflow-y-auto divide-y divide-[var(--gray-200)]">
+                    {candidatos.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-3 py-2">
+                        <div className="min-w-0">
+                          <p className="m-0 text-[13.5px] font-medium text-[var(--navy)] truncate">{p.nombre}</p>
+                          <p className="m-0 text-[11.5px] text-[var(--gray-500)]">
+                            {p.puesto || "—"} · {p.estatus_laboral === "Baja" ? `Baja ${p.fecha_baja ? fechaCorta(p.fecha_baja) : ""}` : !p.incluir ? "Excluido de nómina" : p.fecha_ingreso ? `Ingreso ${fechaCorta(p.fecha_ingreso)}` : "Activo"}
+                          </p>
+                        </div>
+                        <button type="button" className="btn btn-secundario py-1.5" disabled={procesando} onClick={() => agregarExistente(p)}>Agregar</button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="grid gap-3">
+                  <div>
+                    <label className={labelCls}>Nombre completo</label>
+                    <input value={nueva.nombre} onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })} className={inputCls} autoFocus />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Puesto</label>
+                    <input value={nueva.puesto} onChange={(e) => setNueva({ ...nueva, puesto: e.target.value })} className={inputCls} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelCls}>Fecha de ingreso</label>
+                      <input type="date" value={nueva.fecha_ingreso} onChange={(e) => setNueva({ ...nueva, fecha_ingreso: e.target.value })} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className={labelCls}>Sueldo semanal</label>
+                      <CampoMoneda valor={nueva.sueldo_semanal} onCambio={(n) => setNueva({ ...nueva, sueldo_semanal: n })} ariaLabel="Sueldo semanal" />
+                    </div>
+                  </div>
+                  <p className="text-[12px] text-[var(--gray-500)] m-0">Se crea su expediente con estos datos; lo demás se completa en Expedientes.</p>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <button type="button" className="btn btn-secundario" onClick={() => setNueva(null)}>Regresar</button>
+                    <button type="button" className="btn btn-primario" disabled={procesando || !nueva.nombre.trim()} onClick={crearNueva}>{procesando ? "Guardando…" : "Crear y agregar"}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {baja && (
+        <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-50 px-4" onClick={() => setBaja(null)}>
+          <div className="bg-white rounded-lg w-full max-w-[520px] shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-[var(--gray-200)]">
+              <h3 className="text-[17px] font-medium text-[var(--navy)] m-0">{baja.modo === "baja" ? "Dar de baja" : "Modificar baja"}</h3>
+              <p className="text-[12.5px] text-[var(--gray-500)] m-0">{baja.nombre}</p>
+            </div>
+            <div className="px-6 py-4 grid gap-3">
+              <div>
+                <label className={labelCls}>Fecha de baja</label>
+                <input type="date" value={baja.fecha} onChange={(e) => setBaja({ ...baja, fecha: e.target.value })} className={`${inputCls} max-w-[200px]`} />
+              </div>
+              <div>
+                <label className={labelCls}>Motivo de baja{baja.modo === "fecha_baja" ? " (opcional)" : ""}</label>
+                <textarea rows={2} value={baja.motivo} onChange={(e) => setBaja({ ...baja, motivo: e.target.value })} className={inputCls} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+                {/* Pendientes de desarrollo: por ahora no realizan ninguna acción. */}
+                <button type="button" className="btn btn-secundario" title="Próximamente">Documentos de Baja</button>
+                <button type="button" className="btn btn-secundario" title="Próximamente">Cálculo de Finiquito</button>
+                <button type="button" className="btn btn-secundario" title="Próximamente">Encuesta de salida</button>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-[var(--gray-200)] flex justify-end gap-2">
+              <button type="button" className="btn btn-secundario" onClick={() => setBaja(null)}>Cancelar</button>
+              <button type="button" className="btn btn-primario" disabled={procesando || !baja.fecha} onClick={guardarBaja}>
+                {procesando ? "Guardando…" : baja.modo === "baja" ? "Dar de baja" : "Guardar fecha"}
+              </button>
             </div>
           </div>
         </div>

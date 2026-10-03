@@ -19,6 +19,8 @@ export type SitioContenido = {
     etiquetaCorreo: string;
   };
   redes: { facebook: string; instagram: string; linkedin: string; whatsapp: string };
+  // Accesos rápidos junto al teléfono (íconos de Facebook y Google Maps). Solo el sysadmin los edita.
+  accesos: { facebook: string; maps: string };
   menu: { inicio: string; soluciones: string; servicios: string; testimonios: string; porque: string; contacto: string };
   hero: { diapositivas: Diapositiva[] };
   soluciones: { titulo: string; tarjetas: Tarjeta[]; boton: string };
@@ -39,6 +41,10 @@ export const SITIO_DEFAULT: SitioContenido = {
     etiquetaCorreo: "Correo",
   },
   redes: { facebook: "", instagram: "", linkedin: "", whatsapp: "" },
+  accesos: {
+    facebook: "https://www.facebook.com/share/1F1FGgEhmB/?mibextid=wwXIfr",
+    maps: "https://maps.app.goo.gl/16yFA652d4wV7P6D7",
+  },
   menu: {
     inicio: "Inicio",
     soluciones: "Soluciones",
@@ -190,7 +196,7 @@ function normalizar(plantilla: unknown, valor: unknown, llave: string, seccion: 
   if (typeof valor !== "string") return plantilla;
   const texto = valor.trim();
   if (CAMPOS_IMAGEN.has(llave)) return RE_IMAGEN.test(texto) ? texto : plantilla;
-  if (seccion === "redes") return texto === "" || RE_URL_RED.test(texto) ? texto : plantilla;
+  if (seccion === "redes" || seccion === "accesos") return texto === "" || RE_URL_RED.test(texto) ? texto : plantilla;
   return texto.slice(0, MAX_TEXTO);
 }
 

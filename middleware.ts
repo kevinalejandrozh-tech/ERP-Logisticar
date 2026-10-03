@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { COOKIE_SESION, verificarTokenSesion } from "@/lib/sesion";
+import { esSoloSysadmin, rutaPermitida } from "@/lib/permisos";
 
 // Páginas que se llenan vía código QR por cualquier operador, sin necesidad de cuenta.
 const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/inventario/consulta", "/personas/evaluacion-candidatos/formulario", "/personas/evaluacion-candidatos/documentos", "/asistencia/registro", "/sitio"]; // /sitio: sitio web público de la empresa. Evaluación de candidatos: link/QR para candidatos
@@ -26,32 +27,16 @@ const API_PUBLICA = new Set([
   "/api/sitio/boletin",
 ]);
 
-// El rol supervisor_tms solo puede navegar/consultar dentro de estas secciones.
-const PREFIJOS_PERMITIDOS_SUPERVISOR = [
-  "/", // solo la página exacta "/", no cubre subrutas (ver comprobación abajo)
-  "/unidades",
-  "/personas/expedientes",
-  "/personas/organigrama",
-  "/api/unidades",
-  "/api/expedientes",
-  "/api/capacitaciones/ultimas-por-nombre",
-  "/api/capacitaciones/por-persona",
-  "/api/capacitaciones/catalogo/list",
-  "/api/sistema/almacenamiento",
-  "/api/asistencia-diaria",
-  "/api/cuadro-basico",
-  "/api/areas-personal",
-  "/api/organigrama",
-  "/api/favoritos",
-  "/api/notificaciones",
-];
+// Escrituras permitidas al supervisor (solo lectura): sus propios favoritos, marcar notificaciones vistas
+// y su propio perfil (foto y contraseña).
+const API_ESCRITURA_PERSONAL = new Set(["/api/favoritos", "/api/notificaciones", "/api/auth/perfil"]);
 
-// Escrituras permitidas al supervisor: solo sus propios favoritos y marcar notificaciones como vistas.
-const API_ESCRITURA_PERSONAL = new Set(["/api/favoritos", "/api/notificaciones"]);
-
-function rutaPermitidaParaSupervisor(pathname: string): boolean {
-  if (pathname === "/") return true;
-  return PREFIJOS_PERMITIDOS_SUPERVISOR.some((p) => p !== "/" && (pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p + "?")));
+function denegar(req: NextRequest, pathname: string, mensaje: string) {
+  if (pathname.startsWith("/api/")) return NextResponse.json({ error: mensaje }, { status: 403 });
+  const url = req.nextUrl.clone();
+  url.pathname = "/";
+  url.search = "";
+  return NextResponse.redirect(url);
 }
 
 export async function middleware(req: NextRequest) {
@@ -91,21 +76,21 @@ export async function middleware(req: NextRequest) {
     return redireccion;
   }
 
+  // Gestión de usuarios y roles: exclusivo del sysadmin.
+  if (esSoloSysadmin(pathname) && sesion.rol !== "sysadmin") {
+    return denegar(req, pathname, "Solo el administrador puede gestionar usuarios.");
+  }
+
   if (sesion.rol === "supervisor_tms") {
     // Solo puede consultar (GET). Cualquier escritura queda bloqueada.
     if (pathname.startsWith("/api/") && req.method !== "GET" && !API_ESCRITURA_PERSONAL.has(pathname)) {
       return NextResponse.json({ error: "Tu usuario solo tiene permisos de consulta." }, { status: 403 });
     }
-    // Y solo dentro de Unidades y Expedientes.
-    if (!rutaPermitidaParaSupervisor(pathname)) {
-      if (pathname.startsWith("/api/")) {
-        return NextResponse.json({ error: "Tu usuario no tiene acceso a esta sección." }, { status: 403 });
-      }
-      const url = req.nextUrl.clone();
-      url.pathname = "/";
-      url.search = "";
-      return NextResponse.redirect(url);
-    }
+  }
+
+  // Secciones permitidas para el rol (editables por el sysadmin en Gestión de usuarios → Roles).
+  if (!rutaPermitida(pathname, sesion.rol, sesion.secciones)) {
+    return denegar(req, pathname, "Tu usuario no tiene acceso a esta sección.");
   }
 
   const res = NextResponse.next();

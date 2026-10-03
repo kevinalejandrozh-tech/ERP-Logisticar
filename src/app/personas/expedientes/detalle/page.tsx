@@ -339,6 +339,21 @@ export default function DetalleExpedientePage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
         />
 
+        {/* Regresa a la página desde donde se abrió el expediente (p. ej. Nómina · Semana 40). */}
+        <div className="-mt-2 mb-4">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.history.length > 1) window.history.back();
+              else window.location.href = "/personas/expedientes";
+            }}
+            className="btn btn-secundario py-1.5 text-[13px] inline-flex items-center gap-1.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+            Página anterior
+          </button>
+        </div>
+
         {cargando && <p className="text-center text-[var(--gray-400)] text-[13px] py-16">Cargando...</p>}
         {error && <p className="text-center text-[var(--red)] text-[13px] py-16">{error}</p>}
 

@@ -8,6 +8,8 @@ import { coincideBusqueda } from "@/lib/paginas";
 import BuscadorPaginas from "@/components/inicio/BuscadorPaginas";
 import CampanaNotificaciones from "@/components/inicio/CampanaNotificaciones";
 import AccesosDirectos from "@/components/inicio/AccesosDirectos";
+import PerfilModal from "@/components/inicio/PerfilModal";
+import { puedeVerSeccion } from "@/lib/permisos";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
 export default function Home() {
@@ -15,6 +17,16 @@ const sesion = useSesion();
 const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
 const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 const [consulta, setConsulta] = useState("");
+const [perfilAbierto, setPerfilAbierto] = useState(false);
+const [foto, setFoto] = useState<string | null>(null);
+useEffect(() => {
+fetch("/api/auth/perfil", { cache: "no-store" })
+.then((r) => r.json())
+.then((d) => setFoto(d.foto || null))
+.catch(() => {});
+}, []);
+// Secciones que el rol puede ver (Gestión de usuarios → Roles y permisos).
+const sec = (clave: string) => puedeVerSeccion(clave, sesion.rol, sesion.secciones);
 // Filtra botones y tarjetas del inicio según el texto de la barra "Buscar..."
 const ver = (texto: string) => coincideBusqueda(texto, consulta);
 const iniciales = (sesion.nombre || "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
@@ -77,15 +89,20 @@ className="w-10 h-10 shrink-0 flex items-center justify-center bg-white border b
 </button>
 </div>
 <div className="hidden md:flex items-center gap-3 md:gap-5">
-<BuscadorPaginas valor={consulta} onCambio={setConsulta} rol={sesion.rol} className="hidden sm:block w-full sm:w-[220px] lg:w-[316px]" />
+<Link href="/sitio" title="Ir al sitio web" className="flex items-center gap-1 text-[12px] text-[var(--gray-500)] no-underline hover:text-[var(--blue)] whitespace-nowrap">
+<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>
+Sitio web
+</Link>
+<BuscadorPaginas valor={consulta} onCambio={setConsulta} rol={sesion.rol} secciones={sesion.secciones} className="hidden sm:block w-full sm:w-[220px] lg:w-[316px]" />
 <div className="hidden md:block w-px h-8 bg-[var(--gray-200)]" />
 <CampanaNotificaciones />
 <div className="hidden md:block w-px h-8 bg-[var(--gray-200)]" />
 
 <div className="relative">
 <div onClick={() => setMenuUsuarioAbierto((v) => !v)} className="flex items-center gap-2 cursor-pointer">
-<div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0 text-[15px] font-medium text-[var(--blue)]">
-{iniciales || <svg width="18" height="18" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>}
+<div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0 text-[15px] font-medium text-[var(--blue)] overflow-hidden">
+{/* eslint-disable-next-line @next/next/no-img-element */}
+{foto ? <img src={foto} alt="" className="w-full h-full object-cover" /> : iniciales || <svg width="18" height="18" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>}
 </div>
 <div className="hidden lg:block leading-tight">
 <span className="block text-[14px] font-bold text-[var(--navy)]">{sesion.nombre || "..."}</span>
@@ -121,7 +138,9 @@ Cerrar sesión
 </>
 )}
 </div>
-<svg className="hidden sm:block shrink-0 ml-2" width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3 2 2 0 11-2.8-2.8 1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9 2 2 0 112.8-2.8 1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3 2 2 0 112.8 2.8 1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1h.1a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+<button type="button" onClick={() => setPerfilAbierto(true)} title="Mi perfil: foto y contraseña" aria-label="Mi perfil" className="hidden sm:flex shrink-0 ml-2 w-9 h-9 items-center justify-center rounded-lg hover:bg-[var(--gray-100)]">
+<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3 2 2 0 11-2.8-2.8 1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9 2 2 0 112.8-2.8 1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3 2 2 0 112.8 2.8 1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1h.1a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
+</button>
 </div>
 </div>
 <div className={`md:hidden fixed inset-0 z-[10000] ${menuMovilAbierto ? "" : "pointer-events-none"}`} aria-hidden={!menuMovilAbierto}>
@@ -141,8 +160,9 @@ className={`absolute right-0 top-0 h-full w-[85%] max-w-[320px] bg-white shadow-
 </div>
 <div className="flex-1 overflow-y-auto">
 <div className="flex items-center gap-3 px-4 py-4 border-b border-[var(--gray-200)]">
-<div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0">
-<svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>
+<div className="w-11 h-11 rounded-full bg-[var(--blue-light)] flex items-center justify-center shrink-0 overflow-hidden">
+{/* eslint-disable-next-line @next/next/no-img-element */}
+{foto ? <img src={foto} alt="" className="w-full h-full object-cover" /> : <svg width="20" height="20" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-4 4-6 8-6s8 2 8 6" /></svg>}
 </div>
 <div className="min-w-0 leading-tight">
 <p className="text-[14px] font-bold text-[var(--navy)] m-0 truncate">{sesion.nombre || "..."}</p>
@@ -151,7 +171,7 @@ className={`absolute right-0 top-0 h-full w-[85%] max-w-[320px] bg-white shadow-
 </div>
 </div>
 <div className="px-4 py-4 border-b border-[var(--gray-200)]">
-<BuscadorPaginas valor={consulta} onCambio={setConsulta} rol={sesion.rol} onNavegar={() => setMenuMovilAbierto(false)} />
+<BuscadorPaginas valor={consulta} onCambio={setConsulta} rol={sesion.rol} secciones={sesion.secciones} onNavegar={() => setMenuMovilAbierto(false)} />
 </div>
 {almacenamiento && (
 <div className="px-4 py-4 border-b border-[var(--gray-200)]">
@@ -168,6 +188,16 @@ className={`absolute right-0 top-0 h-full w-[85%] max-w-[320px] bg-white shadow-
 <p className="text-[10.5px] text-[var(--gray-400)] m-0 mt-1.5">{`${almacenamiento.mbUsados.toFixed(1)} MB de ${almacenamiento.mbLimite.toFixed(0)} MB usados`}</p>
 </div>
 )}
+<div className="py-2 border-b border-[var(--gray-200)]">
+<button type="button" onClick={() => { setMenuMovilAbierto(false); setPerfilAbierto(true); }} className="w-full flex items-center gap-3 px-4 py-3 text-[13.5px] text-[var(--navy)] font-semibold hover:bg-[var(--gray-100)]">
+<svg width="18" height="18" viewBox="0 0 24 24" {...sw}><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" /></svg>
+Mi perfil
+</button>
+<Link href="/sitio" onClick={() => setMenuMovilAbierto(false)} className="flex items-center gap-3 px-4 py-3 text-[13px] text-[var(--gray-500)] no-underline hover:bg-[var(--gray-100)]">
+<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></svg>
+Sitio web
+</Link>
+</div>
 {sesion.rol === "sysadmin" && (
 <div className="py-2 border-b border-[var(--gray-200)]">
 <Link href="/admin/usuarios" onClick={() => setMenuMovilAbierto(false)} className="flex items-center gap-3 px-4 py-3 text-[13.5px] text-[var(--navy)] font-semibold no-underline hover:bg-[var(--gray-100)]">
@@ -191,11 +221,11 @@ Cerrar sesión
 <div className="flex flex-wrap gap-3 md:gap-4 mb-7 md:mb-9">
 {sesion.rol !== "supervisor_tms" && (
 <>
-{ver("Planeación y programa de cargas") && <Link href="/planeacion-cargas" className="btn btn-primario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg! shadow-[0_2px_6px_rgba(22,33,92,0.2)]">
+{sec("monitoreo_rutas") && ver("Monitoreo de Rutas planeación programa de cargas") && <Link href="/planeacion-cargas" className="btn btn-primario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg! shadow-[0_2px_6px_rgba(22,33,92,0.2)]">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 4v18M8 15h13" /></svg>
-Planeación y programa de cargas
+Monitoreo de Rutas
 </Link>}
-{ver("Menú del día comida") && <Link href="/menu-dia" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
+{sec("menu_dia") && ver("Menú del día comida") && <Link href="/menu-dia" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
 </Link>}
@@ -208,7 +238,7 @@ Menú del día
 <p className="text-[13px] text-[var(--gray-500)] m-0 mb-3">Resultados para “{consulta}” · <button type="button" onClick={() => setConsulta("")} className="text-[var(--blue)] underline">Limpiar búsqueda</button></p>
 )}
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[22px]">
-{ver("Unidades flota placas aceite eco Administra y consulta la información de las unidades.") && (
+{sec("unidades") && ver("Unidades flota placas aceite eco Administra y consulta la información de las unidades.") && (
 <MenuCard
 compactoMovil
 href="/unidades"
@@ -218,7 +248,7 @@ descripcion="Administra y consulta la información de las unidades."
 />
 )}
 {sesion.rol === "supervisor_tms" ? (
-ver("Expedientes Consulta los expedientes del personal (cuenta TMS).") && (
+sec("expedientes") && ver("Expedientes Consulta los expedientes del personal (cuenta TMS).") && (
 <MenuCard
 compactoMovil
 href="/personas/expedientes"
@@ -229,7 +259,7 @@ descripcion="Consulta los expedientes del personal (cuenta TMS)."
 )
 ) : (
 <>
-{ver("Recursos Humanos personas expedientes nómina capacitaciones uniformes organigrama candidatos documentos mochilas Gestiona la información del personal del sistema.") && (
+{(sec("expedientes") || sec("organigrama") || sec("recursos_humanos") || sec("nomina")) && ver("Recursos Humanos personas expedientes nómina capacitaciones uniformes organigrama candidatos documentos mochilas Gestiona la información del personal del sistema.") && (
 <MenuCard
 compactoMovil
 href="/personas"
@@ -238,7 +268,7 @@ titulo="Recursos Humanos"
 descripcion="Gestiona la información del personal del sistema."
 />
 )}
-{ver("Asistencia vacaciones descansos Registro por QR, vacaciones, permisos y faltas.") && (
+{sec("asistencia") && ver("Asistencia vacaciones descansos Registro por QR, vacaciones, permisos y faltas.") && (
 <MenuCard
 compactoMovil
 href="/asistencia"
@@ -247,7 +277,7 @@ titulo="Asistencia"
 descripcion="Registro por QR, vacaciones, permisos y faltas."
 />
 )}
-{ver("Buzón de sugerencias e ideas de mejora Comparte las ideas y sugerencias de tu equipo.") && (
+{sec("buzon") && ver("Buzón de sugerencias e ideas de mejora Comparte las ideas y sugerencias de tu equipo.") && (
 <MenuCard
 compactoMovil
 href="/buzon-sugerencias"
@@ -256,7 +286,7 @@ titulo="Buzón de sugerencias e ideas de mejora"
 descripcion="Comparte las ideas y sugerencias de tu equipo."
 />
 )}
-{ver("Control de Viajes rutas calendario gastos viáticos casetas combustible monitoreo Organiza y consulta la información de tus viajes.") && (
+{sec("viajes") && ver("Control de Viajes rutas calendario gastos viáticos casetas combustible monitoreo Organiza y consulta la información de tus viajes.") && (
 <MenuCard
 compactoMovil
 href="/control-viajes"
@@ -265,7 +295,7 @@ titulo="Control de Viajes"
 descripcion="Organiza y consulta la información de tus viajes."
 />
 )}
-{ver("Compras comparativo cotizaciones Gestiona y da seguimiento a tus compras.") && (
+{sec("compras") && ver("Compras comparativo cotizaciones Gestiona y da seguimiento a tus compras.") && (
 <MenuCard
 compactoMovil
 href="/compras"
@@ -275,7 +305,7 @@ descripcion="Gestiona y da seguimiento a tus compras."
 />
 )}
 
-{ver("Control de inventario categorías Consulta equipos, mobiliario y sus códigos QR.") && (
+{sec("inventario") && ver("Control de inventario categorías Consulta equipos, mobiliario y sus códigos QR.") && (
 <MenuCard
 compactoMovil
 href="/inventario"
@@ -291,6 +321,7 @@ descripcion="Consulta equipos, mobiliario y sus códigos QR."
 </div>
 </div>
 </div>
+{perfilAbierto && <PerfilModal nombre={sesion.nombre || ""} foto={foto} onFotoCambiada={setFoto} onCerrar={() => setPerfilAbierto(false)} />}
 </div>
 );
 }

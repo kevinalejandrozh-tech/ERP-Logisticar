@@ -38,7 +38,7 @@ export const PAGINAS_SISTEMA: PaginaSistema[] = [
   { ruta: "/rutas", titulo: "Rutas", seccion: "Viajes", palabras: "rutas destinos bono" },
   { ruta: "/monitoreo-viajes", titulo: "Monitoreo de viajes y rutas", seccion: "Viajes", palabras: "monitoreo gps" },
   { ruta: "/monitoreo-viajes/detalle", titulo: "Detalle de viaje", seccion: "Viajes", palabras: "monitoreo detalle" },
-  { ruta: "/planeacion-cargas", titulo: "Planeación y programa de cargas", seccion: "Operación", palabras: "cargas clientes programa tablero" },
+  { ruta: "/planeacion-cargas", titulo: "Monitoreo de Rutas", seccion: "Operación", palabras: "planeacion programa de cargas clientes tablero rutas" },
   { ruta: "/plan-trabajo", titulo: "Plan de trabajo y seguimiento", seccion: "Operación", palabras: "tareas gantt seguimiento" },
   { ruta: "/scanner", titulo: "Logis SCANNER", seccion: "Operación", palabras: "escaner codigos" },
   { ruta: "/compras", titulo: "Compras", seccion: "Compras", palabras: "requisiciones cotizaciones" },

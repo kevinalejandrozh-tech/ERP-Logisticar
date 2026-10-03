@@ -29,7 +29,7 @@ const ESTILO_ESTADO: Record<string, string> = {
   Pagada: "bg-[#e7f6ee] text-[var(--green)]",
 };
 
-// Sábado de inicio de la semana de nómina actual (se corta y se paga el viernes).
+// Lunes de inicio de la semana de nómina actual (lunes a domingo).
 function inicioSemanaActual(): string {
   return semanaNomina(ahoraMx().fecha).inicio;
 }
@@ -109,7 +109,7 @@ export default function NominaPage() {
   };
 
   const generarSemanas = async () => {
-    if (!confirm("Se crearán las semanas faltantes desde la semana 1 del año hasta la semana en curso (sábado a viernes: se corta y se paga el viernes). Las existentes no se modifican. ¿Continuar?")) return;
+    if (!confirm("Se crearán las semanas faltantes desde la semana 1 del año hasta la semana en curso (lunes a domingo). Las existentes no se modifican. ¿Continuar?")) return;
     setGuardando(true);
     try {
       const r = await pedir<{ anio: number; hasta_semana: number; creadas: number }>("/api/nomina/periodos", { method: "POST", body: JSON.stringify({ generar: true }) });
@@ -314,7 +314,7 @@ export default function NominaPage() {
                 <input type="date" value={nuevaInicio} onChange={(e) => setNuevaInicio(e.target.value)} className={inputCls} />
               </div>
             </div>
-            {nuevaInicio && <p className="text-[12.5px] text-[var(--gray-500)] mt-3">Periodo: {fechaCorta(nuevaInicio)} al {fechaCorta(sumarDias(nuevaInicio, 6))} · corte y pago en viernes</p>}
+            {nuevaInicio && <p className="text-[12.5px] text-[var(--gray-500)] mt-3">Periodo: {fechaCorta(nuevaInicio)} al {fechaCorta(sumarDias(nuevaInicio, 6))} · lunes a domingo</p>}
             <div className="flex justify-end gap-2 mt-6">
               <button type="button" className="btn btn-secundario" onClick={() => setModalSemana(false)}>Cancelar</button>
               <button type="button" className="btn btn-primario" disabled={guardando || !nuevaInicio} onClick={crearSemana}>{guardando ? "Creando…" : "Crear semana"}</button>

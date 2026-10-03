@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, getPool } from "./db";
 import { COOKIE_SESION, verificarTokenSesion, tienePermisosAdmin } from "./sesion";
 import { ASISTENCIA_CONFIG_DEFAULT, AsistenciaConfig } from "./asistenciaData";
+import { aplicarSeedViajesSemana40 } from "./viajesSemana40Seed";
 
 // Esquema propio del módulo "Asistencia" (registro por QR y calendario).
 // Se mantiene separado de db.ts. La tabla antigua asistencia_diaria se sigue alimentando
@@ -114,6 +115,9 @@ async function crearEsquema() {
       PRIMARY KEY (expediente_id, anio_servicio)
     );
   `);
+
+  // Carga única de la Semana 40 (PDF) al calendario de viajes. No interrumpe el esquema si falla.
+  await aplicarSeedViajesSemana40();
 }
 
 export function ensureAsistenciaSchema(): Promise<void> {

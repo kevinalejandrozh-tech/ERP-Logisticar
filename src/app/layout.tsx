@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import AvisoNotasVencidas from "@/components/AvisoNotasVencidas";
+import BarraGlobal from "@/components/BarraGlobal";
 import localFont from "next/font/local";
 import "./globals.css";
 import ZoomControls from "@/components/ZoomControls";
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <RegistroActividad />
         <AvisoNotasVencidas />
+        <BarraGlobal />
         <ZoomControls>
           {children}
           <PageFooter />

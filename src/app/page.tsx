@@ -9,6 +9,7 @@ import BuscadorPaginas from "@/components/inicio/BuscadorPaginas";
 import CampanaNotificaciones from "@/components/inicio/CampanaNotificaciones";
 import AccesosDirectos from "@/components/inicio/AccesosDirectos";
 import PerfilModal from "@/components/inicio/PerfilModal";
+import BotonesPersonalizados from "@/components/inicio/BotonesPersonalizados";
 import BuzonIcono from "@/components/inicio/BuzonIcono";
 import { puedeVerSeccion } from "@/lib/permisos";
 const ICON_STROKE = "#2f6fed";
@@ -19,6 +20,13 @@ const [menuUsuarioAbierto, setMenuUsuarioAbierto] = useState(false);
 const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 const [consulta, setConsulta] = useState("");
 const [perfilAbierto, setPerfilAbierto] = useState(false);
+// El engrane global (todas las páginas) abre el perfil con /?perfil=1.
+useEffect(() => {
+  if (new URLSearchParams(window.location.search).get("perfil") === "1") {
+    setPerfilAbierto(true);
+    window.history.replaceState(null, "", "/");
+  }
+}, []);
 const [foto, setFoto] = useState<string | null>(null);
 useEffect(() => {
 fetch("/api/auth/perfil", { cache: "no-store" })
@@ -141,9 +149,6 @@ Cerrar sesión
 )}
 </div>
 {sesion.rol !== "supervisor_tms" && sec("buzon") && <BuzonIcono className="hidden sm:flex shrink-0 ml-2" />}
-<button type="button" onClick={() => setPerfilAbierto(true)} title="Mi perfil: foto y contraseña" aria-label="Mi perfil" className="hidden sm:flex shrink-0 ml-2 w-9 h-9 items-center justify-center rounded-lg hover:bg-[var(--gray-100)]">
-<svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3 2 2 0 11-2.8-2.8 1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9 2 2 0 112.8-2.8 1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3 2 2 0 112.8 2.8 1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1h.1a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
-</button>
 </div>
 </div>
 <div className={`md:hidden fixed inset-0 z-[10000] ${menuMovilAbierto ? "" : "pointer-events-none"}`} aria-hidden={!menuMovilAbierto}>
@@ -314,6 +319,7 @@ descripcion="Consulta equipos, mobiliario y sus códigos QR."
 )}
 </>
 )}
+{!consulta.trim() && <BotonesPersonalizados esSysadmin={sesion.rol === "sysadmin"} />}
 
 </div>
 </div>

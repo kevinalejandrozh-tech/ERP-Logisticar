@@ -90,6 +90,7 @@ const API_COMUNES = [
   "/api/notificaciones",
   "/api/sistema",
   "/api/actividad",
+  "/api/personalizacion",
 ];
 
 // Exclusivo del sysadmin (rol principal).
@@ -127,7 +128,7 @@ export function rutaPermitida(pathname: string, rol: string, secciones: string[]
   if (rol === "sysadmin") return true;
   if (esSoloSysadmin(pathname)) return false;
   const lista = secciones === undefined ? seccionesPorDefecto(rol) : secciones;
-  if (pathname === "/" || pathname === "/sitio") return true;
+  if (pathname === "/" || pathname === "/sitio" || pathname.startsWith("/modulo/")) return true;
   const esApi = pathname.startsWith("/api/");
   if (esApi && API_COMUNES.some((p) => coincide(pathname, p))) return true;
   const ruta = (s: SeccionSistema) => (esApi ? s.apis : s.paginas).some((p) => coincide(pathname, p));

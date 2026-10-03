@@ -71,4 +71,5 @@ export function productosDe(o: OrdenCompra): ProductoOC[] {
 export const moneda = (v: number | string | undefined | null) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(v) || 0);
 
-export const esAutorizada = (estado?: string) => (estado || "").toLowerCase() === "autorizada";
+// Autorizada o ya recibida (total o parcial) en almacén.
+export const esAutorizada = (estado?: string) => ["autorizada", "recibida", "parcialmente recibida"].includes((estado || "").toLowerCase());

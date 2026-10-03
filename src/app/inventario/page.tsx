@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PageFooter from "@/components/PageFooter";
+import ExistenciasAlmacen from "@/components/almacen/ExistenciasAlmacen";
 import { useRefrescarAlEnfocar } from "@/lib/useRefrescarAlEnfocar";
 import {
   CAMPOS_GENERALES,
@@ -106,6 +107,8 @@ export default function InventarioPage() {
 
   // Modal agregar
   const [modalAgregar, setModalAgregar] = useState(false);
+  const [vistaInv, setVistaInv] = useState<"bienes" | "inventario">("bienes");
+  const [menuEntrada, setMenuEntrada] = useState(false);
   const [categoriaNueva, setCategoriaNueva] = useState("");
   const [estadoNuevo, setEstadoNuevo] = useState<EstadoInventario>("Activo");
   const [datosNuevos, setDatosNuevos] = useState<Record<string, string>>({});
@@ -298,6 +301,54 @@ export default function InventarioPage() {
           icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
         />
 
+        {/* Selector de inventario y acciones de almacén */}
+        <div className="bg-white rounded-[18px] p-4 sm:p-5 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-5 flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-[13px] font-bold text-[var(--navy)]">
+            Inventario
+            <select value={vistaInv} onChange={(e) => setVistaInv(e.target.value as "bienes" | "inventario")} className="border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] bg-white font-normal">
+              <option value="bienes">Bienes (equipos con QR)</option>
+              <option value="inventario">Inventario (existencias de almacén)</option>
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2 ml-auto">
+            <button type="button" onClick={() => setMenuEntrada(true)} className="flex items-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12l7 7 7-7" /></svg>
+              Entrada
+            </button>
+            <Link href="/inventario/requisicion" className="flex items-center gap-2 bg-[var(--red)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold no-underline">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+              Salida
+            </Link>
+            <Link href="/inventario/requisicion" className="bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-4 py-2.5 text-[13px] font-bold no-underline">Requisición de Almacén</Link>
+            <Link href="/inventario/ubicaciones" className="bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-4 py-2.5 text-[13px] font-bold no-underline">Ubicaciones</Link>
+            <Link href="/inventario/movimientos" className="bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-4 py-2.5 text-[13px] font-bold no-underline">Movimientos</Link>
+          </div>
+        </div>
+
+        {menuEntrada && (
+          <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-center justify-center p-4 z-50" onClick={() => setMenuEntrada(false)}>
+            <div className="bg-white rounded-2xl p-5 w-full max-w-[460px]" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-[16px] font-bold text-[var(--navy)] m-0 mb-4">Entrada</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <Link href="/inventario/entrada?modo=directo" className="border border-[var(--gray-200)] rounded-xl p-4 no-underline hover:border-[var(--blue)]">
+                  <b className="block text-[14px] text-[var(--navy)]">Directo</b>
+                  <span className="text-[12px] text-[var(--gray-500)]">Captura libre de artículos</span>
+                </Link>
+                <Link href="/inventario/entrada?modo=oc" className="border border-[var(--gray-200)] rounded-xl p-4 no-underline hover:border-[var(--blue)]">
+                  <b className="block text-[14px] text-[var(--navy)]">Recibir OC</b>
+                  <span className="text-[12px] text-[var(--gray-500)]">Desde órdenes de compra autorizadas</span>
+                </Link>
+              </div>
+              <button type="button" onClick={() => { setMenuEntrada(false); abrirAgregar(); }} disabled={cargando || categoriasActivas.length === 0} className="mt-3 w-full text-[12.5px] font-bold text-[var(--blue)] py-2 disabled:opacity-50">
+                Registrar equipo individual con QR (Bienes)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {vistaInv === "inventario" && <ExistenciasAlmacen />}
+
+        {vistaInv === "bienes" && (<>
         {/* Resumen */}
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
           <div className="bg-[var(--navy)] rounded-2xl p-4 text-white">
@@ -340,10 +391,6 @@ export default function InventarioPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
               Categorías
             </Link>
-            <button type="button" onClick={abrirAgregar} disabled={cargando || categoriasActivas.length === 0} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold whitespace-nowrap disabled:opacity-50">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
-              Agregar equipo
-            </button>
           </div>
         </div>
 
@@ -359,7 +406,7 @@ export default function InventarioPage() {
             </div>
           ) : equiposFiltrados.length === 0 ? (
             <p className="text-[13px] text-[var(--gray-400)] py-8 text-center">
-              {equipos.length === 0 ? "Aún no hay equipos registrados. Usa \"Agregar equipo\" para registrar el primero." : "No hay equipos que coincidan con la búsqueda o los filtros."}
+              {equipos.length === 0 ? "Aún no hay equipos registrados. Usa \"Entrada\" → \"Registrar equipo individual con QR\"." : "No hay equipos que coincidan con la búsqueda o los filtros."}
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 md:gap-5">
@@ -388,6 +435,7 @@ export default function InventarioPage() {
             </div>
           )}
         </div>
+        </>)}
       </div>
 
       {/* Modal: código QR (mismo formato que Capacitaciones) */}

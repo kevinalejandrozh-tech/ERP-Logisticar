@@ -7,6 +7,7 @@ export type ProductoOC = {
   referencia?: string;
   proveedor?: string;
   proveedores?: string[];
+  compraUnica?: boolean;
   autorizado?: boolean;
   decision?: "rechazado" | "programado" | null;
   razon?: string | null;

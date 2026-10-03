@@ -29,29 +29,39 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   const ruta = [...(datos.rutaProveedores || []).filter((n) => nombres.includes(n)), ...nombres.filter((n) => !(datos.rutaProveedores || []).includes(n))];
   const referencias = [...new Set(productos.map((p) => (p.referencia || "").trim()).filter(Boolean))];
 
-  const tablas = ruta
+  const fechaOC = new Date(orden.fecha || orden.created_at || Date.now()).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  // Una sección por proveedor (en el orden de la ruta): encabezado tipo "PROVEEDOR" y su tabla de artículos.
+  const secciones = ruta
     .map((nombre, i) => {
       const prov = buscar(nombre);
       const filas = autorizados.filter((p) => proveedorDe(p) === nombre);
       const subtotal = filas.reduce((a, p) => a + (Number(p.totalProducto) || 0), 0);
-      const contacto = [prov?.contacto, prov?.telefono].filter(Boolean).join(" · ");
+      const unica = filas.some((p) => p.compraUnica);
+      const datosProv = [
+        prov?.contacto ? `Contacto: ${esc(prov.contacto)}` : "",
+        prov?.telefono ? `Teléfono: ${esc(prov.telefono)}` : "",
+        prov ? (prov.a_domicilio ? "Servicio a domicilio" : `Recoger en tienda · ${esc(prov.tiempo_traslado || "tiempo no registrado")}`) : unica ? "Compra única" : "",
+      ].filter(Boolean);
+      const vacias = Math.max(0, 3 - filas.length);
       return `
-      <div class="tabla">
-        <div class="tabla-titulo"><span>${ruta.length > 1 ? `${i + 1}. ` : ""}${esc(nombre || "Sin proveedor")}</span>${contacto ? `<small>Contacto: ${esc(contacto)}</small>` : ""}</div>
-        <table>
-          <thead><tr><th class="c">Cant.</th><th>Artículo</th><th>Referencia</th><th class="r">P. unitario</th><th class="r">Importe</th></tr></thead>
+      <div class="seccion">
+        <div class="barra"><span>${ruta.length > 1 ? `PARADA ${i + 1} · ` : ""}PROVEEDOR</span><span>${esc((nombre || "Sin proveedor").toUpperCase())}</span></div>
+        ${datosProv.length ? `<div class="prov-datos">${datosProv.join(" &nbsp;|&nbsp; ")}</div>` : ""}
+        <table class="items">
+          <thead><tr><th style="width:8%">#</th><th>Descripción</th><th style="width:16%">Referencia</th><th class="c" style="width:8%">Cant.</th><th class="r" style="width:13%">P/U</th><th class="r tot" style="width:14%">Total</th></tr></thead>
           <tbody>${filas
-            .map((p) => `<tr><td class="c">${esc(p.cantidad)}</td><td>${esc(p.articulo)}</td><td>${esc(p.referencia || "")}</td><td class="r">${moneda(p.precioUnitario)}</td><td class="r">${moneda(p.totalProducto)}</td></tr>`)
-            .join("")}</tbody>
-          <tfoot><tr><td colspan="4" class="r">Subtotal</td><td class="r">${moneda(subtotal)}</td></tr></tfoot>
+            .map((p, k) => `<tr><td>${k + 1}</td><td>${esc(p.articulo)}</td><td>${esc(p.referencia || "")}</td><td class="c">${esc(p.cantidad)}</td><td class="r">${moneda(p.precioUnitario)}</td><td class="r tot">${moneda(p.totalProducto)}</td></tr>`)
+            .join("")}${Array.from({ length: vacias }).map(() => `<tr class="vacia"><td></td><td></td><td></td><td></td><td></td><td class="tot r">-</td></tr>`).join("")}</tbody>
+          <tfoot><tr><td colspan="5" class="r">Subtotal ${esc(nombre)}</td><td class="r tot">${moneda(subtotal)}</td></tr></tfoot>
         </table>
       </div>`;
     })
     .join("");
 
   const tablaNoAut = noAutorizados.length
-    ? `<div class="tabla"><div class="tabla-titulo gris"><span>Artículos no autorizados / programados</span></div>
-       <table><thead><tr><th class="c">Cant.</th><th>Artículo</th><th>Proveedor</th><th>Estatus</th><th>Detalle</th></tr></thead>
+    ? `<div class="seccion"><div class="barra gris"><span>ARTÍCULOS NO AUTORIZADOS / PROGRAMADOS</span><span></span></div>
+       <table class="items"><thead><tr><th class="c" style="width:8%">Cant.</th><th>Descripción</th><th>Proveedor</th><th style="width:14%">Estatus</th><th>Detalle</th></tr></thead>
        <tbody>${noAutorizados
          .map(
            (p) =>
@@ -62,8 +72,8 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
          .join("")}</tbody></table></div>`
     : "";
 
-  // Tarjetas de ruta: solo proveedores sin servicio a domicilio, en el orden de la ruta.
-  const sinDomicilio = ruta.map((n) => ({ n, p: buscar(n) })).filter((x) => !x.p?.a_domicilio);
+  // Tarjetas de ruta: proveedores del catálogo sin servicio a domicilio (las compras únicas no tienen mapa).
+  const sinDomicilio = ruta.map((n) => ({ n, p: buscar(n) })).filter((x) => x.p && !x.p.a_domicilio);
   const tarjetas = (
     await Promise.all(
       sinDomicilio.map(async ({ n, p }) => {
@@ -96,89 +106,105 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
     /* sin logo */
   }
 
+  // Diseño inspirado en el formato clásico de orden de compra: empresa a la izquierda, título grande a la derecha
+  // con FECHA / OC # en recuadros, barras azul marino, tabla con columna de total sombreada y totales abajo a la derecha.
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>OC ${esc(orden.folio)}</title>
 <style>
-  @page { size: letter; margin: 14mm; }
+  @page { size: letter; margin: 12mm; }
   * { box-sizing: border-box; }
-  body { font-family: Helvetica, Arial, sans-serif; color: #1e1e1e; font-size: 11px; margin: 0; }
-  .cab { display: flex; justify-content: space-between; align-items: flex-start; }
-  .marca { display: flex; align-items: center; gap: 10px; }
-  .marca img { width: 34px; height: 34px; }
-  .marca b { font-size: 14px; letter-spacing: .3px; }
-  .der { text-align: right; }
-  .ref { font-size: 12px; font-weight: bold; color: #16215c; }
-  .fecha { color: #2f6fed; font-size: 10.5px; margin-top: 2px; }
-  .folio { font-size: 10.5px; color: #555; margin-top: 2px; }
-  hr { border: 0; border-top: 1px solid #e5e8ee; margin: 12px 0 14px; }
-  h1 { font-size: 13px; color: #16215c; margin: 0 0 12px; }
-  .tabla { margin-bottom: 12px; break-inside: avoid; }
-  .tabla-titulo { display: flex; justify-content: space-between; align-items: baseline; background: #16215c; color: #fff; padding: 5px 8px; border-radius: 4px 4px 0 0; font-weight: bold; font-size: 11.5px; }
-  .tabla-titulo small { font-weight: normal; font-size: 9.5px; opacity: .9; }
-  .tabla-titulo.gris { background: #8a8f9c; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #f2f4f8; color: #5a5a5a; font-size: 9.5px; text-transform: uppercase; text-align: left; padding: 5px 6px; border: 1px solid #e5e8ee; }
-  td { padding: 5px 6px; border: 1px solid #e5e8ee; vertical-align: top; }
-  tbody tr:nth-child(even) td { background: #fafbfd; }
-  tfoot td { font-weight: bold; background: #f7f9ff; }
-  .c { text-align: center; } .r { text-align: right; }
-  .inferior { display: flex; gap: 14px; align-items: flex-start; margin-top: 6px; break-inside: avoid; }
-  .izq { flex: 1; display: flex; flex-wrap: wrap; gap: 10px; }
-  .mapa { width: 160px; border: 1px solid #e5e8ee; border-radius: 6px; padding: 6px; text-align: center; }
+  body { font-family: Helvetica, Arial, sans-serif; color: #1e1e1e; font-size: 10.5px; margin: 0; }
+  .cab { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .empresa { display: flex; gap: 10px; align-items: flex-start; }
+  .empresa img { width: 40px; height: 40px; }
+  .empresa b { display: block; font-size: 15px; color: #16215c; letter-spacing: .3px; }
+  .empresa span { display: block; color: #555; font-size: 10px; line-height: 1.45; }
+  .titulo { text-align: right; }
+  .titulo h1 { margin: 0 0 6px; font-size: 26px; color: #4a5f9b; letter-spacing: 1px; }
+  .kv { display: grid; grid-template-columns: auto 120px; gap: 3px 8px; justify-content: end; align-items: center; font-size: 10px; }
+  .kv span { text-align: right; font-weight: bold; color: #444; }
+  .kv div { border: 1px solid #9aa3b8; padding: 2px 6px; text-align: center; }
+  .kv .ref { background: #eef1f8; font-weight: bold; color: #16215c; }
+  .info { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .info th { background: #16215c; color: #fff; font-size: 9.5px; padding: 4px 6px; text-transform: uppercase; border: 1px solid #16215c; }
+  .info td { border: 1px solid #9aa3b8; padding: 5px 6px; text-align: center; }
+  .seccion { margin-bottom: 12px; break-inside: avoid; }
+  .barra { display: flex; justify-content: space-between; background: #16215c; color: #fff; font-weight: bold; padding: 4px 8px; font-size: 10.5px; }
+  .barra.gris { background: #8a8f9c; }
+  .prov-datos { border: 1px solid #9aa3b8; border-top: 0; padding: 4px 8px; font-size: 9.5px; color: #444; }
+  table.items { width: 100%; border-collapse: collapse; }
+  .items th { background: #2c3e78; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 4px 6px; border: 1px solid #2c3e78; text-align: left; }
+  .items td { border-left: 1px solid #9aa3b8; border-right: 1px solid #9aa3b8; border-bottom: 1px solid #dfe3ec; padding: 4px 6px; height: 18px; vertical-align: top; }
+  .items tbody tr:last-child td { border-bottom: 1px solid #9aa3b8; }
+  .items .tot { background: #eef1f8; }
+  .items tfoot td { border: 1px solid #9aa3b8; font-weight: bold; }
+  .c { text-align: center !important; } .r { text-align: right !important; }
+  .pie { display: flex; gap: 14px; align-items: flex-start; margin-top: 4px; break-inside: avoid; }
+  .comentarios { flex: 1; border: 1px solid #9aa3b8; }
+  .comentarios .enc { background: #c9ced9; font-weight: bold; padding: 4px 8px; }
+  .comentarios .cuerpo { padding: 8px; min-height: 70px; line-height: 1.5; }
+  .totales { width: 240px; border-collapse: collapse; }
+  .totales td { padding: 3px 6px; }
+  .totales td:first-child { font-weight: bold; color: #444; text-transform: uppercase; font-size: 9.5px; }
+  .totales td:last-child { text-align: right; border: 1px solid #c9ced9; }
+  .totales tr.gran td { border-top: 2px solid #16215c; font-size: 12px; color: #16215c; }
+  .totales tr.gran td:last-child { background: #c7d2ee; font-weight: bold; }
+  .ruta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; break-inside: avoid; }
+  .bloque { border: 1px solid #9aa3b8; min-width: 210px; }
+  .bloque .enc { background: #16215c; color: #fff; font-weight: bold; padding: 4px 8px; font-size: 9.5px; text-transform: uppercase; }
+  .linea { display: flex; justify-content: space-between; gap: 10px; padding: 3px 8px; border-bottom: 1px solid #eef0f4; }
+  .mapa { width: 150px; border: 1px solid #9aa3b8; padding: 6px; text-align: center; }
   .mapa-nombre { font-weight: bold; color: #16215c; margin: 0 0 4px; }
-  .mapa-img { width: 100%; height: 100px; object-fit: cover; border-radius: 4px; display: block; }
+  .mapa-img { width: 100%; height: 92px; object-fit: cover; display: block; }
   .mapa-img.vacio { background: #f2f4f8; color: #999; display: flex; align-items: center; justify-content: center; font-size: 9px; }
-  .mapa-tiempo { margin: 4px 0; font-size: 9.5px; }
-  .qr { width: 78px; height: 78px; }
+  .mapa-tiempo { margin: 4px 0; font-size: 9px; }
+  .qr { width: 72px; height: 72px; }
   .qr-txt { margin: 0; font-size: 8px; color: #777; }
-  .bloque { border: 1px solid #e5e8ee; border-radius: 6px; padding: 8px; min-width: 190px; }
-  .bloque h3 { margin: 0 0 6px; font-size: 10.5px; color: #16215c; text-transform: uppercase; }
-  .linea { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
-  .total { border-top: 1px solid #16215c; margin-top: 4px; padding-top: 4px; font-weight: bold; color: #16215c; font-size: 12px; }
-  .resumen { width: 230px; margin-left: auto; }
-  .just { text-align: center; margin: 16px auto 0; max-width: 80%; break-inside: avoid; }
-  .just h3 { font-size: 10.5px; color: #16215c; text-transform: uppercase; margin: 0 0 4px; }
-  .firma { margin-top: 28px; text-align: center; break-inside: avoid; }
+  .firma { margin-top: 26px; text-align: center; break-inside: avoid; }
   .firma .raya { width: 240px; border-top: 1px solid #1e1e1e; margin: 0 auto 4px; }
   .firma small { color: #555; }
+  .nota { text-align: center; color: #555; font-size: 9.5px; margin-top: 18px; }
 </style></head><body>
   <div class="cab">
-    <div class="marca">${logo ? `<img src="${logo}" alt="" />` : ""}<b>TRANSPORTES LOGISTICAR</b></div>
-    <div class="der">
-      <div class="ref">${referencias.length ? `Referencia: ${esc(referencias.join(", "))}` : "Sin referencia"}</div>
-      <div class="folio">Folio ${esc(orden.folio)}</div>
-      <div class="fecha">${esc(new Date(orden.fecha || orden.created_at || Date.now()).toLocaleDateString("es-MX", { weekday: "long", year: "numeric", month: "long", day: "numeric" }))}</div>
-    </div>
-  </div>
-  <hr />
-  <h1>Orden de compra autorizada</h1>
-  ${tablas}
-  ${tablaNoAut}
-  <div class="inferior">
-    <div class="izq">
-      ${tarjetas}
-      <div class="bloque">
-        <h3>Ruta</h3>
-        <div class="linea"><span>Vehículo</span><b>${esc(datos.vehiculo || "—")}</b></div>
-        <div class="linea"><span>Consumo promedio de ruta</span><b>${esc(datos.consumoPromedio || "—")}</b></div>
-        <div class="linea"><span>Combustible autorizado</span><b>${moneda(combustible)}</b></div>
-        <div class="linea"><span>Tiempo estimado de regreso</span><b>${esc(datos.tiempoRegreso || "—")}</b></div>
-        ${viaticos.length ? `<h3 style="margin-top:8px">Viáticos adicionales</h3>${viaticos.map((v) => `<div class="linea"><span>${esc(v.concepto || "Viático")}</span><b>${moneda(v.monto)}</b></div>`).join("")}` : ""}
+    <div class="empresa">${logo ? `<img src="${logo}" alt="" />` : ""}<div><b>TRANSPORTES LOGISTICAR</b><span>Departamento de Compras</span>${orden.solicitado_por ? `<span>Solicitó: ${esc(orden.solicitado_por)}</span>` : ""}</div></div>
+    <div class="titulo">
+      <h1>ORDEN DE COMPRA</h1>
+      <div class="kv">
+        <span>FECHA</span><div>${esc(fechaOC)}</div>
+        <span>OC #</span><div>${esc(orden.folio)}</div>
+        <span>REFERENCIA</span><div class="ref">${esc(referencias.join(", ") || "—")}</div>
       </div>
     </div>
-    <div class="bloque resumen">
-      <h3>Resumen de gastos</h3>
-      <div class="linea"><span>Artículos autorizados</span><b>${moneda(totalArticulos)}</b></div>
-      <div class="linea"><span>Combustible</span><b>${moneda(combustible)}</b></div>
-      <div class="linea"><span>Viáticos</span><b>${moneda(totalViaticos)}</b></div>
-      <div class="linea total"><span>Total</span><span>${moneda(granTotal)}</span></div>
-    </div>
   </div>
-  ${datos.justificacion ? `<div class="just"><h3>Justificación de la compra</h3><p>${esc(datos.justificacion)}</p></div>` : ""}
+
+  <table class="info">
+    <thead><tr><th>Vehículo</th><th>Consumo promedio de ruta</th><th>Combustible autorizado</th><th>Tiempo estimado de regreso</th><th>Proveedores</th></tr></thead>
+    <tbody><tr><td>${esc(datos.vehiculo || "—")}</td><td>${esc(datos.consumoPromedio || "—")}</td><td>${moneda(combustible)}</td><td>${esc(datos.tiempoRegreso || "—")}</td><td>${ruta.length}</td></tr></tbody>
+  </table>
+
+  ${secciones}
+  ${tablaNoAut}
+
+  <div class="pie">
+    <div class="comentarios">
+      <div class="enc">Justificación de la compra / instrucciones especiales</div>
+      <div class="cuerpo">${esc(datos.justificacion || "")}</div>
+    </div>
+    <table class="totales">
+      <tr><td>Subtotal artículos</td><td>${moneda(totalArticulos)}</td></tr>
+      <tr><td>Combustible</td><td>${moneda(combustible)}</td></tr>
+      ${viaticos.map((v) => `<tr><td>${esc(v.concepto || "Viático")}</td><td>${moneda(v.monto)}</td></tr>`).join("") || `<tr><td>Viáticos</td><td>${moneda(0)}</td></tr>`}
+      <tr class="gran"><td>Total</td><td>${moneda(granTotal)}</td></tr>
+    </table>
+  </div>
+
+  ${tarjetas ? `<div class="ruta">${tarjetas}</div>` : ""}
+
   <div class="firma">
     <div class="raya"></div>
     <b>${esc(orden.autorizado_por || "—")}</b><br />
     <small>Autorizó · ${esc(fechaHora(orden.autorizado_en))}</small>
   </div>
+  <p class="nota">Si tiene alguna pregunta sobre esta orden de compra, comuníquese con ${esc(orden.solicitado_por || "el Departamento de Compras")}.</p>
 </body></html>`;
   ventana.document.open();
   ventana.document.write(html);

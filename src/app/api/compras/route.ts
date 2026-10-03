@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
         referencia: String(p.referencia || "").trim(),
         proveedor: String(p.proveedor || "").trim(),
         proveedores: p.proveedor ? [String(p.proveedor).trim()] : [],
+        compraUnica: p.compraUnica === true,
         autorizado: true,
       };
     });

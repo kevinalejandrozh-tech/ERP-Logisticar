@@ -15,9 +15,10 @@ interface FilaProducto {
   precio: string;
   referencia: string;
   proveedor: string;
+  compraUnica: boolean; // proveedor de una sola compra: no se da de alta en el catálogo
 }
 
-const nuevaFila = (): FilaProducto => ({ id: `${Date.now()}-${Math.random()}`, cantidad: "1", articulo: "", precio: "", referencia: "", proveedor: "" });
+const nuevaFila = (): FilaProducto => ({ id: `${Date.now()}-${Math.random()}`, cantidad: "1", articulo: "", precio: "", referencia: "", proveedor: "", compraUnica: false });
 const celdaCls = "w-full border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] bg-white";
 const labelCls = "block text-[12px] font-medium text-[var(--text)] mb-1";
 
@@ -96,19 +97,20 @@ export default function ComprasPage() {
   const totalViaticos = viaticos.reduce((a, v) => a + (Number(v.monto) || 0), 0);
   const granTotal = totalArticulos + (Number(combustible) || 0) + totalViaticos;
 
-  const actualizar = (id: string, campo: keyof FilaProducto, valor: string) => setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, [campo]: valor } : f)));
+  const actualizar = (id: string, campo: keyof FilaProducto, valor: string | boolean) => setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, [campo]: valor } : f)));
   const eliminarFila = (id: string) => (filas.length === 1 ? alert("Debe existir al menos un producto en la orden.") : setFilas((prev) => prev.filter((f) => f.id !== id)));
 
   // Clic en el encabezado: copia el valor de la primera fila a todas las filas de la orden.
   const copiarColumna = (campo: "referencia" | "proveedor") => {
     const valor = filas[0]?.[campo] || "";
     if (!valor.trim()) return alert("La primera fila no tiene valor para copiar.");
-    setFilas((prev) => prev.map((f) => ({ ...f, [campo]: valor })));
+    setFilas((prev) => prev.map((f) => ({ ...f, [campo]: valor, ...(campo === "proveedor" ? { compraUnica: filas[0].compraUnica } : {}) })));
   };
 
   // Si el proveedor no está en el catálogo, se ofrece darlo de alta.
-  const revisarProveedor = (valor: string) => {
+  const revisarProveedor = (valor: string, compraUnica: boolean) => {
     const v = valor.trim();
+    if (compraUnica) return;
     if (v && !catalogo.some((c) => c.toLowerCase() === v.toLowerCase())) setAltaProveedor(v);
   };
 
@@ -143,7 +145,7 @@ export default function ComprasPage() {
         body: JSON.stringify({
           folio,
           fecha: hoy.toISOString(),
-          productos: filas.map((f) => ({ cantidad: Number(f.cantidad), articulo: f.articulo.trim(), precioUnitario: Number(f.precio), referencia: f.referencia, proveedor: f.proveedor })),
+          productos: filas.map((f) => ({ cantidad: Number(f.cantidad), articulo: f.articulo.trim(), precioUnitario: Number(f.precio), referencia: f.referencia, proveedor: f.proveedor, compraUnica: f.compraUnica })),
           datos: { rutaProveedores: rutaOrden, vehiculo, consumoPromedio, combustible: Number(combustible) || 0, tiempoRegreso, viaticos: vi, justificacion },
         }),
       });
@@ -237,7 +239,11 @@ export default function ComprasPage() {
                       <td className="p-2 text-right font-semibold text-emerald-900">{moneda((Number(f.cantidad) || 0) * (Number(f.precio) || 0))}</td>
                       <td className="p-2"><input value={f.referencia} onChange={(e) => actualizar(f.id, "referencia", e.target.value)} placeholder="Referencia" className={celdaCls} /></td>
                       <td className="p-2">
-                        <input list="catalogo-proveedores" value={f.proveedor} onChange={(e) => actualizar(f.id, "proveedor", e.target.value)} onBlur={(e) => revisarProveedor(e.target.value)} placeholder="Elige o escribe" className={celdaCls} />
+                        <input list="catalogo-proveedores" value={f.proveedor} onChange={(e) => actualizar(f.id, "proveedor", e.target.value)} onBlur={(e) => revisarProveedor(e.target.value, f.compraUnica)} placeholder="Elige o escribe" className={celdaCls} />
+                        <label className="flex items-center gap-1.5 mt-1 text-[11px] text-[var(--gray-500)] cursor-pointer" title="No pide dar de alta al proveedor">
+                          <input type="checkbox" checked={f.compraUnica} onMouseDown={(e) => e.preventDefault()} onChange={(e) => actualizar(f.id, "compraUnica", e.target.checked)} />
+                          Compra única
+                        </label>
                       </td>
                       <td className="p-2 text-center"><button type="button" onClick={() => eliminarFila(f.id)} className="text-[var(--red)] text-[15px]" aria-label="Eliminar fila">✕</button></td>
                     </tr>

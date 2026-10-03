@@ -50,6 +50,8 @@ export default function BuzonSugerenciasPage() {
   };
   useEffect(() => {
     cargar();
+    // Al abrir el buzón se apaga el marcador rojo de "nuevas" en el inicio.
+    fetch("/api/buzon-sugerencias/pendientes", { method: "POST" }).catch(() => {});
   }, []);
   useRefrescarAlEnfocar(cargar);
 

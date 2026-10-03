@@ -9,6 +9,7 @@ import BuscadorPaginas from "@/components/inicio/BuscadorPaginas";
 import CampanaNotificaciones from "@/components/inicio/CampanaNotificaciones";
 import AccesosDirectos from "@/components/inicio/AccesosDirectos";
 import PerfilModal from "@/components/inicio/PerfilModal";
+import BuzonIcono from "@/components/inicio/BuzonIcono";
 import { puedeVerSeccion } from "@/lib/permisos";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
@@ -76,6 +77,7 @@ return (
 </div>
 </div>
 <div className="md:hidden flex items-center gap-1.5">
+{sesion.rol !== "supervisor_tms" && sec("buzon") && <BuzonIcono className="flex" />}
 <CampanaNotificaciones />
 <button
 type="button"
@@ -138,6 +140,7 @@ Cerrar sesión
 </>
 )}
 </div>
+{sesion.rol !== "supervisor_tms" && sec("buzon") && <BuzonIcono className="hidden sm:flex shrink-0 ml-2" />}
 <button type="button" onClick={() => setPerfilAbierto(true)} title="Mi perfil: foto y contraseña" aria-label="Mi perfil" className="hidden sm:flex shrink-0 ml-2 w-9 h-9 items-center justify-center rounded-lg hover:bg-[var(--gray-100)]">
 <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#4b5563" strokeWidth="1.8"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.9 2 2 0 11-2.8 2.8 1.7 1.7 0 00-1.9-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1-1.6 1.7 1.7 0 00-1.9.3 2 2 0 11-2.8-2.8 1.7 1.7 0 00.3-1.9 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1 1.7 1.7 0 00-.3-1.9 2 2 0 112.8-2.8 1.7 1.7 0 001.9.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.9-.3 2 2 0 112.8 2.8 1.7 1.7 0 00-.3 1.9V9a1.7 1.7 0 001.5 1h.1a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>
 </button>
@@ -275,15 +278,6 @@ href="/asistencia"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M8 15l2.5 2.5L16 13" /></svg>}
 titulo="Asistencia"
 descripcion="Registro por QR, vacaciones, permisos y faltas."
-/>
-)}
-{sec("buzon") && ver("Buzón de sugerencias e ideas de mejora Comparte las ideas y sugerencias de tu equipo.") && (
-<MenuCard
-compactoMovil
-href="/buzon-sugerencias"
-icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M12 2C7 2 3 5 3 9c0 2.4 1.4 4.5 3.5 5.8V21l4-2.2c.5.1 1 .2 1.5.2 5 0 9-3 9-7s-4-7-9-7z" /></svg>}
-titulo="Buzón de sugerencias e ideas de mejora"
-descripcion="Comparte las ideas y sugerencias de tu equipo."
 />
 )}
 {sec("viajes") && ver("Control de Viajes rutas calendario gastos viáticos casetas combustible monitoreo Organiza y consulta la información de tus viajes.") && (

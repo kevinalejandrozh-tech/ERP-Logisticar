@@ -164,6 +164,13 @@ comentario TEXT NOT NULL,
 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
+// Última vez que cada usuario abrió el Buzón (para el marcador rojo de sugerencias nuevas en el inicio).
+await p.query(`
+CREATE TABLE IF NOT EXISTS buzon_vistas (
+usuario_id INTEGER PRIMARY KEY,
+visto_hasta TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 await p.query(`
 CREATE TABLE IF NOT EXISTS expedientes (
 id SERIAL PRIMARY KEY,

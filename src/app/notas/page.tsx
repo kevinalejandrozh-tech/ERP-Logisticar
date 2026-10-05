@@ -4,8 +4,9 @@ import PageHeader from "@/components/PageHeader";
 import { compressImage } from "@/lib/imageUtils";
 
 type Adjunto = { id?: number; nombre: string; mime: string; leyenda: string | null; contenido?: string; nuevo?: boolean; borrar?: boolean };
-type Nota = { id: number; titulo: string; contenido: string; importante: boolean; vence_en: string | null; terminada: boolean; updated_at: string; adjuntos: Adjunto[] };
-type Borrador = { id?: number; contenido: string; importante: boolean; vence_en: string; terminada: boolean; adjuntos: Adjunto[] };
+type Nota = { id: number; titulo: string; contenido: string; importante: boolean; vence_en: string | null; terminada: boolean; updated_at: string; adjuntos: Adjunto[]; propia: boolean; autor: string; compartida_con: { id: number; nombre: string }[] };
+type Borrador = { id?: number; contenido: string; importante: boolean; vence_en: string; terminada: boolean; adjuntos: Adjunto[]; propia: boolean; compartir: number[] };
+type UsuarioNota = { id: number; nombre: string };
 
 const ACEPTA = "image/*,.pdf,.doc,.docx,.xls,.xlsx";
 const MAX_ARCHIVO = 4_400_000;
@@ -84,6 +85,7 @@ export default function NotasPage() {
   const [borrador, setBorrador] = useState<Borrador | null>(null);
   const [verReloj, setVerReloj] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [usuarios, setUsuarios] = useState<UsuarioNota[]>([]);
   const editor = useRef<HTMLDivElement>(null);
   const inputArchivo = useRef<HTMLInputElement>(null);
   const inputCamara = useRef<HTMLInputElement>(null);
@@ -102,11 +104,15 @@ export default function NotasPage() {
   }, []);
   useEffect(() => {
     cargar();
+    fetch("/api/notas/compartir", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setUsuarios(d.usuarios || []))
+      .catch(() => {});
   }, [cargar]);
 
   const abrir = (n?: Nota) => {
     setVerReloj(false);
-    setBorrador(n ? { id: n.id, contenido: n.contenido, importante: n.importante, vence_en: aLocal(n.vence_en), terminada: n.terminada, adjuntos: n.adjuntos.map((a) => ({ ...a })) } : { contenido: "", importante: false, vence_en: "", terminada: false, adjuntos: [] });
+    setBorrador(n ? { id: n.id, contenido: n.contenido, importante: n.importante, vence_en: aLocal(n.vence_en), terminada: n.terminada, adjuntos: n.adjuntos.map((a) => ({ ...a })), propia: n.propia, compartir: n.compartida_con.map((u) => u.id) } : { contenido: "", importante: false, vence_en: "", terminada: false, adjuntos: [], propia: true, compartir: [] });
     setTimeout(() => {
       if (editor.current) {
         editor.current.innerHTML = n?.contenido || "";
@@ -167,6 +173,10 @@ export default function NotasPage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "No se pudo guardar.");
+      if (borrador.propia && (borrador.id || borrador.compartir.length)) {
+        const rc = await fetch("/api/notas/compartir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nota_id: d.id, usuarios: borrador.compartir }) });
+        if (!rc.ok) alert((await rc.json()).error || "No se pudo compartir la nota.");
+      }
       for (const a of borrador.adjuntos) {
         if (a.borrar && a.id) await fetch(`/api/notas/adjuntos?id=${a.id}`, { method: "DELETE" });
         else if (a.nuevo && !a.borrar) {
@@ -208,7 +218,7 @@ export default function NotasPage() {
         .nota-check input { width: 15px; height: 15px; }
       `}</style>
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 md:px-10 pt-6 md:pt-10 pb-10">
-        <PageHeader titulo="Notas" subtitulo="Tus notas personales con recordatorios y archivos." backHref="/" backLabel="Menú principal" />
+        <PageHeader titulo="Notas" subtitulo="Tus notas con recordatorios y archivos. Puedes compartirlas con otro usuario para editarlas juntos." backHref="/" backLabel="Menú principal" />
         <button type="button" onClick={() => abrir()} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold mb-5">+ Agregar nota</button>
         {error && <p className="text-[13px] text-[var(--red)]">{error}</p>}
         {cargando ? (
@@ -224,11 +234,16 @@ export default function NotasPage() {
                   {n.titulo}
                 </button>
                 {n.vence_en && <span className={`text-[11.5px] font-bold ${vencida(n) ? "text-[var(--red)]" : "text-[var(--gray-500)]"}`}>⏰ {vencida(n) ? "Venció" : "Vence"} {fh(n.vence_en)}</span>}
+                {!n.propia ? (
+                  <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida por {n.autor}</span>
+                ) : n.compartida_con.length > 0 ? (
+                  <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida con {n.compartida_con.map((u) => u.nombre).join(", ")}</span>
+                ) : null}
                 <span className="text-[11px] text-[var(--gray-400)]">Editada {fh(n.updated_at)} · {n.adjuntos.length} archivo(s)</span>
                 <div className="flex gap-3 mt-auto pt-2 text-[12px] font-bold">
                   <button type="button" className="text-[var(--green)]" onClick={() => terminar(n, !n.terminada)}>{n.terminada ? "Reabrir" : "Marcar terminada"}</button>
                   <button type="button" className="text-[var(--blue)]" onClick={() => abrir(n)}>Abrir</button>
-                  <button type="button" className="text-[var(--red)] ml-auto" onClick={() => eliminar(n)}>Eliminar</button>
+                  {n.propia && <button type="button" className="text-[var(--red)] ml-auto" onClick={() => eliminar(n)}>Eliminar</button>}
                 </div>
               </div>
             ))}
@@ -268,6 +283,25 @@ export default function NotasPage() {
               data-placeholder="Escribe aquí. La primera línea será el título."
               className="nota-editor min-h-[240px] border border-[var(--gray-200)] rounded-xl p-4 text-[13.5px] leading-relaxed focus:outline-none focus:border-[var(--blue)]"
             />
+            {borrador.propia ? (
+              <div className="mt-4 border border-[var(--gray-200)] rounded-xl p-3">
+                <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-2">👥 Compartir con otro usuario (ambos podrán editar la nota)</p>
+                {usuarios.length === 0 ? (
+                  <p className="text-[12px] text-[var(--gray-400)] m-0">No hay otros usuarios con acceso a Notas.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                    {usuarios.map((u) => (
+                      <label key={u.id} className="flex items-center gap-1.5 text-[12.5px] cursor-pointer">
+                        <input type="checkbox" checked={borrador.compartir.includes(u.id)} onChange={(e) => setBorrador({ ...borrador, compartir: e.target.checked ? [...borrador.compartir, u.id] : borrador.compartir.filter((x) => x !== u.id) })} />
+                        {u.nombre}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="mt-3 text-[12px] text-[var(--blue)] font-bold">👥 Nota compartida contigo — puedes editarla.</p>
+            )}
             {borrador.adjuntos.filter((a) => !a.borrar).length > 0 && (
               <div className="grid sm:grid-cols-2 gap-3 mt-4">
                 {borrador.adjuntos.map((a, i) =>

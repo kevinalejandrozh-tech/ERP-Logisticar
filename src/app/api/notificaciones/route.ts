@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     if (puedeVerSeccion("notas", sesion.rol, sesion.secciones)) {
       try {
         await ensureNotasSchema();
-        const n = await p.query(`SELECT id, titulo, vence_en FROM notas WHERE usuario_id = $1 AND NOT terminada AND vence_en IS NOT NULL AND vence_en <= now() ORDER BY vence_en LIMIT 10`, [sesion.userId]);
+        const n = await p.query(`SELECT n.id, n.titulo, n.vence_en FROM notas n WHERE (n.usuario_id = $1 OR EXISTS (SELECT 1 FROM notas_compartidas c WHERE c.nota_id = n.id AND c.usuario_id = $1)) AND NOT n.terminada AND n.vence_en IS NOT NULL AND n.vence_en <= now() ORDER BY n.vence_en LIMIT 10`, [sesion.userId]);
         vencidas = n.rows.map((r) => ({ id: -Number(r.id), usuario: "Recordatorio", accion: `Nota vencida: ${r.titulo}`, pagina: "/notas", paginaTitulo: "Notas", veces: 1, fecha: r.vence_en, nueva: true }));
       } catch {
         /* sin tabla de notas aún */

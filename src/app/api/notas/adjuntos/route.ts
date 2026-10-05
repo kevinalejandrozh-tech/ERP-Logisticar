@@ -1,22 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { MIMES_NOTAS, ensureNotasSchema, sesionNotas } from "@/lib/notasDB";
+import { MIMES_NOTAS, ensureNotasSchema, puedeAccederNota, sesionNotas } from "@/lib/notasDB";
 
 export const dynamic = "force-dynamic";
 const MAX = 6_000_000; // ~4.5 MB decodificados (límite de las funciones serverless)
 
-async function esMia(notaId: number, userId: number) {
-  const r = await getPool().query(`SELECT 1 FROM notas WHERE id = $1 AND usuario_id = $2`, [notaId, userId]);
-  return (r.rowCount || 0) > 0;
-}
+// Dueño o usuario con quien se compartió la nota.
+const esMia = puedeAccederNota;
 
-// GET ?id= — contenido de un adjunto propio.
+// GET ?id= — contenido de un adjunto de una nota propia o compartida.
 export async function GET(req: NextRequest) {
   const s = await sesionNotas(req);
   if (s instanceof NextResponse) return s;
   await ensureNotasSchema();
   const r = await getPool().query(
-    `SELECT a.nombre, a.mime, a.contenido FROM notas_adjuntos a JOIN notas n ON n.id = a.nota_id WHERE a.id = $1 AND n.usuario_id = $2`,
+    `SELECT a.nombre, a.mime, a.contenido FROM notas_adjuntos a JOIN notas n ON n.id = a.nota_id WHERE a.id = $1 AND (n.usuario_id = $2 OR EXISTS (SELECT 1 FROM notas_compartidas c WHERE c.nota_id = n.id AND c.usuario_id = $2))`,
     [Number(req.nextUrl.searchParams.get("id")), s.userId]
   );
   if (!r.rowCount) return NextResponse.json({ error: "No encontrado." }, { status: 404 });
@@ -53,7 +51,7 @@ export async function PUT(req: NextRequest) {
   if (s instanceof NextResponse) return s;
   const b = await req.json().catch(() => ({}));
   await ensureNotasSchema();
-  await getPool().query(`UPDATE notas_adjuntos a SET leyenda = $3 FROM notas n WHERE a.id = $1 AND n.id = a.nota_id AND n.usuario_id = $2`, [Number(b?.id), s.userId, String(b?.leyenda || "").slice(0, 500) || null]);
+  await getPool().query(`UPDATE notas_adjuntos a SET leyenda = $3 FROM notas n WHERE a.id = $1 AND n.id = a.nota_id AND (n.usuario_id = $2 OR EXISTS (SELECT 1 FROM notas_compartidas c WHERE c.nota_id = n.id AND c.usuario_id = $2))`, [Number(b?.id), s.userId, String(b?.leyenda || "").slice(0, 500) || null]);
   return NextResponse.json({ ok: true });
 }
 
@@ -61,6 +59,6 @@ export async function DELETE(req: NextRequest) {
   const s = await sesionNotas(req);
   if (s instanceof NextResponse) return s;
   await ensureNotasSchema();
-  await getPool().query(`DELETE FROM notas_adjuntos a USING notas n WHERE a.id = $1 AND n.id = a.nota_id AND n.usuario_id = $2`, [Number(req.nextUrl.searchParams.get("id")), s.userId]);
+  await getPool().query(`DELETE FROM notas_adjuntos a USING notas n WHERE a.id = $1 AND n.id = a.nota_id AND (n.usuario_id = $2 OR EXISTS (SELECT 1 FROM notas_compartidas c WHERE c.nota_id = n.id AND c.usuario_id = $2))`, [Number(req.nextUrl.searchParams.get("id")), s.userId]);
   return NextResponse.json({ ok: true });
 }

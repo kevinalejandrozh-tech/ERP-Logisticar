@@ -102,3 +102,37 @@ export function etiquetaViaje(d: Record<string, string>): { linea1: string; line
   const j = (a?: string, b?: string) => [a, b].map((x) => (x || "").trim()).filter(Boolean).join(" · ");
   return { linea1: j(d["NOMBRE CUENTA"], d["ESTADO DESTINO"]) || "Viaje", linea2: j(d["RUTA O DESTINO"], d["No EMBARQUE"] ? `Emb. ${d["No EMBARQUE"]}` : "") };
 }
+
+// ---------- Estatus visual del viaje (paleta única del calendario) ----------
+export type GrupoEstatus = "prog" | "ida" | "reg" | "res" | "fin";
+export const GRUPOS_ESTATUS: { clave: GrupoEstatus; etiqueta: string; fondo: string; borde: string; texto: string; solido: string }[] = [
+  { clave: "prog", etiqueta: "Programado", fondo: "rgba(120,135,155,0.30)", borde: "#7a8798", texto: "#1d2733", solido: "#d9dde2" },
+  { clave: "ida", etiqueta: "Ida", fondo: "rgba(120,185,240,0.70)", borde: "#4a95d8", texto: "#0b2a4a", solido: "#97cdf6" },
+  { clave: "reg", etiqueta: "Regreso", fondo: "rgba(55,120,200,0.70)", borde: "#2a64be", texto: "#06182f", solido: "#699ad6" },
+  { clave: "res", etiqueta: "En resguardo", fondo: "rgba(250,200,40,0.75)", borde: "#d1a500", texto: "#3b2e00", solido: "#fbd353" },
+  { clave: "fin", etiqueta: "Terminado", fondo: "rgba(110,165,125,0.45)", borde: "#7fae8b", texto: "#10301b", solido: "#b6d2be" },
+];
+
+// Se deduce de los datos ya capturados (no requiere campos nuevos):
+// En resguardo = el campo ESTATUS dice "resguardo"; Terminado = hay arribo a patio (regreso) o liberación;
+// Regreso = hay término de servicio; Ida = hay inicio de ruta real; Programado = aún no sale.
+export function estadoViaje(d: Record<string, string>): GrupoEstatus {
+  const t = (k: string) => String(d[k] || "").trim();
+  if (/resguardo/i.test(t("ESTATUS"))) return "res";
+  if (t("ARRIBO A PATIOO") || t("FECHA DE LIBERACION DEL SERVICIO")) return "fin";
+  if (t("TERMINO DE SERVICIO")) return "reg";
+  if (t("INICIO DE RUTA")) return "ida";
+  return "prog";
+}
+export const grupoEstatus = (g: GrupoEstatus) => GRUPOS_ESTATUS.find((x) => x.clave === g)!;
+
+// Duración entre dos fechas-hora capturadas, en "X h Y min"; "" si falta alguna o es negativa.
+export function duracionViaje(desde?: string, hasta?: string): string {
+  const a = aMs(desde);
+  const b = aMs(hasta);
+  if (a === null || b === null || b < a) return "";
+  const min = Math.round((b - a) / 60000);
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h ? `${h} h` : ""}${h && m ? " " : ""}${m || !h ? `${m} min` : ""}`;
+}

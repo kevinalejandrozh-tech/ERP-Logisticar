@@ -6,7 +6,7 @@ import CampoMoneda from "@/components/CampoMoneda";
 import { exportarExcel } from "@/lib/exportExcel";
 import { ESTADOS_MX, ahoraMx, sumarDiasIso } from "@/lib/asistenciaData";
 import { moneda } from "@/lib/nominaCalculo";
-import { CAMPOS_VIAJE, GASTOS_VIAJE, GRUPOS_VIAJE, OPCIONES_TIPO_SERVICIO, Viaje, calcularEstatusViaje, esViajeLocal, etiquetaViaje } from "@/lib/viajesData";
+import { CAMPOS_VIAJE, GASTOS_VIAJE, GRUPOS_ESTATUS, GRUPOS_VIAJE, GrupoEstatus, OPCIONES_TIPO_SERVICIO, Viaje, calcularEstatusViaje, duracionViaje, esViajeLocal, estadoViaje, etiquetaViaje, grupoEstatus } from "@/lib/viajesData";
 
 type Unidad = { eco: string; unidad: string | null; placas: string | null; capacidad: string | null; disponible: boolean };
 type Conciliacion = {
@@ -46,6 +46,14 @@ const numeroSemana = (iso: string, ini: number) => {
 };
 const ANCHO_DIA = 150; // ancho fijo de cada columna de día (las etiquetas no lo modifican)
 const ANCHO_UNIDAD = 190;
+const MESES_MIN = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+// "2026-09-27T07:00" -> "27 sep 07:00"
+const fmtFH = (v?: string) => {
+  const m = (v || "").match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/);
+  if (!m) return v || "—";
+  return `${Number(m[3])} ${MESES_MIN[Number(m[2]) - 1]}${m[4] ? ` ${m[4]}:${m[5]}` : ""}`;
+};
+type Resumen = { v: Viaje; left: number; top: number; w: number; maxH: number };
 const inputCls = "w-full border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13.5px] bg-white";
 const barraCls = "border border-[var(--gray-300)] rounded-md px-3 py-1.5 text-[13.5px] bg-white";
 const labelCls = "block text-[12px] font-medium text-[var(--text)] mb-1";
@@ -113,6 +121,24 @@ export default function CalendarioViajesPage() {
   const [edicion, setEdicion] = useState<Edicion | null>(null);
   const [gastoAbierto, setGastoAbierto] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [vista, setVista] = useState<"calendario" | "tabla">("calendario");
+  const [filtroEstatus, setFiltroEstatus] = useState<"todos" | GrupoEstatus>("todos");
+  const [filtroCuenta, setFiltroCuenta] = useState("");
+  const [resumen, setResumen] = useState<Resumen | null>(null);
+
+  // Recuadro de resumen: junto al viaje, a su derecha y a la altura de su texto (a la izquierda si no cabe).
+  const abrirResumen = (v: Viaje, el: HTMLElement) => {
+    const r = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const w = Math.min(640, vw - 24);
+    const top = Math.max(12, Math.min((r.top + r.bottom) / 2 - 40, vh - 240));
+    let left: number;
+    if (r.right + 10 + w <= vw - 12) left = r.right + 10;
+    else if (r.left - 10 - w >= 12) left = r.left - 10 - w;
+    else left = Math.max(12, vw - w - 12);
+    setResumen({ v, left, top, w, maxH: vh - top - 12 });
+  };
 
   const dias = useMemo(() => {
     const n = Math.max(1, Math.min(MAX_DIAS, diasEntre(desde, hasta) + 1));
@@ -193,6 +219,15 @@ export default function CalendarioViajesPage() {
       return true;
     });
   }, [unidades, busqueda, filtroAsignacion, conViajes, ecosElegidos]);
+
+  const cuentas = useMemo(() => [...new Set(viajes.map((v) => (v.datos["NOMBRE CUENTA"] || "").trim()).filter(Boolean))].sort(), [viajes]);
+  const filasTabla = useMemo(() => {
+    const ecos = new Set(visibles.map((u) => u.eco));
+    return viajes
+      .filter((v) => ecos.has(v.eco) && (filtroEstatus === "todos" || estadoViaje(v.datos) === filtroEstatus) && (!filtroCuenta || (v.datos["NOMBRE CUENTA"] || "").trim() === filtroCuenta))
+      .sort((a, b) => (a.fecha + (a.datos["INICIO DE RUTA PROGRAMADO"] || "")).localeCompare(b.fecha + (b.datos["INICIO DE RUTA PROGRAMADO"] || "")) || a.eco.localeCompare(b.eco));
+  }, [viajes, visibles, filtroEstatus, filtroCuenta]);
+  const nombrePersona = (id: number | null) => personas.find((p) => p.id === id)?.nombre || "Sin asignar";
 
   // Conciliación de la importación de la Semana 40 (ECO y operadores que no coincidieron).
   const cargarConciliacion = useCallback(async () => {
@@ -490,6 +525,13 @@ export default function CalendarioViajesPage() {
               )}
             </div>
             <input type="search" placeholder="Buscar ECO, unidad o placas" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} className={`${barraCls} w-[200px]`} />
+            <div className="flex items-center rounded-md border border-[var(--gray-300)] overflow-hidden text-[12.5px]" role="group" aria-label="Vista">
+              {(["calendario", "tabla"] as const).map((m) => (
+                <button key={m} type="button" aria-pressed={vista === m} onClick={() => setVista(m)} className={`px-3 py-1.5 font-medium ${vista === m ? "bg-[var(--navy)] text-white" : "bg-white text-[var(--navy)]"}`}>
+                  {m === "calendario" ? "Calendario" : "Tabla"}
+                </button>
+              ))}
+            </div>
             <button type="button" className="btn btn-secundario py-1.5" onClick={exportar} disabled={!viajes.length}>Exportar Excel</button>
           </div>
           {error && <p className="m-4 text-[13px] text-[var(--red)]">{error}</p>}
@@ -501,8 +543,56 @@ export default function CalendarioViajesPage() {
               <button type="button" className="btn btn-secundario py-1 text-[12.5px]!" onClick={() => setConciliarAbierto(true)}>Revisar y relacionar</button>
             </div>
           )}
+          {vista === "tabla" && (
+            <div className="flex flex-wrap items-center gap-2 p-3 border-b border-[var(--gray-200)]">
+              <span className="text-[12.5px] font-medium text-[var(--gray-500)]">Estatus</span>
+              {([{ clave: "todos", etiqueta: "Todos" }, ...GRUPOS_ESTATUS] as { clave: "todos" | GrupoEstatus; etiqueta: string }[]).map((g) => (
+                <button key={g.clave} type="button" aria-pressed={filtroEstatus === g.clave} onClick={() => setFiltroEstatus(g.clave)} className={`rounded-full border px-3 py-1 text-[12.5px] font-medium ${filtroEstatus === g.clave ? "bg-[var(--navy)] text-white border-[var(--navy)]" : "bg-white text-[var(--navy)] border-[var(--gray-300)]"}`}>
+                  {g.etiqueta}
+                </button>
+              ))}
+              <span className="ml-3 text-[12.5px] font-medium text-[var(--gray-500)]">Cuenta</span>
+              <select value={filtroCuenta} onChange={(e) => setFiltroCuenta(e.target.value)} className={barraCls}>
+                <option value="">Todas</option>
+                {cuentas.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <span className="text-[12.5px] text-[var(--gray-500)]">{filasTabla.length} viaje(s) en el periodo visible</span>
+            </div>
+          )}
           {cargando ? (
             <p className="p-6 text-[13px] text-[var(--gray-500)]">Cargando…</p>
+          ) : vista === "tabla" ? (
+            <div className="overflow-auto max-h-[calc(100vh-240px)] min-h-[200px]">
+              <table className="w-full min-w-[980px] text-[13px] border-separate border-spacing-0">
+                <thead>
+                  <tr>
+                    {["ECO", "Cuenta", "Embarque", "Ruta o destino", "Operador", "Inicio programado", "Término estimado", "Estatus"].map((h) => (
+                      <th key={h} className="sticky top-0 z-10 bg-white text-left px-3 py-2.5 text-[11.5px] font-medium text-[var(--gray-500)] uppercase tracking-wide border-b border-[var(--gray-200)]">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filasTabla.map((v) => {
+                    const g = grupoEstatus(estadoViaje(v.datos));
+                    return (
+                      <tr key={v.id} className="cursor-pointer hover:bg-[var(--gray-50)]" onClick={(e) => abrirResumen(v, e.currentTarget)}>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)] font-medium text-[var(--navy)]">{v.eco}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)]">{v.datos["NOMBRE CUENTA"] || "—"}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)]">{v.datos["No EMBARQUE"] || "—"}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)]">{[v.datos["ESTADO DESTINO"], v.datos["RUTA O DESTINO"]].filter(Boolean).join(" · ") || "—"}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)]">{nombrePersona(v.operador_id)}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)] whitespace-nowrap">{fmtFH(v.datos["INICIO DE RUTA PROGRAMADO"] || v.fecha)}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)] whitespace-nowrap">{fmtFH(v.datos["TERMINO ESTIMADO DE TERMINO DEL SERVICIO"])}</td>
+                        <td className="px-3 py-2 border-b border-[var(--gray-200)]">
+                          <span className="inline-block rounded-full px-2.5 py-0.5 text-[12px] font-medium" style={{ background: g.solido, color: g.texto, border: `1px solid ${g.borde}` }}>{g.etiqueta}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {filasTabla.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-[var(--gray-500)]">No hay viajes con estos filtros en el periodo visible.</td></tr>}
+                </tbody>
+              </table>
+            </div>
           ) : (
             // Desplazamiento en ambos sentidos: encabezados de días fijos arriba y columna "Unidad" fija a la izquierda.
             <div className="overflow-auto max-h-[calc(100vh-240px)] min-h-[320px]">
@@ -536,14 +626,15 @@ export default function CalendarioViajesPage() {
                           <div className="grid gap-1 min-w-0">
                             {(porCelda.get(`${u.eco}|${d}`) || []).map((v) => {
                               const et = etiquetaViaje(v.datos);
-                              const local = esViajeLocal(v.datos);
+                              const g = grupoEstatus(estadoViaje(v.datos));
                               return (
                                 <button
                                   key={v.id}
                                   type="button"
-                                  onClick={() => abrir(v)}
+                                  onClick={(e) => abrirResumen(v, e.currentTarget)}
                                   title={[et.linea1, et.linea2].filter(Boolean).join(" · ")}
-                                  className={`w-full min-w-0 overflow-hidden text-center rounded-md border px-1.5 py-1 text-[11.5px] leading-tight hover:shadow-sm ${local ? "border-[#b9e5df] bg-[#e6f6f4] text-[#0f766e]" : "border-[#9ec2ff] bg-[#e8f1ff] text-[#1d4ed8]"}`}
+                                  className="w-full min-w-0 overflow-hidden text-right rounded-md border px-1.5 py-1 text-[11.5px] leading-tight hover:shadow-sm"
+                                  style={{ background: g.fondo, color: g.texto, borderColor: g.borde, borderLeftWidth: 4 }}
                                 >
                                   <span className="block font-medium truncate">{et.linea1}</span>
                                   {et.linea2 && <span className="block opacity-80 truncate">{et.linea2}</span>}
@@ -562,7 +653,70 @@ export default function CalendarioViajesPage() {
             </div>
           )}
         </div>
+        <div className="flex flex-wrap items-center gap-2 -mt-5 mb-8 text-[12.5px] text-[var(--gray-500)]">
+          <span className="font-medium">Estatus</span>
+          {GRUPOS_ESTATUS.map((g) => (
+            <span key={g.clave} className="rounded-full px-2.5 py-0.5 font-medium" style={{ background: g.solido, color: g.texto, border: `1px solid ${g.borde}` }}>{g.etiqueta}</span>
+          ))}
+        </div>
       </div>
+
+      {resumen && (() => {
+        const v = resumen.v;
+        const d = v.datos;
+        const g = grupoEstatus(estadoViaje(d));
+        const u = unidades.find((x) => x.eco === v.eco);
+        const ruta = rutas.find((r) => r.nombre === d["RUTA O DESTINO"]);
+        const bono = ruta && !esViajeLocal(d) ? (ruta.bonos_unidad[v.eco] ?? ruta.bono) : null;
+        const est = calcularEstatusViaje(d);
+        const dato = (t: string, x: React.ReactNode) => (
+          <div><div className="text-[11.5px] text-[var(--gray-500)]">{t}</div><div className="text-[13.5px] font-medium text-[var(--navy)]">{x || "—"}</div></div>
+        );
+        return (
+          <div className="fixed inset-0 z-50 bg-[rgba(22,33,92,0.15)]" onClick={() => setResumen(null)}>
+            <div role="dialog" aria-label="Resumen del viaje" onClick={(e) => e.stopPropagation()} className="fixed bg-white rounded-lg shadow-2xl border border-[var(--gray-300)] overflow-y-auto" style={{ left: resumen.left, top: resumen.top, width: resumen.w, maxHeight: resumen.maxH }}>
+              <div className="px-5 py-4" style={{ background: g.solido, color: g.texto }}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11.5px] opacity-80 uppercase tracking-wide">ECO-Unidad</div>
+                    <div className="text-[28px] font-bold leading-tight">{v.eco}</div>
+                    <div className="text-[13px]">{[u?.capacidad, d["NOMBRE CUENTA"], d["No EMBARQUE"] ? `Emb. ${d["No EMBARQUE"]}` : ""].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <span className="rounded-full bg-white px-3 py-1 text-[13px] font-bold border border-black/15">{g.etiqueta}</span>
+                </div>
+              </div>
+              <div className="p-5 grid gap-4">
+                <div className="grid grid-cols-2 gap-3">
+                  {dato("Operador", nombrePersona(v.operador_id))}
+                  {dato("Ayudante", nombrePersona(v.ayudante_id))}
+                  {dato("Estado · ruta", [d["ESTADO DESTINO"], d["RUTA O DESTINO"]].filter(Boolean).join(" · "))}
+                  {dato("Tipo de servicio", esViajeLocal(d) ? "Local" : "Foráneo")}
+                  {dato("Inicio programado", fmtFH(d["INICIO DE RUTA PROGRAMADO"]))}
+                  {dato("Inicio de ruta", d["INICIO DE RUTA"] ? fmtFH(d["INICIO DE RUTA"]) : "")}
+                  {dato("Término de servicio", d["TERMINO DE SERVICIO"] ? fmtFH(d["TERMINO DE SERVICIO"]) : "")}
+                  {dato("Arribo a patio (regreso)", d["ARRIBO A PATIOO"] ? fmtFH(d["ARRIBO A PATIOO"]) : "")}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] p-3">
+                  {dato("Horas de ida", duracionViaje(d["INICIO DE RUTA"], d["TERMINO DE SERVICIO"]))}
+                  {dato("Horas de regreso", duracionViaje(d["TERMINO DE SERVICIO"], d["ARRIBO A PATIOO"]))}
+                  {dato("Estatus patio", est.patio)}
+                  {dato("Estatus almacén", est.almacen)}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 rounded-lg bg-[var(--gray-50)] border border-[var(--gray-200)] p-3">
+                  {dato("Casetas", Number(d["GASTOS CASETAS"]) ? moneda(Number(d["GASTOS CASETAS"])) : "")}
+                  {dato("Viáticos efectivo", Number(d["VIATICOS EFECTIVO"]) ? moneda(Number(d["VIATICOS EFECTIVO"])) : "")}
+                  {dato("Viáticos transferencia", Number(d["VIATICOS TRANSFERENCIA"]) ? moneda(Number(d["VIATICOS TRANSFERENCIA"])) : "")}
+                  {dato("Bono de ruta", bono !== null ? moneda(bono) : "")}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className="btn btn-secundario" onClick={() => setResumen(null)}>Cerrar</button>
+                  <button type="button" className="btn btn-primario" onClick={() => { setResumen(null); abrir(v); }}>Editar viaje</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {edicion && (
         <div className="fixed inset-0 bg-[rgba(22,33,92,0.45)] flex items-start justify-center py-8 overflow-y-auto z-50 px-4">

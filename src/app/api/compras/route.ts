@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, ensureSchema } from "@/lib/db";
 import { sesionCompras } from "@/lib/comprasDB";
+import { ensureNotasSchema, puedeAccederNota } from "@/lib/notasDB";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -17,6 +18,12 @@ export async function POST(req: NextRequest) {
     const sesion = await sesionCompras(req);
     const body = await req.json();
     const { folio, fecha, productos, datos } = body || {};
+    // OC generada desde una nota: solo se vincula si el usuario tiene acceso a esa nota.
+    let notaId: number | null = null;
+    if (Number(body?.notaId) > 0 && sesion) {
+      await ensureNotasSchema();
+      if (await puedeAccederNota(Number(body.notaId), sesion.userId)) notaId = Number(body.notaId);
+    }
     if (!folio || !Array.isArray(productos) || productos.length === 0) {
       return NextResponse.json({ error: "El folio y la lista de productos son obligatorios." }, { status: 400 });
     }
@@ -43,9 +50,9 @@ export async function POST(req: NextRequest) {
     try {
       await client.query("BEGIN");
       await client.query(
-        `INSERT INTO ordenes_compra (folio, fecha, num_proveedores, total_general, productos, estado, datos, solicitado_por)
-         VALUES ($1, $2, $3, $4, $5, 'Pendiente de autorización', $6, $7)`,
-        [folio, fecha || new Date().toISOString(), numProv, total, JSON.stringify(limpios), JSON.stringify(datos || {}), sesion?.nombre || null]
+        `INSERT INTO ordenes_compra (folio, fecha, num_proveedores, total_general, productos, estado, datos, solicitado_por, nota_id)
+         VALUES ($1, $2, $3, $4, $5, 'Pendiente de autorización', $6, $7, $8)`,
+        [folio, fecha || new Date().toISOString(), numProv, total, JSON.stringify(limpios), JSON.stringify(datos || {}), sesion?.nombre || null, notaId]
       );
       for (const p of limpios) {
         await client.query(

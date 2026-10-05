@@ -18,6 +18,8 @@ export async function GET(req: NextRequest) {
     }
     const r = await p.query(
       `SELECT n.*, (n.usuario_id = $1) AS propia, COALESCE(u.nombre, 'Usuario') AS autor,
+         COALESCE((SELECT SUM(o.total_general) FROM ordenes_compra o WHERE o.nota_id = n.id AND LOWER(COALESCE(o.estado, '')) NOT LIKE 'rechazad%' AND LOWER(COALESCE(o.estado, '')) NOT LIKE 'cancelad%'), 0)::float AS monto_oc,
+         (SELECT COUNT(*) FROM ordenes_compra o WHERE o.nota_id = n.id)::int AS num_oc,
          COALESCE((SELECT json_agg(json_build_object('id', c.usuario_id, 'nombre', cu.nombre) ORDER BY cu.nombre) FROM notas_compartidas c JOIN usuarios cu ON cu.id = c.usuario_id WHERE c.nota_id = n.id), '[]') AS compartida_con,
          COALESCE(json_agg(json_build_object('id', a.id, 'nombre', a.nombre, 'mime', a.mime, 'leyenda', a.leyenda) ORDER BY a.id) FILTER (WHERE a.id IS NOT NULL), '[]') AS adjuntos
        FROM notas n LEFT JOIN usuarios u ON u.id = n.usuario_id LEFT JOIN notas_adjuntos a ON a.nota_id = n.id

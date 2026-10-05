@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const b = await req.json();
     const contenido = String(b?.contenido || "");
     const mime = /^data:([^;,]+);base64,/.exec(contenido)?.[1] || "";
-    if (!(mime.startsWith("image/") || MIMES_NOTAS.includes(mime))) return NextResponse.json({ error: "Tipo de archivo no permitido." }, { status: 400 });
+    if (!(mime.startsWith("image/") || mime.startsWith("audio/") || MIMES_NOTAS.includes(mime))) return NextResponse.json({ error: "Tipo de archivo no permitido." }, { status: 400 });
     if (contenido.length > MAX) return NextResponse.json({ error: "El archivo es demasiado grande (máx. ~4 MB)." }, { status: 413 });
     await ensureNotasSchema();
     if (!(await esMia(Number(b?.nota_id), s.userId))) return NextResponse.json({ error: "La nota no existe." }, { status: 404 });

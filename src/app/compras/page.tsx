@@ -45,6 +45,7 @@ export default function ComprasPage() {
   const [detalle, setDetalle] = useState<OrdenCompra | null>(null);
   const [permisos, setPermisos] = useState<{ puedeAutorizar: boolean; esSysadmin: boolean; roles: { rol: string; etiqueta: string; autoriza: boolean }[] }>({ puedeAutorizar: false, esSysadmin: false, roles: [] });
   const [configRoles, setConfigRoles] = useState(false);
+  const [notaId, setNotaId] = useState<number | null>(null); // OC generada desde una nota (/compras?nota=ID)
 
   const cargarCatalogo = useCallback(async () => {
     try {
@@ -67,6 +68,11 @@ export default function ComprasPage() {
     } finally {
       setCargandoConsultas(false);
     }
+  }, []);
+
+  useEffect(() => {
+    const n = Number(new URLSearchParams(window.location.search).get("nota"));
+    if (n > 0) setNotaId(n);
   }, []);
 
   useEffect(() => {
@@ -146,6 +152,7 @@ export default function ComprasPage() {
           folio,
           fecha: hoy.toISOString(),
           productos: filas.map((f) => ({ cantidad: Number(f.cantidad), articulo: f.articulo.trim(), precioUnitario: Number(f.precio), referencia: f.referencia, proveedor: f.proveedor, compraUnica: f.compraUnica })),
+          notaId,
           datos: { rutaProveedores: rutaOrden, vehiculo, consumoPromedio, combustible: Number(combustible) || 0, tiempoRegreso, viaticos: vi, justificacion },
         }),
       });

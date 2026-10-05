@@ -834,6 +834,7 @@ hashSupervisor,
 
 // ---- Modulo de Compras: extensión de ordenes_compra y detalle de productos ----
 await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS num_proveedores INTEGER;`);
+await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS nota_id INTEGER;`); // OC generada desde una nota (módulo Notas)
 await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS total_general NUMERIC;`);
 await p.query(`ALTER TABLE ordenes_compra ADD COLUMN IF NOT EXISTS productos JSONB NOT NULL DEFAULT '[]'::jsonb;`);
 // Flujo de autorización: datos de la ruta (combustible, viáticos, justificación…), solicitante y autorización.

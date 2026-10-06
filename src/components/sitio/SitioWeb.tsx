@@ -182,7 +182,7 @@ function Encabezado({ sesionActiva }: { sesionActiva: boolean }) {
       Ir al sistema
     </Link>
   ) : (
-    <a href="/login?destino=%2Fsitio" className="btn btn-primario whitespace-nowrap">
+    <a href="/login" className="btn btn-primario whitespace-nowrap">
       Iniciar sesión
     </a>
   );

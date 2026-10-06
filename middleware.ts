@@ -3,7 +3,7 @@ import { COOKIE_SESION, verificarTokenSesion } from "@/lib/sesion";
 import { esSoloSysadmin, rutaPermitida } from "@/lib/permisos";
 
 // Páginas que se llenan vía código QR por cualquier operador, sin necesidad de cuenta.
-const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/inventario/consulta", "/personas/evaluacion-candidatos/formulario", "/personas/evaluacion-candidatos/documentos", "/asistencia/registro", "/sitio"]; // /sitio: sitio web público de la empresa. Evaluación de candidatos: link/QR para candidatos
+const PAGINAS_PUBLICAS = ["/login", "/menu-dia/pedido", "/buzon-sugerencias/enviar", "/personas/capacitaciones/tomar", "/inventario/consulta", "/personas/evaluacion-candidatos/formulario", "/personas/evaluacion-candidatos/documentos", "/asistencia/registro", "/sitio", "/robots.txt", "/sitemap.xml"]; // /sitio: sitio web público de la empresa. Evaluación de candidatos: link/QR para candidatos
 
 // Rutas de API que esas mismas páginas públicas necesitan para funcionar.
 const API_PUBLICA = new Set([
@@ -65,7 +65,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.json({ error: "No autorizado. Inicia sesión." }, { status: 401 });
     }
     const url = req.nextUrl.clone();
-    url.pathname = "/login";
+    // Raíz del dominio sin sesión: lo primero que se ve es el sitio web público (desde ahí está "Iniciar sesión").
+    url.pathname = pathname === "/" ? "/sitio" : "/login";
     url.search = esNavegacionManual || pathname === "/" ? "" : `?destino=${encodeURIComponent(pathname)}`;
     const redireccion = NextResponse.redirect(url);
     if (esNavegacionManual && token) {

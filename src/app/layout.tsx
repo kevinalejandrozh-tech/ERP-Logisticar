@@ -22,6 +22,8 @@ const roboto = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://erp.transporteslogisticar.com.mx"),
+  robots: { index: false, follow: false }, // el ERP no se indexa; solo /sitio (ver su metadata)
   title: "Gestión Logisticar",
   description: "Sistema de control operativo - Transportes Logisticar",
 };

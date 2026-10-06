@@ -12,6 +12,17 @@ export const revalidate = 0;
 export const metadata: Metadata = {
   title: "Transportes Logisticar | Transporte de carga terrestre",
   description: "Transporte de carga terrestre con rutas nacionales, monitoreo GPS y flota con mantenimiento propio.",
+  robots: { index: true, follow: true },
+  alternates: { canonical: "/sitio" },
+  openGraph: {
+    title: "Transportes Logisticar | Transporte de carga terrestre",
+    description: "Transporte de carga terrestre con rutas nacionales, monitoreo GPS y flota con mantenimiento propio.",
+    url: "/sitio",
+    siteName: "Transportes Logisticar",
+    locale: "es_MX",
+    type: "website",
+    images: ["/logo-completo.png"],
+  },
 };
 
 async function leerContenido(): Promise<SitioContenido> {

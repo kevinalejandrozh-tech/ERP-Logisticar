@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: logisticar
+      POSTGRES_USER: logisticar
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: America/Mexico_City
+    volumes:
+      - /srv/logisticar/pgdata:/var/lib/postgresql/data   # disco SSD del T40
+    ports:
+      - "127.0.0.1:5432:5432"        # solo accesible desde el propio servidor
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U logisticar -d logisticar"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://logisticar:${POSTGRES_PASSWORD}@db:5432/logisticar
+      DATABASE_SSL: "false"
+      JWT_SECRET: ${JWT_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}   # false mientras pruebes por http://IP:3000; true con HTTPS
+    ports:
+      - "3000:3000"
+
+  # Fase 3 (opcional): docker compose --profile tunel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunel"]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      - app

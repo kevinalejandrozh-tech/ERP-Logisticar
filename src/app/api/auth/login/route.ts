@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ ok: true, nombre: usuario.nombre, rol: usuario.rol });
     res.cookies.set(COOKIE_SESION, token, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.COOKIE_SECURE !== "false",
       sameSite: "lax",
       path: "/",
       // sin maxAge: cookie de sesión, se elimina al cerrar el navegador

@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       }
     }
     const res = NextResponse.json({ ok: true });
-    res.cookies.set(COOKIE_SESION, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+    res.cookies.set(COOKIE_SESION, "", { httpOnly: true, secure: process.env.COOKIE_SECURE !== "false", sameSite: "lax", path: "/", maxAge: 0 });
     return res;
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Error al cerrar sesión." }, { status: 500 });

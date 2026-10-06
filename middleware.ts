@@ -70,7 +70,7 @@ export async function middleware(req: NextRequest) {
     const redireccion = NextResponse.redirect(url);
     if (esNavegacionManual && token) {
       // Se invalida la sesión: para entrar hay que iniciar sesión de nuevo.
-      redireccion.cookies.set(COOKIE_SESION, "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+      redireccion.cookies.set(COOKIE_SESION, "", { httpOnly: true, secure: process.env.COOKIE_SECURE !== "false", sameSite: "lax", path: "/", maxAge: 0 });
     }
     redireccion.headers.set("Cache-Control", "no-store");
     return redireccion;

@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { OrdenCompra, esRechazada, moneda } from "@/lib/comprasData";
+import { OrdenCompra, esRechazada, moneda, totalOC } from "@/lib/comprasData";
 
 const MESES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 const SEM = ["D", "L", "M", "M", "J", "V", "S"];
@@ -30,12 +30,12 @@ export default function GraficaCompras({ ordenes }: { ordenes: OrdenCompra[] }) 
     for (const o of vigentes) {
       const d = diaMx(o.fecha || o.created_at || "");
       if (d.slice(0, 7) !== mes) continue;
-      v[Number(d.slice(8, 10)) - 1] += Number(o.total_general) || 0;
+      v[Number(d.slice(8, 10)) - 1] += totalOC(o);
       cuenta++;
     }
     return { dias: n, valores: v, ordenesMes: cuenta, totalMes: v.reduce((x, y) => x + y, 0) };
   }, [vigentes, mes]);
-  const totalGeneral = useMemo(() => vigentes.reduce((x, o) => x + (Number(o.total_general) || 0), 0), [vigentes]);
+  const totalGeneral = useMemo(() => vigentes.reduce((x, o) => x + totalOC(o), 0), [vigentes]);
 
   const mover = (d: -1 | 1) => {
     const [a, m] = mes.split("-").map(Number);
@@ -63,7 +63,7 @@ export default function GraficaCompras({ ordenes }: { ordenes: OrdenCompra[] }) 
           <button type="button" onClick={() => mover(1)} disabled={mes >= hoy.slice(0, 7)} aria-label="Mes siguiente" className="w-8 h-8 rounded-lg border border-[var(--gray-200)] bg-white text-[var(--navy)] font-bold disabled:opacity-40">›</button>
         </div>
       </div>
-      <p className="text-[11.5px] sm:text-[12.5px] text-[var(--gray-400)] m-0 mb-3">Monto de las órdenes de compra por día (pendientes y autorizadas; no cuenta las rechazadas).</p>
+      <p className="text-[11.5px] sm:text-[12.5px] text-[var(--gray-400)] m-0 mb-3">Monto de las órdenes de compra por día: artículos + combustible + viáticos (pendientes y autorizadas; no cuenta las rechazadas).</p>
 
       <div className="overflow-x-auto border border-[var(--gray-200)] rounded-lg">
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Compras por día de ${MESES[m - 1]} ${a}`} className="block max-w-none">

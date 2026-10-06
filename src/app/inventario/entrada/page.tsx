@@ -31,6 +31,27 @@ export default function EntradaPage() {
     fetch("/api/inventario/almacen/ocs", { cache: "no-store" }).then((r) => r.json()).then((d) => setOcs(d.ocs || [])).catch(() => {});
   }, []);
 
+  // Desde Compras → RECIBIR: la OC llega elegida y se pasa directo a capturar lo recibido y la ubicación de almacenamiento.
+  const [ocPedida, setOcPedida] = useState<string | null>(null);
+  useEffect(() => {
+    setOcPedida(new URLSearchParams(window.location.search).get("oc"));
+  }, []);
+  useEffect(() => {
+    if (!ocPedida || !ocs.length) return;
+    const oc = ocs.find((o) => o.folio === ocPedida);
+    setOcPedida(null);
+    if (!oc) return alert(`No se encontró la OC ${ocPedida}.`);
+    if (!oc.recibible || !oc.items.some((i) => i.pendiente > 0)) return alert(`La OC ${oc.folio} no tiene artículos pendientes por recibir (estatus: ${oc.estado}).`);
+    setModo("oc");
+    setElegidas([oc.folio]);
+    setFilas(
+      oc.items
+        .filter((i) => i.pendiente > 0)
+        .map((it) => ({ ...nueva(), cantidad: String(it.pendiente), max: it.pendiente, articulo: it.articulo, precio: String(it.precioUnitario), proveedor: it.proveedor, fechaCompra: String(oc.fecha).slice(0, 10), ocFolio: oc.folio, ocIndice: it.indice }))
+    );
+    setPaso("tabla");
+  }, [ocPedida, ocs]);
+
   const set = (key: string, campo: keyof Fila, v: string) => setFilas((p) => p.map((f) => (f.key === key ? { ...f, [campo]: v } : f)));
   const completa = useMemo(
     () => filas.length > 0 && filas.every((f) => Number(f.cantidad) > 0 && (!f.max || Number(f.cantidad) <= f.max) && f.articulo.trim() && f.categoria && f.ubicacion && f.fechaCompra && f.proveedor.trim() && f.precio !== ""),

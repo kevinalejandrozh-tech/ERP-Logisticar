@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool, ensureSchema } from "@/lib/db";
-import { sesionCompras } from "@/lib/comprasDB";
+import { puedeAutorizarOC, sesionCompras } from "@/lib/comprasDB";
 import { ensureNotasSchema, puedeAccederNota } from "@/lib/notasDB";
 
 export const dynamic = "force-dynamic";
@@ -90,5 +90,40 @@ export async function GET() {
   } catch (error: any) {
     console.error("Error en GET /api/compras:", error);
     return NextResponse.json({ error: "Error al obtener las órdenes de compra", details: error.message }, { status: 500 });
+  }
+}
+
+// DELETE ?folio= — elimina el folio. Lo hacen quienes autorizan (o el solicitante mientras esté pendiente o rechazada).
+// No se permite si la OC ya tiene entradas de almacén (se perdería el rastro del inventario).
+export async function DELETE(req: NextRequest) {
+  try {
+    await ensureSchema();
+    const sesion = await sesionCompras(req);
+    if (!sesion) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+    const folio = req.nextUrl.searchParams.get("folio") || "";
+    const pool = getPool();
+    const r = await pool.query(`SELECT estado, solicitado_por FROM ordenes_compra WHERE folio = $1 ORDER BY id DESC LIMIT 1`, [folio]);
+    if (!r.rowCount) return NextResponse.json({ error: "La orden no existe." }, { status: 404 });
+    const estado = String(r.rows[0].estado || "").toLowerCase();
+    if (["recibida", "parcialmente recibida"].includes(estado)) return NextResponse.json({ error: "No se puede eliminar: la OC ya tiene entradas en almacén." }, { status: 409 });
+    const mov = await pool.query(`SELECT 1 FROM alm_movimientos WHERE oc_folio = $1 LIMIT 1`, [folio]).catch(() => null);
+    if (mov?.rowCount) return NextResponse.json({ error: "No se puede eliminar: la OC ya tiene movimientos de almacén." }, { status: 409 });
+    const propia = sesion.nombre && sesion.nombre === r.rows[0].solicitado_por && ["pendiente de autorización", "rechazada"].includes(estado);
+    if (!(await puedeAutorizarOC(sesion.rol)) && !propia) return NextResponse.json({ error: "No tienes permiso para eliminar esta orden." }, { status: 403 });
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN");
+      await c.query(`DELETE FROM productos_orden_compra WHERE orden_folio = $1`, [folio]);
+      await c.query(`DELETE FROM ordenes_compra WHERE folio = $1`, [folio]);
+      await c.query("COMMIT");
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    } finally {
+      c.release();
+    }
+    return NextResponse.json({ ok: true });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message || "Error al eliminar la orden." }, { status: 500 });
   }
 }

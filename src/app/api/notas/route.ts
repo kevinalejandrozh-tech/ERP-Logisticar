@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
     const version = await versionNotas(s.userId);
     const r = await p.query(
       `SELECT n.*, (n.usuario_id = $1) AS propia, COALESCE(u.nombre, 'Usuario') AS autor, nu.orden, nu.carpeta_id,
-         COALESCE((SELECT SUM(o.total_general) FROM ordenes_compra o WHERE o.nota_id = n.id AND LOWER(COALESCE(o.estado, '')) NOT LIKE 'rechazad%' AND LOWER(COALESCE(o.estado, '')) NOT LIKE 'cancelad%'), 0)::float AS monto_oc,
+         COALESCE((SELECT SUM(COALESCE(o.total_general, 0) + CASE WHEN (o.datos->>'combustible') ~ '^[0-9.]+$' THEN (o.datos->>'combustible')::numeric ELSE 0 END + COALESCE((SELECT SUM(CASE WHEN (vi->>'monto') ~ '^[0-9.]+$' THEN (vi->>'monto')::numeric ELSE 0 END) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(o.datos->'viaticos') = 'array' THEN o.datos->'viaticos' ELSE '[]'::jsonb END) vi), 0)) FROM ordenes_compra o WHERE o.nota_id = n.id AND LOWER(COALESCE(o.estado, '')) NOT LIKE 'rechazad%' AND LOWER(COALESCE(o.estado, '')) NOT LIKE 'cancelad%'), 0)::float AS monto_oc,
          (SELECT COUNT(*) FROM ordenes_compra o WHERE o.nota_id = n.id)::int AS num_oc,
          COALESCE((SELECT json_agg(json_build_object('id', c.usuario_id, 'nombre', cu.nombre) ORDER BY cu.nombre) FROM notas_compartidas c JOIN usuarios cu ON cu.id = c.usuario_id WHERE c.nota_id = n.id), '[]') AS compartida_con,
          COALESCE(json_agg(json_build_object('id', a.id, 'nombre', a.nombre, 'mime', a.mime, 'leyenda', a.leyenda) ORDER BY a.id) FILTER (WHERE a.id IS NOT NULL), '[]') AS adjuntos

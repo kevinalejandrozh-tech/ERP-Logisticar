@@ -38,6 +38,9 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   // Orden de ruta definido en la captura; los demás al final.
   const nombres = [...new Set(autorizados.map(proveedorDe))];
   const ruta = [...(datos.rutaProveedores || []).filter((n) => nombres.includes(n)), ...nombres.filter((n) => !(datos.rutaProveedores || []).includes(n))];
+  // Proveedores marcados como "Envío": el proveedor envía el pedido, no son parada de la ruta.
+  const envios = new Set(datos.enviosProveedores || []);
+  const paradas = ruta.filter((n) => !envios.has(n));
   const referencias = [...new Set(productos.map((p) => (p.referencia || "").trim()).filter(Boolean))];
 
   const fechaOC = new Date(orden.fecha || orden.created_at || Date.now()).toLocaleDateString("es-MX", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -57,7 +60,7 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
       const vacias = Math.max(0, 3 - filas.length);
       return `
       <div class="seccion">
-        <div class="barra"><span>${ruta.length > 1 ? `PARADA ${i + 1} · ` : ""}PROVEEDOR</span><span>${esc((nombre || "Sin proveedor").toUpperCase())}</span></div>
+        <div class="barra"><span>${envios.has(nombre) ? "ENVÍA EL PROVEEDOR · " : paradas.length > 1 ? `PARADA ${paradas.indexOf(nombre) + 1} · ` : ""}PROVEEDOR</span><span>${esc((nombre || "Sin proveedor").toUpperCase())}</span></div>
         ${datosProv.length ? `<div class="prov-datos">${datosProv.join(" &nbsp;|&nbsp; ")}</div>` : ""}
         <table class="items">
           <thead><tr><th style="width:8%">#</th><th>Descripción</th><th style="width:16%">Referencia</th><th class="c" style="width:8%">Cant.</th><th class="r" style="width:13%">P/U</th><th class="r tot" style="width:14%">Total</th></tr></thead>
@@ -84,7 +87,7 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
     : "";
 
   // Tarjetas de ruta: proveedores del catálogo sin servicio a domicilio (las compras únicas no tienen mapa).
-  const sinDomicilio = ruta.map((n) => ({ n, p: buscar(n) })).filter((x) => x.p && !x.p.a_domicilio);
+  const sinDomicilio = ruta.map((n) => ({ n, p: buscar(n) })).filter((x) => x.p && !x.p.a_domicilio && !envios.has(x.n));
   const tarjetas = (
     await Promise.all(
       sinDomicilio.map(async ({ n, p }) => {
@@ -131,6 +134,7 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   .empresa span { display: block; color: #555; font-size: 10px; line-height: 1.45; }
   .titulo { text-align: right; }
   .titulo h1 { margin: 0 0 6px; font-size: 26px; color: #4a5f9b; letter-spacing: 1px; }
+  .ttl { font-size: 11.5px; font-weight: bold; color: #16215c; margin: -2px 0 7px; max-width: 330px; margin-left: auto; }
   .kv { display: grid; grid-template-columns: auto 120px; gap: 3px 8px; justify-content: end; align-items: center; font-size: 10px; }
   .kv span { text-align: right; font-weight: bold; color: #444; }
   .kv div { border: 1px solid #9aa3b8; padding: 2px 6px; text-align: center; }
@@ -180,6 +184,7 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
     <div class="empresa">${logo ? `<img src="${logo}" alt="" />` : ""}<div><b>TRANSPORTES LOGISTICAR</b><span>Departamento de Compras</span>${orden.solicitado_por ? `<span>Solicitó: ${esc(orden.solicitado_por)}</span>` : ""}</div></div>
     <div class="titulo">
       <h1>ORDEN DE COMPRA</h1>
+      ${datos.titulo ? `<div class="ttl">${esc(datos.titulo)}</div>` : ""}
       <div class="kv">
         <span>FECHA</span><div>${esc(fechaOC)}</div>
         <span>OC #</span><div>${esc(orden.folio)}</div>
@@ -189,8 +194,8 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   </div>
 
   <table class="info">
-    <thead><tr><th>Vehículo</th><th>Consumo promedio de ruta</th><th>Combustible autorizado</th><th>Tiempo estimado de regreso</th><th>Proveedores</th></tr></thead>
-    <tbody><tr><td>${esc(datos.vehiculo || "—")}</td><td>${esc(datos.consumoPromedio || "—")}</td><td>${moneda(combustible)}</td><td>${esc(datos.tiempoRegreso || "—")}</td><td>${ruta.length}</td></tr></tbody>
+    <thead><tr><th>Vehículo</th><th>Consumo promedio de ruta</th><th>Combustible autorizado</th><th>Tiempo estimado de regreso</th><th>Proveedores</th><th>Medio de pago</th><th>Dispersión de recursos</th></tr></thead>
+    <tbody><tr><td>${esc(datos.vehiculo || "—")}</td><td>${esc(datos.consumoPromedio || "—")}</td><td>${moneda(combustible)}</td><td>${esc(datos.tiempoRegreso || "—")}</td><td>${ruta.length}</td><td>${esc(datos.medioPago || "—")}</td><td>${esc(datos.dispersion || "—")}${datos.dispersionDetalle ? `<br /><small>${esc(datos.dispersionDetalle)}</small>` : ""}</td></tr></tbody>
   </table>
 
   ${secciones}

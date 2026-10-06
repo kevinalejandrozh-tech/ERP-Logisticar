@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { OrdenCompra, ProductoOC, Proveedor, esAutorizada, esRechazada, moneda, productosDe, proveedorDe } from "@/lib/comprasData";
+import { DISPERSIONES, MEDIOS_PAGO, OrdenCompra, ProductoOC, Proveedor, esAutorizada, esRechazada, moneda, productosDe, proveedorDe } from "@/lib/comprasData";
 import { imprimirOC } from "@/lib/imprimirOC";
 
 const inputCls = "w-full border border-[var(--gray-300)] rounded-md px-2.5 py-1.5 text-[12.5px] bg-white";
@@ -32,10 +32,18 @@ export default function DetalleOCModal({
   const [imprimiendo, setImprimiendo] = useState(false);
   const [error, setError] = useState("");
   const datos = orden.datos || {};
+  // Lo que ajusta y define quien autoriza (antes de autorizar): combustible, viáticos, medio de pago y dispersión de recursos.
+  const [combustibleEd, setCombustibleEd] = useState(String(datos.combustible ?? ""));
+  const [viaticosEd, setViaticosEd] = useState<{ concepto: string; monto: string }[]>((datos.viaticos || []).map((v) => ({ concepto: v.concepto, monto: String(v.monto) })));
+  const [medioPago, setMedioPago] = useState(datos.medioPago || "");
+  const [dispersion, setDispersion] = useState(datos.dispersion || "");
+  const [dispersionDetalle, setDispersionDetalle] = useState(datos.dispersionDetalle || "");
 
   const totalAutorizado = useMemo(() => items.filter((p) => p.autorizado).reduce((a, p) => a + (Number(p.totalProducto) || 0), 0), [items]);
   const totalSolicitado = useMemo(() => items.reduce((a, p) => a + (Number(p.totalProducto) || 0), 0), [items]);
-  const viaticos = (datos.viaticos || []).reduce((a, v) => a + (Number(v.monto) || 0), 0);
+  const combustibleVal = editable ? Number(combustibleEd) || 0 : Number(datos.combustible) || 0;
+  const viaticosLista = editable ? viaticosEd.map((v) => ({ concepto: v.concepto, monto: Number(v.monto) || 0 })) : datos.viaticos || [];
+  const viaticos = viaticosLista.reduce((a, v) => a + (Number(v.monto) || 0), 0);
   const cambiar = (i: number, cambio: Partial<ProductoOC>) => setItems((prev) => prev.map((p, k) => (k === i ? { ...p, ...cambio } : p)));
 
   const autorizar = async () => {
@@ -46,9 +54,15 @@ export default function DetalleOCModal({
       if (p.decision === "rechazado" && !p.razon?.trim()) return setError(`Agrega la razón del rechazo de "${p.articulo}".`);
       if (p.decision === "programado" && (!p.indicaciones?.trim() || !p.fechaProgramada)) return setError(`Agrega indicaciones y fecha programada de "${p.articulo}".`);
     }
+    if (!medioPago) return setError("Selecciona el medio de pago.");
+    if (!dispersion) return setError("Selecciona la dispersión de recursos.");
     setGuardando(true);
     try {
-      const res = await fetch("/api/compras/autorizar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ folio: orden.folio, productos: items }) });
+      const res = await fetch("/api/compras/autorizar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folio: orden.folio, productos: items, datos: { combustible: combustibleVal, viaticos: viaticosLista, medioPago, dispersion, dispersionDetalle } }),
+      });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo autorizar.");
       onActualizada();
@@ -77,6 +91,7 @@ export default function DetalleOCModal({
         <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
           <div>
             <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">Orden de compra {orden.folio}</h3>
+            {datos.titulo && <p className="text-[13.5px] font-medium text-[var(--text)] m-0">{datos.titulo}</p>}
             <p className="text-[12px] text-[var(--gray-500)] m-0">
               Estatus: <b className={autorizada ? "text-[var(--green)]" : rechazada ? "text-[var(--red)]" : "text-[#b7791f]"}>{orden.estado || "—"}</b>
               {orden.solicitado_por && <> · Solicitó: {orden.solicitado_por}</>}
@@ -152,17 +167,69 @@ export default function DetalleOCModal({
           <div className="border border-[var(--gray-200)] rounded-lg p-3">
             <p className="font-bold text-[var(--navy)] m-0 mb-1.5">Ruta y gastos</p>
             <p className="m-0">Vehículo: <b>{datos.vehiculo || "—"}</b> · Consumo promedio: <b>{datos.consumoPromedio || "—"}</b></p>
-            <p className="m-0">Combustible: <b>{moneda(datos.combustible)}</b> · Regreso estimado: <b>{datos.tiempoRegreso || "—"}</b></p>
-            <p className="m-0">Viáticos: <b>{moneda(viaticos)}</b></p>
+            <p className="m-0">Combustible: <b>{moneda(combustibleVal)}</b> · Regreso estimado: <b>{datos.tiempoRegreso || "—"}</b></p>
+            <p className="m-0">Viáticos: <b>{moneda(viaticos)}</b>{!editable && viaticosLista.length > 0 && <span className="text-[var(--gray-500)]"> ({viaticosLista.map((v) => `${v.concepto || "Viático"} ${moneda(v.monto)}`).join(" · ")})</span>}</p>
+            {!editable && datos.medioPago && <p className="m-0">Medio de pago: <b>{datos.medioPago}</b></p>}
+            {!editable && datos.dispersion && <p className="m-0">Dispersión de recursos: <b>{datos.dispersion}</b>{datos.dispersionDetalle ? ` · ${datos.dispersionDetalle}` : ""}</p>}
             {datos.justificacion && <p className="m-0 mt-1.5 text-[var(--gray-500)]">Justificación: {datos.justificacion}</p>}
           </div>
           <div className="border border-[var(--gray-200)] rounded-lg p-3 text-right">
             <p className="m-0">Solicitado: {moneda(totalSolicitado)}</p>
-            <p className="m-0 text-[15px] font-bold text-[var(--navy)]">Total autorizado: {moneda(totalAutorizado + (Number(datos.combustible) || 0) + viaticos)}</p>
+            <p className="m-0 text-[15px] font-bold text-[var(--navy)]">Total autorizado: {moneda(totalAutorizado + combustibleVal + viaticos)}</p>
             <p className="m-0 text-[11.5px] text-[var(--gray-500)]">Artículos {moneda(totalAutorizado)} + combustible y viáticos</p>
           </div>
         </div>
 
+        {editable && (
+          <div className="mt-4 border border-[var(--gray-200)] rounded-lg p-3 text-[12.5px]">
+            <p className="font-bold text-[var(--navy)] m-0 mb-2">Ajustes antes de autorizar</p>
+            <div className="grid sm:grid-cols-[200px_1fr] gap-4">
+              <label className="block">
+                <span className="block text-[12px] font-medium text-[var(--text)] mb-1">Combustible / gasolina ($)</span>
+                <div className="flex gap-1.5">
+                  <input type="number" min={0} value={combustibleEd} onChange={(e) => setCombustibleEd(e.target.value)} placeholder="0.00" className={inputCls} />
+                  {combustibleEd !== "" && <button type="button" onClick={() => setCombustibleEd("")} className="text-[var(--red)] px-1" title="Quitar combustible" aria-label="Quitar combustible">✕</button>}
+                </div>
+              </label>
+              <div>
+                <span className="block text-[12px] font-medium text-[var(--text)] mb-1">Viáticos</span>
+                {viaticosEd.map((v, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_120px_28px] gap-1.5 mb-1.5">
+                    <input value={v.concepto} onChange={(e) => setViaticosEd((p) => p.map((x, k) => (k === i ? { ...x, concepto: e.target.value } : x)))} placeholder="Concepto" className={inputCls} />
+                    <input type="number" min={0} value={v.monto} onChange={(e) => setViaticosEd((p) => p.map((x, k) => (k === i ? { ...x, monto: e.target.value } : x)))} placeholder="$" className={inputCls} />
+                    <button type="button" onClick={() => setViaticosEd((p) => p.filter((_, k) => k !== i))} className="text-[var(--red)]" aria-label="Eliminar viático">✕</button>
+                  </div>
+                ))}
+                <button type="button" onClick={() => setViaticosEd((p) => [...p, { concepto: "", monto: "" }])} className="text-[12px] font-bold text-[var(--blue)]">+ Agregar viático</button>
+              </div>
+            </div>
+          </div>
+        )}
+        {editable && (
+          <div className="mt-3 border border-[var(--gray-200)] rounded-lg p-3 text-[12.5px]">
+            <p className="font-bold text-[var(--navy)] m-0 mb-2">Pago y dispersión de recursos</p>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <label className="block">
+                <span className="block text-[12px] font-medium text-[var(--text)] mb-1">Medio de pago *</span>
+                <select value={medioPago} onChange={(e) => setMedioPago(e.target.value)} className={inputCls}>
+                  <option value="">Selecciona…</option>
+                  {MEDIOS_PAGO.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-[12px] font-medium text-[var(--text)] mb-1">Dispersión de recursos *</span>
+                <select value={dispersion} onChange={(e) => setDispersion(e.target.value)} className={inputCls}>
+                  <option value="">Selecciona…</option>
+                  {DISPERSIONES.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="block text-[12px] font-medium text-[var(--text)] mb-1">Detalle (opcional)</span>
+                <input value={dispersionDetalle} onChange={(e) => setDispersionDetalle(e.target.value)} placeholder="Ej. a nombre de…" className={inputCls} />
+              </label>
+            </div>
+          </div>
+        )}
         {error && <p className="text-[12.5px] text-[var(--red)] mt-3 mb-0">{error}</p>}
         <div className="flex justify-end gap-2 mt-5">
           <button type="button" className="btn btn-secundario py-1.5" onClick={onCerrar}>Cerrar</button>

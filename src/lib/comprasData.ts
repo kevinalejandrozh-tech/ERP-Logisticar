@@ -20,6 +20,11 @@ export type ProductoOC = {
 export type Viatico = { concepto: string; monto: number };
 
 export type DatosOC = {
+  titulo?: string; // título de la compra
+  enviosProveedores?: string[]; // proveedores que envían el pedido (no son parada de la ruta)
+  medioPago?: string; // lo define quien autoriza
+  dispersion?: string; // dispersión de recursos (lo define quien autoriza)
+  dispersionDetalle?: string;
   rutaProveedores?: string[];
   vehiculo?: string;
   consumoPromedio?: string;
@@ -59,6 +64,10 @@ export type Proveedor = {
   foto_mapa?: string | null;
 };
 
+// Opciones que elige quien autoriza la OC.
+export const MEDIOS_PAGO = ["Efectivo", "Transferencia", "Tarjeta corporativa", "Crédito con el proveedor", "Otro"];
+export const DISPERSIONES = ["Caja chica (efectivo)", "Transferencia al solicitante", "Transferencia al proveedor", "Tarjeta de combustible / PASE", "Otra"];
+
 export const proveedorDe = (p: ProductoOC) => (p.proveedor ?? p.proveedores?.[0] ?? "").trim();
 
 export function productosDe(o: OrdenCompra): ProductoOC[] {
@@ -69,6 +78,10 @@ export function productosDe(o: OrdenCompra): ProductoOC[] {
     return [];
   }
 }
+
+// Total de la OC = artículos (autorizados) + combustible + viáticos.
+export const totalOC = (o: { total_general?: number | string; datos?: DatosOC | null }) =>
+  (Number(o.total_general) || 0) + (Number(o.datos?.combustible) || 0) + (o.datos?.viaticos || []).reduce((a, v) => a + (Number(v.monto) || 0), 0);
 
 export const moneda = (v: number | string | undefined | null) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(v) || 0);

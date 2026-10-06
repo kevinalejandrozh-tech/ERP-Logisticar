@@ -4,6 +4,20 @@ export type Novedad = { id: string; fecha: string; titulo: string; resumen: stri
 
 export const NOVEDADES: Novedad[] = [
   {
+    id: "2026-10-06-compras-2",
+    fecha: "2026-10-06T03:07:00-06:00",
+    titulo: "Compras: título, envío, pago y dispersión, imprimir, recibir y eliminar folios",
+    resumen: "La OC ya lleva título; quien autoriza define medio de pago y dispersión y puede ajustar viáticos y gasolina; desde el historial se imprime, se recibe en almacén y se eliminan folios.",
+    detalles: [
+      "Nuevo campo Título de la compra (se ve en el historial, el detalle, el aviso de autorización y el PDF).",
+      "Orden de la ruta de proveedores: casilla Envío para marcar al proveedor que envía el pedido (no cuenta como parada en el PDF).",
+      "Aviso de autorización: al pulsar Revisar por artículo, el globo se contrae; al autorizar se elige medio de pago y dispersión de recursos.",
+      "Quien autoriza puede agregar, editar o quitar viáticos y combustible antes de autorizar, y define medio de pago y dispersión (salen en el PDF).",
+      "Historial: botón Imprimir después del folio (OC autorizadas), botón RECIBIR al final de cada fila (abre la entrada y ubicación de almacenamiento) y opción de eliminar folios.",
+      "El Total del historial y de la gráfica ahora suma artículos + combustible + viáticos.",
+    ],
+  },
+  {
     id: "2026-10-06-compras",
     fecha: "2026-10-06T01:17:00-06:00",
     titulo: "Mejoras en Compras: fotos de referencia, autorización al instante y gráficas",

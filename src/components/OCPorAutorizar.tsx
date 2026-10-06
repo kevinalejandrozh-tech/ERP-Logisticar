@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { DISPERSIONES, MEDIOS_PAGO } from "@/lib/comprasData";
 
-type OC = { folio: string; fecha: string; total: number; solicitado_por: string | null; justificacion: string; articulos: { cantidad: number; articulo: string; proveedor: string; total: number }[] };
+type OC = { titulo?: string; folio: string; fecha: string; total: number; solicitado_por: string | null; justificacion: string; articulos: { cantidad: number; articulo: string; proveedor: string; total: number }[] };
 const moneda = (v: number) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(v || 0);
 
 // Globo emergente (desde el icono de notificaciones) para quien puede autorizar OC: persiste hasta autorizar o rechazar cada una.
@@ -15,6 +16,9 @@ export default function OCPorAutorizar() {
   const [rechazando, setRechazando] = useState<string | null>(null);
   const [razon, setRazon] = useState("");
   const [trabajando, setTrabajando] = useState<string | null>(null);
+  const [autorizando, setAutorizando] = useState<string | null>(null); // OC en la que se están eligiendo medio de pago y dispersión
+  const [medio, setMedio] = useState("");
+  const [dispersion, setDispersion] = useState("");
   const [error, setError] = useState("");
   const detenido = useRef(false);
   const antes = useRef(0);
@@ -53,18 +57,20 @@ export default function OCPorAutorizar() {
   const resolver = async (oc: OC, aceptar: boolean) => {
     setError("");
     if (!aceptar && !razon.trim()) return setError("Escribe la razón del rechazo.");
+    if (aceptar && (!medio || !dispersion)) return setError("Selecciona el medio de pago y la dispersión de recursos.");
     setTrabajando(oc.folio);
     try {
       const res = await fetch(aceptar ? "/api/compras/autorizar" : "/api/compras/rechazar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(aceptar ? { folio: oc.folio, productos: oc.articulos.map(() => ({ autorizado: true })) } : { folio: oc.folio, razon }),
+        body: JSON.stringify(aceptar ? { folio: oc.folio, productos: oc.articulos.map(() => ({ autorizado: true })), datos: { medioPago: medio, dispersion } } : { folio: oc.folio, razon }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d.error || "No se pudo completar la acción.");
       setOrdenes((l) => l.filter((x) => x.folio !== oc.folio));
       antes.current = Math.max(0, antes.current - 1);
       setRechazando(null);
+      setAutorizando(null);
       setRazon("");
       window.dispatchEvent(new Event("notas-avisos")); // refresca la campana
       window.dispatchEvent(new Event("compras-actualizadas"));
@@ -97,6 +103,7 @@ export default function OCPorAutorizar() {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="m-0 font-bold text-[var(--navy)]">{oc.folio}</p>
+                  {oc.titulo && <p className="m-0 text-[12px] font-medium text-[var(--text)]">{oc.titulo}</p>}
                   <p className="m-0 text-[11.5px] text-[var(--gray-500)]">Solicitó: {oc.solicitado_por || "—"}</p>
                 </div>
                 <p className="m-0 text-[14px] font-bold text-[var(--navy)]">{moneda(oc.total)}</p>
@@ -116,13 +123,28 @@ export default function OCPorAutorizar() {
                     <button type="button" onClick={() => { setRechazando(null); setRazon(""); setError(""); }} className="rounded-md border border-[var(--gray-300)] px-3 py-1.5 text-[var(--gray-500)]">Volver</button>
                   </div>
                 </div>
+              ) : autorizando === oc.folio ? (
+                <div className="mt-2.5 grid gap-1.5">
+                  <select value={medio} onChange={(e) => setMedio(e.target.value)} className="w-full border border-[var(--gray-300)] rounded-md px-2.5 py-1.5 text-[12.5px] bg-white">
+                    <option value="">Medio de pago…</option>
+                    {MEDIOS_PAGO.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <select value={dispersion} onChange={(e) => setDispersion(e.target.value)} className="w-full border border-[var(--gray-300)] rounded-md px-2.5 py-1.5 text-[12.5px] bg-white">
+                    <option value="">Dispersión de recursos…</option>
+                    {DISPERSIONES.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={trabajando === oc.folio} onClick={() => resolver(oc, true)} className="flex-1 rounded-md bg-[var(--green)] text-white font-bold py-1.5 disabled:opacity-60">{trabajando === oc.folio ? "…" : "Confirmar autorización"}</button>
+                    <button type="button" onClick={() => { setAutorizando(null); setError(""); }} className="rounded-md border border-[var(--gray-300)] px-3 py-1.5 text-[var(--gray-500)]">Volver</button>
+                  </div>
+                </div>
               ) : (
                 <div className="flex gap-2 mt-2.5">
-                  <button type="button" disabled={trabajando === oc.folio} onClick={() => resolver(oc, true)} className="flex-1 rounded-md bg-[var(--green)] text-white font-bold py-1.5 disabled:opacity-60">{trabajando === oc.folio ? "…" : "Autorizar"}</button>
+                  <button type="button" disabled={trabajando === oc.folio} onClick={() => { setAutorizando(oc.folio); setMedio(""); setDispersion(""); setError(""); }} className="flex-1 rounded-md bg-[var(--green)] text-white font-bold py-1.5 disabled:opacity-60">Autorizar</button>
                   <button type="button" disabled={trabajando === oc.folio} onClick={() => { setRechazando(oc.folio); setRazon(""); setError(""); }} className="flex-1 rounded-md border border-[var(--red)] text-[var(--red)] font-bold py-1.5 hover:bg-[#fdecea]">Rechazar</button>
                 </div>
               )}
-              <Link href={`/compras?oc=${encodeURIComponent(oc.folio)}`} onClick={(e) => { if (ruta === "/compras") { e.preventDefault(); window.dispatchEvent(new CustomEvent("compras-abrir", { detail: oc.folio })); } }} className="inline-block mt-2 text-[11.5px] font-bold text-[var(--blue)] no-underline hover:underline">Revisar por artículo →</Link>
+              <Link href={`/compras?oc=${encodeURIComponent(oc.folio)}`} onClick={(e) => { setAbierto(false); /* se contrae para dejar ver la ventana de la OC */ if (ruta === "/compras") { e.preventDefault(); window.dispatchEvent(new CustomEvent("compras-abrir", { detail: oc.folio })); } }} className="inline-block mt-2 text-[11.5px] font-bold text-[var(--blue)] no-underline hover:underline">Revisar por artículo →</Link>
             </div>
           ))}
         </div>

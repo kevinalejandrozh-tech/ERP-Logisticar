@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
     const ordenes = r.rows.map((o) => ({
       folio: o.folio,
       fecha: o.fecha,
-      total: Number(o.total_general) || 0,
+      total: (Number(o.total_general) || 0) + (Number(o.datos?.combustible) || 0) + (Array.isArray(o.datos?.viaticos) ? o.datos.viaticos : []).reduce((a: number, v: { monto?: number }) => a + (Number(v.monto) || 0), 0),
+      titulo: o.datos?.titulo || "",
       solicitado_por: o.solicitado_por,
       justificacion: o.datos?.justificacion || "",
       articulos: (Array.isArray(o.productos) ? o.productos : []).map((p: { cantidad: number; articulo: string; proveedor?: string; totalProducto: number }) => ({ cantidad: p.cantidad, articulo: p.articulo, proveedor: p.proveedor || "", total: p.totalProducto })),

@@ -8,7 +8,10 @@ import AltaProveedorModal from "@/components/compras/AltaProveedorModal";
 import DetalleOCModal from "@/components/compras/DetalleOCModal";
 import GraficaCompras from "@/components/compras/GraficaCompras";
 import { compressImage } from "@/lib/imageUtils";
-import { OrdenCompra, Viatico, esAutorizada, esRechazada, moneda, productosDe } from "@/lib/comprasData";
+import { OrdenCompra, Viatico, esAutorizada, esRechazada, moneda, productosDe, totalOC } from "@/lib/comprasData";
+import { imprimirOC } from "@/lib/imprimirOC";
+import { useSesion } from "@/lib/useSesion";
+import { puedeVerSeccion } from "@/lib/permisos";
 
 interface FilaProducto {
   id: string;
@@ -37,6 +40,12 @@ export default function ComprasPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [masDetalles, setMasDetalles] = useState(false);
+  const [titulo, setTitulo] = useState("");
+  const [enviosProv, setEnviosProv] = useState<string[]>([]); // proveedores que envían el pedido (no son parada de la ruta)
+  const [imprimiendo, setImprimiendo] = useState<string | null>(null);
+  const omitirGuardia = useRef(false); // navegación deliberada (RECIBIR): no pedir confirmación
+  const sesion = useSesion();
+  const puedeRecibir = !sesion.cargando && puedeVerSeccion("inventario", sesion.rol, sesion.secciones);
   const inputGaleria = useRef<HTMLInputElement>(null);
   const inputCamara = useRef<HTMLInputElement>(null);
   const destinoFoto = useRef<string | null>(null);
@@ -84,6 +93,7 @@ export default function ComprasPage() {
   // Retroceder, actualizar o cerrar la página de OC pide confirmación: si no se confirma, no se sale de Compras.
   useEffect(() => {
     const alSalir = (e: BeforeUnloadEvent) => {
+      if (omitirGuardia.current) return;
       e.preventDefault();
       e.returnValue = "";
     };
@@ -101,7 +111,7 @@ export default function ComprasPage() {
     // Enlaces internos (menú, casita, etc.) también piden confirmación.
     const alClicEnlace = (e: MouseEvent) => {
       const a = (e.target as HTMLElement).closest("a");
-      if (!a || !a.href || a.target === "_blank" || e.ctrlKey || e.metaKey) return;
+      if (omitirGuardia.current || !a || !a.href || a.target === "_blank" || e.ctrlKey || e.metaKey) return;
       const url = new URL(a.href, window.location.href);
       if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
       if (!window.confirm("¿Quieres salir de Compras? Si sales, se pierde lo que no hayas enviado.")) {
@@ -199,6 +209,8 @@ export default function ComprasPage() {
     setTiempoRegreso("");
     setViaticos([]);
     setJustificacion("");
+    setTitulo("");
+    setEnviosProv([]);
     setMasDetalles(false);
   };
 
@@ -238,7 +250,7 @@ export default function ComprasPage() {
           fecha: hoy.toISOString(),
           productos: filas.map((f) => ({ cantidad: Number(f.cantidad), articulo: f.articulo.trim(), precioUnitario: Number(f.precio), referencia: f.referencia, proveedor: f.proveedor, foto: f.foto })),
           notaId,
-          datos: { rutaProveedores: rutaOrden, vehiculo, consumoPromedio, combustible: Number(combustible) || 0, tiempoRegreso, viaticos: vi, justificacion },
+          datos: { titulo: titulo.trim(), enviosProveedores: enviosProv.filter((p) => rutaOrden.includes(p)), rutaProveedores: rutaOrden, vehiculo, consumoPromedio, combustible: Number(combustible) || 0, tiempoRegreso, viaticos: vi, justificacion },
         }),
       });
       if (!res.ok) {
@@ -262,6 +274,34 @@ export default function ComprasPage() {
       setConfigRoles(false);
     } catch (e) {
       alert(e instanceof Error ? e.message : "No se pudo guardar.");
+    }
+  };
+
+  const imprimir = async (o: OrdenCompra) => {
+    setImprimiendo(o.folio);
+    try {
+      const r = await fetch("/api/compras/proveedores?fotos=1", { cache: "no-store" }).then((x) => x.json());
+      await imprimirOC(o, r.proveedores || []);
+    } catch {
+      alert("No se pudo preparar el formato.");
+    } finally {
+      setImprimiendo(null);
+    }
+  };
+  // RECIBIR: abre la entrada de almacén de esa OC (cantidades recibidas y ubicación de almacenamiento).
+  const recibir = (o: OrdenCompra) => {
+    omitirGuardia.current = true;
+    window.location.assign(`/inventario/entrada?modo=oc&oc=${encodeURIComponent(o.folio)}`);
+  };
+  const eliminarFolio = async (o: OrdenCompra) => {
+    if (!confirm(`¿Eliminar el folio ${o.folio}? Esta acción no se puede deshacer.`)) return;
+    try {
+      const res = await fetch(`/api/compras?folio=${encodeURIComponent(o.folio)}`, { method: "DELETE" });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(d.error || "No se pudo eliminar el folio.");
+      await cargarOrdenes();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo eliminar el folio.");
     }
   };
 
@@ -308,6 +348,10 @@ export default function ComprasPage() {
               Clic en el encabezado <b>Referencia</b> o <b>Proveedor</b> para copiar el valor de la primera fila a todas.
             </p>
 
+            <label className="block mb-4 max-w-[560px]">
+              <span className={labelCls}>Título de la compra</span>
+              <input value={titulo} onChange={(e) => setTitulo(e.target.value)} maxLength={120} placeholder="Ej. Refacciones y mano de obra para L-25" className={celdaCls} />
+            </label>
             <input ref={inputGaleria} type="file" accept="image/*" className="hidden" onChange={(e) => { cargarFoto(e.target.files); e.target.value = ""; }} />
             <input ref={inputCamara} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { cargarFoto(e.target.files); e.target.value = ""; }} />
             <datalist id="catalogo-proveedores">{catalogo.map((c) => <option key={c} value={c} />)}</datalist>
@@ -360,13 +404,17 @@ export default function ComprasPage() {
             </div>
             <button type="button" onClick={() => setFilas((p) => [...p, nuevaFila()])} className="mt-3 text-[12.5px] font-bold text-[var(--blue)]">+ Agregar producto</button>
 
-            {rutaOrden.length > 1 && (
-              <div className="mt-5 border border-[var(--gray-200)] rounded-lg p-3 max-w-[460px]">
+            {rutaOrden.length > 0 && (
+              <div className="mt-5 border border-[var(--gray-200)] rounded-lg p-3 max-w-[560px]">
                 <p className="text-[12.5px] font-bold text-[var(--navy)] m-0 mb-2">Orden de la ruta de proveedores</p>
                 {rutaOrden.map((p, i) => (
                   <div key={p} className="flex items-center gap-2 py-1 text-[12.5px]">
                     <span className="w-5 text-[var(--gray-500)]">{i + 1}.</span>
-                    <span className="flex-1">{p}</span>
+                    <span className={`flex-1 ${enviosProv.includes(p) ? "text-[var(--gray-500)]" : ""}`}>{p}</span>
+                    <label className="flex items-center gap-1 text-[11.5px] text-[var(--gray-500)] cursor-pointer" title="El proveedor envía el pedido: no es parada de la ruta">
+                      <input type="checkbox" checked={enviosProv.includes(p)} onChange={(e) => setEnviosProv((prev) => (e.target.checked ? [...prev, p] : prev.filter((x) => x !== p)))} />
+                      Envío
+                    </label>
                     <button type="button" className="btn btn-secundario px-2 py-0.5" disabled={i === 0} onClick={() => moverRuta(i, -1)}>↑</button>
                     <button type="button" className="btn btn-secundario px-2 py-0.5" disabled={i === rutaOrden.length - 1} onClick={() => moverRuta(i, 1)}>↓</button>
                   </div>
@@ -435,22 +483,37 @@ export default function ComprasPage() {
             {!cargandoConsultas && !errorConsulta && ordenes.length === 0 && <p className="text-[13px] text-[var(--gray-400)]">Aún no hay órdenes de compra.</p>}
             {!cargandoConsultas && ordenes.length > 0 && (
               <div className="overflow-x-auto border border-[var(--gray-200)] rounded-lg">
-                <table className="w-full text-left text-[12.5px] border-collapse min-w-[820px]">
+                <table className="w-full text-left text-[12.5px] border-collapse min-w-[1080px]">
                   <thead className="bg-[#f8fafc] text-[var(--navy)] font-bold border-b border-[var(--gray-200)]">
                     <tr>
                       <th className="p-3">Folio</th>
+                      <th className="p-3 text-center">Imprimir</th>
                       <th className="p-3">Referencia</th>
                       <th className="p-3">Fecha</th>
                       <th className="p-3">Solicitó</th>
                       <th className="p-3 text-center">Artículos</th>
                       <th className="p-3 text-right">Total</th>
                       <th className="p-3 text-center">Estatus</th>
+                      <th className="p-3 text-right">Almacén</th>
                     </tr>
                   </thead>
                   <tbody>
                     {ordenes.map((o) => (
                       <tr key={o.id ?? o.folio} className="border-b border-[var(--gray-200)]">
-                        <td className="p-3"><button type="button" className="font-bold text-[var(--blue)] hover:underline" onClick={() => setDetalle(o)}>{o.folio}</button></td>
+                        <td className="p-3">
+                          <button type="button" className="font-bold text-[var(--blue)] hover:underline" onClick={() => setDetalle(o)}>{o.folio}</button>
+                          {o.datos?.titulo && <span className="block text-[11px] text-[var(--gray-500)] max-w-[190px] truncate" title={o.datos.titulo}>{o.datos.titulo}</span>}
+                        </td>
+                        <td className="p-3 text-center">
+                          {esAutorizada(o.estado) ? (
+                            <button type="button" onClick={() => imprimir(o)} disabled={imprimiendo === o.folio} title="Imprimir la OC" className="inline-flex items-center gap-1 rounded-md border border-[#1d4ed8] text-[#1d4ed8] hover:bg-[#1d4ed8] hover:text-white px-2.5 py-1 text-[11.5px] font-bold disabled:opacity-60">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9V3h12v6M6 18H4a1 1 0 01-1-1v-6a2 2 0 012-2h14a2 2 0 012 2v6a1 1 0 01-1 1h-2" /><rect x="6" y="14" width="12" height="7" rx="1" /></svg>
+                              {imprimiendo === o.folio ? "…" : "Imprimir"}
+                            </button>
+                          ) : (
+                            <span className="text-[var(--gray-300)]" title="Se puede imprimir cuando la OC esté autorizada">—</span>
+                          )}
+                        </td>
                         <td className="p-3 max-w-[220px]">
                           <span className="block truncate" title={referenciasDe(o)}>{referenciasDe(o) || "—"}</span>
                           {productosDe(o).some((p) => p.tieneFoto) && <span className="text-[10.5px] text-[var(--gray-400)]">📷 con foto</span>}
@@ -458,9 +521,31 @@ export default function ComprasPage() {
                         <td className="p-3">{fechaCorta(o.fecha || o.created_at)}</td>
                         <td className="p-3">{o.solicitado_por || "—"}</td>
                         <td className="p-3 text-center">{productosDe(o).length}</td>
-                        <td className="p-3 text-right font-semibold">{moneda(o.total_general)}</td>
+                        <td className="p-3 text-right font-semibold">{moneda(totalOC(o))}</td>
                         <td className="p-3 text-center">
                           <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${esAutorizada(o.estado) ? "bg-emerald-50 text-emerald-700" : esRechazada(o.estado) ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{o.estado || "Pendiente"}</span>
+                        </td>
+                        <td className="p-3">
+                          {(() => {
+                            const est = (o.estado || "").toLowerCase();
+                            const recibible = ["autorizada", "parcialmente recibida"].includes(est);
+                            return (
+                              <div className="flex items-center justify-end gap-2">
+                                {est === "recibida" ? (
+                                  <span className="text-[11.5px] font-bold text-[var(--gray-500)]">✓ Recibida</span>
+                                ) : (
+                                  <button type="button" disabled={!recibible || !puedeRecibir} onClick={() => recibir(o)} title={!recibible ? "Disponible cuando la OC esté autorizada" : !puedeRecibir ? "Tu rol no tiene acceso a Control de inventario" : "Gestionar la entrada y el almacenamiento"} className="rounded-md bg-[var(--green)] text-white px-3 py-1 text-[11.5px] font-bold tracking-wide disabled:bg-[var(--gray-200)] disabled:text-[var(--gray-400)]">
+                                    RECIBIR
+                                  </button>
+                                )}
+                                {(permisos.puedeAutorizar || permisos.esSysadmin) && !["recibida", "parcialmente recibida"].includes(est) && (
+                                  <button type="button" onClick={() => eliminarFolio(o)} title="Eliminar folio" aria-label={`Eliminar folio ${o.folio}`} className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--gray-400)] hover:bg-[#fdecea] hover:text-[var(--red)]">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                       </tr>
                     ))}

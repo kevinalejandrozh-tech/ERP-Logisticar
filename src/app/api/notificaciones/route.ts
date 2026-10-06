@@ -84,9 +84,9 @@ export async function GET(req: NextRequest) {
     // Órdenes de compra por autorizar (solo para quien puede autorizar): permanecen hasta autorizarlas o rechazarlas.
     try {
       if (await puedeAutorizarOC(sesion.rol)) {
-        const oc = await p.query(`SELECT id, folio, total_general, solicitado_por, created_at FROM ordenes_compra WHERE estado = 'Pendiente de autorización' ORDER BY created_at DESC LIMIT 10`);
+        const oc = await p.query(`SELECT id, folio, total_general, datos, solicitado_por, created_at FROM ordenes_compra WHERE estado = 'Pendiente de autorización' ORDER BY created_at DESC LIMIT 10`);
         oc.rows.forEach((r) =>
-          vencidas.push({ id: -(500_000_000 + Number(r.id)), tipo: "vencida", usuario: "Autorización", accion: `OC ${r.folio} de ${r.solicitado_por || "—"} por ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(r.total_general) || 0)} está pendiente`, pagina: `/compras?oc=${encodeURIComponent(r.folio)}`, paginaTitulo: "Compras", veces: 1, fecha: r.created_at, nueva: true })
+          vencidas.push({ id: -(500_000_000 + Number(r.id)), tipo: "vencida", usuario: "Autorización", accion: `OC ${r.folio}${r.datos?.titulo ? ` · ${r.datos.titulo}` : ""} de ${r.solicitado_por || "—"} por ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format((Number(r.total_general) || 0) + (Number(r.datos?.combustible) || 0) + (Array.isArray(r.datos?.viaticos) ? r.datos.viaticos : []).reduce((a: number, v: { monto?: number }) => a + (Number(v.monto) || 0), 0))} está pendiente`, pagina: `/compras?oc=${encodeURIComponent(r.folio)}`, paginaTitulo: "Compras", veces: 1, fecha: r.created_at, nueva: true })
         );
       }
     } catch {

@@ -1,6 +1,6 @@
 "use client";
-import { useMemo, useState } from "react";
-import { OrdenCompra, ProductoOC, Proveedor, esAutorizada, moneda, productosDe, proveedorDe } from "@/lib/comprasData";
+import { useEffect, useMemo, useState } from "react";
+import { OrdenCompra, ProductoOC, Proveedor, esAutorizada, esRechazada, moneda, productosDe, proveedorDe } from "@/lib/comprasData";
 import { imprimirOC } from "@/lib/imprimirOC";
 
 const inputCls = "w-full border border-[var(--gray-300)] rounded-md px-2.5 py-1.5 text-[12.5px] bg-white";
@@ -18,7 +18,15 @@ export default function DetalleOCModal({
   onActualizada: () => void;
 }) {
   const autorizada = esAutorizada(orden.estado);
-  const editable = puedeAutorizar && !autorizada;
+  const rechazada = esRechazada(orden.estado);
+  const editable = puedeAutorizar && !autorizada && !rechazada;
+  const [fotos, setFotos] = useState<(string | null)[]>([]);
+  const [fotoGrande, setFotoGrande] = useState<string | null>(null);
+  // Las fotos de referencia se piden aparte (no viajan en el listado).
+  useEffect(() => {
+    if (!productosDe(orden).some((p) => p.tieneFoto)) return;
+    fetch(`/api/compras/fotos?folio=${encodeURIComponent(orden.folio)}`, { cache: "no-store" }).then((r) => r.json()).then((d) => d.ok && setFotos(d.fotos || [])).catch(() => {});
+  }, [orden]);
   const [items, setItems] = useState<ProductoOC[]>(() => productosDe(orden).map((p) => ({ ...p, autorizado: p.autorizado !== false })));
   const [guardando, setGuardando] = useState(false);
   const [imprimiendo, setImprimiendo] = useState(false);
@@ -70,8 +78,9 @@ export default function DetalleOCModal({
           <div>
             <h3 className="text-[16px] font-bold text-[var(--navy)] m-0">Orden de compra {orden.folio}</h3>
             <p className="text-[12px] text-[var(--gray-500)] m-0">
-              Estatus: <b className={autorizada ? "text-[var(--green)]" : "text-[#b7791f]"}>{orden.estado || "—"}</b>
+              Estatus: <b className={autorizada ? "text-[var(--green)]" : rechazada ? "text-[var(--red)]" : "text-[#b7791f]"}>{orden.estado || "—"}</b>
               {orden.solicitado_por && <> · Solicitó: {orden.solicitado_por}</>}
+              {rechazada && orden.autorizado_por && <> · Rechazó: {orden.autorizado_por}</>}
               {autorizada && orden.autorizado_por && <> · Autorizó: {orden.autorizado_por} ({new Date(orden.autorizado_en || "").toLocaleString("es-MX", { timeZone: "America/Mexico_City" })})</>}
             </p>
           </div>
@@ -124,7 +133,13 @@ export default function DetalleOCModal({
                       </div>
                     )}
                   </td>
-                  <td className="p-2">{p.referencia || "—"}</td>
+                  <td className="p-2">
+                    {p.referencia || (fotos[i] ? "" : "—")}
+                    {fotos[i] && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={fotos[i]!} alt="Foto de referencia" onClick={() => setFotoGrande(fotos[i])} className="mt-1 w-12 h-12 object-cover rounded-md border border-[var(--gray-200)] cursor-zoom-in block" />
+                    )}
+                  </td>
                   <td className="p-2">{proveedorDe(p) || "—"}</td>
                   <td className={`p-2 text-right ${p.autorizado ? "" : "line-through text-[var(--gray-500)]"}`}>{moneda(p.totalProducto)}</td>
                 </tr>
@@ -154,7 +169,13 @@ export default function DetalleOCModal({
           {editable && <button type="button" className="btn btn-primario py-1.5" disabled={guardando} onClick={autorizar}>{guardando ? "Autorizando…" : "Autorizar OC"}</button>}
           {autorizada && <button type="button" className="btn btn-primario py-1.5" disabled={imprimiendo} onClick={imprimir}>{imprimiendo ? "Preparando…" : "Imprimir OC"}</button>}
         </div>
-        {!autorizada && !puedeAutorizar && <p className="text-[11.5px] text-[var(--gray-500)] text-right mt-2 mb-0">Pendiente de autorización por un usuario autorizado.</p>}
+        {fotoGrande && (
+          <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" onClick={() => setFotoGrande(null)}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={fotoGrande} alt="Foto de referencia" className="max-w-full max-h-full rounded-lg" />
+          </div>
+        )}
+        {!autorizada && !rechazada && !puedeAutorizar && <p className="text-[11.5px] text-[var(--gray-500)] text-right mt-2 mb-0">Pendiente de autorización por un usuario autorizado.</p>}
       </div>
     </div>
   );

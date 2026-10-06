@@ -6,6 +6,7 @@ import { puedeVerSeccion } from "@/lib/permisos";
 import { PREFIJOS_SIN_NOTIFICACION } from "@/lib/actividadReglas";
 import { NOVEDADES } from "@/lib/novedades";
 import { OPCIONES_NOTIF_MAX, leerPreferencia } from "@/lib/sistemaDB";
+import { puedeAutorizarOC } from "@/lib/comprasDB";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -78,6 +79,18 @@ export async function GET(req: NextRequest) {
       } catch {
         /* sin tablas de notas aún */
       }
+    }
+
+    // Órdenes de compra por autorizar (solo para quien puede autorizar): permanecen hasta autorizarlas o rechazarlas.
+    try {
+      if (await puedeAutorizarOC(sesion.rol)) {
+        const oc = await p.query(`SELECT id, folio, total_general, solicitado_por, created_at FROM ordenes_compra WHERE estado = 'Pendiente de autorización' ORDER BY created_at DESC LIMIT 10`);
+        oc.rows.forEach((r) =>
+          vencidas.push({ id: -(500_000_000 + Number(r.id)), tipo: "vencida", usuario: "Autorización", accion: `OC ${r.folio} de ${r.solicitado_por || "—"} por ${new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(r.total_general) || 0)} está pendiente`, pagina: `/compras?oc=${encodeURIComponent(r.folio)}`, paginaTitulo: "Compras", veces: 1, fecha: r.created_at, nueva: true })
+        );
+      }
+    } catch {
+      /* sin tabla de compras aún */
     }
 
     // Resumen de cada actualización del sistema (últimos 45 días).

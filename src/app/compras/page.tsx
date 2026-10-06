@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
 import TituloFavorito from "@/components/TituloFavorito";
 import AltaProveedorModal from "@/components/compras/AltaProveedorModal";
 import DetalleOCModal from "@/components/compras/DetalleOCModal";
-import { OrdenCompra, Viatico, esAutorizada, moneda, productosDe } from "@/lib/comprasData";
+import GraficaCompras from "@/components/compras/GraficaCompras";
+import { compressImage } from "@/lib/imageUtils";
+import { OrdenCompra, Viatico, esAutorizada, esRechazada, moneda, productosDe } from "@/lib/comprasData";
 
 interface FilaProducto {
   id: string;
@@ -15,15 +17,15 @@ interface FilaProducto {
   precio: string;
   referencia: string;
   proveedor: string;
-  compraUnica: boolean; // proveedor de una sola compra: no se da de alta en el catálogo
+  foto: string; // foto de referencia (tomada o insertada), comprimida
 }
 
-const nuevaFila = (): FilaProducto => ({ id: `${Date.now()}-${Math.random()}`, cantidad: "1", articulo: "", precio: "", referencia: "", proveedor: "", compraUnica: false });
+const nuevaFila = (): FilaProducto => ({ id: `${Date.now()}-${Math.random()}`, cantidad: "1", articulo: "", precio: "", referencia: "", proveedor: "", foto: "" });
 const celdaCls = "w-full border border-[var(--gray-200)] rounded-md px-2 py-1.5 text-[12.5px] bg-white";
 const labelCls = "block text-[12px] font-medium text-[var(--text)] mb-1";
 
 export default function ComprasPage() {
-  const [tab, setTab] = useState<"agregar" | "consultar">("agregar");
+  const [tab, setTab] = useState<"agregar" | "consultar" | "graficas">("agregar");
   const [filas, setFilas] = useState<FilaProducto[]>([nuevaFila()]);
   const [rutaOrden, setRutaOrden] = useState<string[]>([]);
   const [vehiculo, setVehiculo] = useState("");
@@ -34,6 +36,10 @@ export default function ComprasPage() {
   const [justificacion, setJustificacion] = useState("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [masDetalles, setMasDetalles] = useState(false);
+  const inputGaleria = useRef<HTMLInputElement>(null);
+  const inputCamara = useRef<HTMLInputElement>(null);
+  const destinoFoto = useRef<string | null>(null);
 
   const [catalogo, setCatalogo] = useState<string[]>([]);
   const [altaProveedor, setAltaProveedor] = useState<string | null>(null);
@@ -75,6 +81,71 @@ export default function ComprasPage() {
     if (n > 0) setNotaId(n);
   }, []);
 
+  // Retroceder, actualizar o cerrar la página de OC pide confirmación: si no se confirma, no se sale de Compras.
+  useEffect(() => {
+    const alSalir = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", alSalir);
+    window.history.pushState(window.history.state, "", window.location.href); // amortigua el botón "atrás"
+    const alRetroceder = () => {
+      if (window.confirm("¿Quieres salir de Compras? Si sales, se pierde lo que no hayas enviado.")) {
+        window.removeEventListener("popstate", alRetroceder);
+        window.history.back();
+      } else {
+        window.history.pushState(window.history.state, "", window.location.href);
+      }
+    };
+    window.addEventListener("popstate", alRetroceder);
+    // Enlaces internos (menú, casita, etc.) también piden confirmación.
+    const alClicEnlace = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement).closest("a");
+      if (!a || !a.href || a.target === "_blank" || e.ctrlKey || e.metaKey) return;
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname === window.location.pathname) return;
+      if (!window.confirm("¿Quieres salir de Compras? Si sales, se pierde lo que no hayas enviado.")) {
+        e.preventDefault();
+        e.stopPropagation();
+      } else window.removeEventListener("beforeunload", alSalir);
+    };
+    document.addEventListener("click", alClicEnlace, true);
+    return () => {
+      window.removeEventListener("beforeunload", alSalir);
+      window.removeEventListener("popstate", alRetroceder);
+      document.removeEventListener("click", alClicEnlace, true);
+    };
+  }, []);
+
+  // /compras?oc=FOLIO (desde el aviso de autorización): abre el historial con esa OC.
+  const ocPedida = useRef<string | null>(null);
+  useEffect(() => {
+    const oc = new URLSearchParams(window.location.search).get("oc");
+    if (oc) {
+      ocPedida.current = oc;
+      setTab("consultar");
+    }
+    const refrescar = () => cargarOrdenes();
+    // Desde el globo de autorización estando ya en Compras: abre esa OC en el historial.
+    const abrirOC = (e: Event) => {
+      ocPedida.current = String((e as CustomEvent<string>).detail || "");
+      setTab("consultar");
+      cargarOrdenes();
+    };
+    window.addEventListener("compras-actualizadas", refrescar);
+    window.addEventListener("compras-abrir", abrirOC);
+    return () => {
+      window.removeEventListener("compras-actualizadas", refrescar);
+      window.removeEventListener("compras-abrir", abrirOC);
+    };
+  }, [cargarOrdenes]);
+  useEffect(() => {
+    if (!ocPedida.current || !ordenes.length) return;
+    const o = ordenes.find((x) => x.folio === ocPedida.current);
+    ocPedida.current = null;
+    if (o) setDetalle(o);
+  }, [ordenes]);
+
   useEffect(() => {
     cargarCatalogo();
     fetch("/api/compras/autorizadores", { cache: "no-store" }).then((r) => r.json()).then((d) => d.ok && setPermisos(d)).catch(() => {});
@@ -82,7 +153,7 @@ export default function ComprasPage() {
   }, [cargarCatalogo]);
 
   useEffect(() => {
-    if (tab === "consultar") cargarOrdenes();
+    if (tab === "consultar" || tab === "graficas") cargarOrdenes();
   }, [tab, cargarOrdenes]);
 
   // Orden de ruta: proveedores distintos de la captura, respetando el orden que el usuario definió.
@@ -110,13 +181,12 @@ export default function ComprasPage() {
   const copiarColumna = (campo: "referencia" | "proveedor") => {
     const valor = filas[0]?.[campo] || "";
     if (!valor.trim()) return alert("La primera fila no tiene valor para copiar.");
-    setFilas((prev) => prev.map((f) => ({ ...f, [campo]: valor, ...(campo === "proveedor" ? { compraUnica: filas[0].compraUnica } : {}) })));
+    setFilas((prev) => prev.map((f) => ({ ...f, [campo]: valor })));
   };
 
   // Si el proveedor no está en el catálogo, se ofrece darlo de alta.
-  const revisarProveedor = (valor: string, compraUnica: boolean) => {
+  const revisarProveedor = (valor: string) => {
     const v = valor.trim();
-    if (compraUnica) return;
     if (v && !catalogo.some((c) => c.toLowerCase() === v.toLowerCase())) setAltaProveedor(v);
   };
 
@@ -129,6 +199,22 @@ export default function ComprasPage() {
     setTiempoRegreso("");
     setViaticos([]);
     setJustificacion("");
+    setMasDetalles(false);
+  };
+
+  const elegirFoto = (id: string, camara: boolean) => {
+    destinoFoto.current = id;
+    (camara ? inputCamara : inputGaleria).current?.click();
+  };
+  const cargarFoto = async (files: FileList | null) => {
+    const f = files?.[0];
+    const id = destinoFoto.current;
+    if (!f || !id) return;
+    try {
+      actualizar(id, "foto", await compressImage(f, 800, 0.62, 380000));
+    } catch {
+      alert("No se pudo leer la imagen.");
+    }
   };
 
   const solicitarAutorizacion = async () => {
@@ -138,7 +224,6 @@ export default function ComprasPage() {
       if (!f.articulo.trim()) return setErrorMsg(`Fila ${i + 1}: El nombre del artículo es obligatorio.`);
       if (!(Number(f.cantidad) > 0)) return setErrorMsg(`Fila ${i + 1}: La cantidad debe ser mayor a 0.`);
       if (!(Number(f.precio) > 0)) return setErrorMsg(`Fila ${i + 1}: El precio unitario debe ser mayor a 0.`);
-      if (!f.proveedor.trim()) return setErrorMsg(`Fila ${i + 1}: Indica el proveedor.`);
     }
     const hoy = new Date();
     const folio = `OC-${hoy.getFullYear()}${String(hoy.getMonth() + 1).padStart(2, "0")}${String(hoy.getDate()).padStart(2, "0")}-${Math.floor(100 + Math.random() * 900)}`;
@@ -151,7 +236,7 @@ export default function ComprasPage() {
         body: JSON.stringify({
           folio,
           fecha: hoy.toISOString(),
-          productos: filas.map((f) => ({ cantidad: Number(f.cantidad), articulo: f.articulo.trim(), precioUnitario: Number(f.precio), referencia: f.referencia, proveedor: f.proveedor, compraUnica: f.compraUnica })),
+          productos: filas.map((f) => ({ cantidad: Number(f.cantidad), articulo: f.articulo.trim(), precioUnitario: Number(f.precio), referencia: f.referencia, proveedor: f.proveedor, foto: f.foto })),
           notaId,
           datos: { rutaProveedores: rutaOrden, vehiculo, consumoPromedio, combustible: Number(combustible) || 0, tiempoRegreso, viaticos: vi, justificacion },
         }),
@@ -180,6 +265,8 @@ export default function ComprasPage() {
     }
   };
 
+  // Referencia de la OC: las referencias distintas de sus artículos.
+  const referenciasDe = (o: OrdenCompra) => [...new Set(productosDe(o).map((p) => (p.referencia || "").trim()).filter(Boolean))].join(", ");
   const fechaCorta = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("es-MX", { year: "numeric", month: "short", day: "numeric" }) : "—");
 
   return (
@@ -198,19 +285,20 @@ export default function ComprasPage() {
       </header>
 
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 md:px-10 pt-4 sm:pt-6 pb-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 sm:gap-4 mb-5 sm:mb-6">
-          {(
-            [
-              ["agregar", "Opción 1", "Agregar orden de compra", "Captura productos, referencia y proveedores, y solicita la autorización."],
-              ["consultar", "Opción 2", "Historial de órdenes de compra", "Estatus, autorización por artículo e impresión de la OC."],
-            ] as const
-          ).map(([k, op, t, d]) => (
-            <button key={k} onClick={() => setTab(k)} className={`p-4 sm:p-5 rounded-xl border text-left transition-all ${tab === k ? "bg-white border-[var(--blue)] shadow-md ring-2 ring-[var(--blue)]/20" : "bg-white/60 border-[var(--gray-200)] hover:bg-white"}`}>
-              <span className="text-[11px] sm:text-[12px] font-bold tracking-wider text-[var(--blue)] uppercase block mb-1">{op}</span>
-              <h2 className="text-[15px] sm:text-[16px] font-bold text-[var(--navy)] m-0">{t}</h2>
-              <p className="text-[11.5px] sm:text-[12px] text-[var(--gray-400)] mt-2 mb-0">{d}</p>
+        <div className="flex flex-col sm:flex-row sm:items-stretch gap-3.5 sm:gap-4 mb-5 sm:mb-6">
+          <button type="button" onClick={() => setTab("agregar")} className={`flex-1 p-4 sm:p-5 rounded-xl border text-left transition-all ${tab === "agregar" ? "bg-white border-[var(--blue)] shadow-md ring-2 ring-[var(--blue)]/20" : "bg-white/60 border-[var(--gray-200)] hover:bg-white"}`}>
+            <span className="text-[11px] sm:text-[12px] font-bold tracking-wider text-[var(--blue)] uppercase block mb-1">Opción 1</span>
+            <h2 className="text-[15px] sm:text-[16px] font-bold text-[var(--navy)] m-0">Agregar orden de compra</h2>
+            <p className="text-[11.5px] sm:text-[12px] text-[var(--gray-400)] mt-2 mb-0">Captura productos, referencia y proveedores, y solicita la autorización.</p>
+          </button>
+          <div className="flex flex-row sm:flex-col gap-2 sm:justify-center sm:w-[230px]">
+            <button type="button" onClick={() => setTab("consultar")} className={`flex-1 sm:flex-none rounded-lg bg-[#1d4ed8] hover:bg-[#1e40af] text-white text-[12.5px] font-bold px-4 py-2 shadow-sm ${tab === "consultar" ? "ring-2 ring-offset-2 ring-[#1d4ed8]/50" : ""}`}>
+              Historial de órdenes de compra
             </button>
-          ))}
+            <button type="button" onClick={() => setTab("graficas")} className={`flex-1 sm:flex-none rounded-lg bg-[#1d4ed8] hover:bg-[#1e40af] text-white text-[12.5px] font-bold px-4 py-2 shadow-sm ${tab === "graficas" ? "ring-2 ring-offset-2 ring-[#1d4ed8]/50" : ""}`}>
+              Ver gráficas
+            </button>
+          </div>
         </div>
 
         {tab === "agregar" && (
@@ -220,6 +308,8 @@ export default function ComprasPage() {
               Clic en el encabezado <b>Referencia</b> o <b>Proveedor</b> para copiar el valor de la primera fila a todas.
             </p>
 
+            <input ref={inputGaleria} type="file" accept="image/*" className="hidden" onChange={(e) => { cargarFoto(e.target.files); e.target.value = ""; }} />
+            <input ref={inputCamara} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { cargarFoto(e.target.files); e.target.value = ""; }} />
             <datalist id="catalogo-proveedores">{catalogo.map((c) => <option key={c} value={c} />)}</datalist>
             <div className="overflow-x-auto border border-[var(--gray-200)] rounded-lg">
               <table className="w-full text-left text-[12.5px] border-collapse min-w-[900px]">
@@ -241,13 +331,26 @@ export default function ComprasPage() {
                       <td className="p-2"><input value={f.articulo} onChange={(e) => actualizar(f.id, "articulo", e.target.value)} placeholder="Artículo" className={celdaCls} /></td>
                       <td className="p-2"><input type="number" min={0} step="0.01" value={f.precio} onChange={(e) => actualizar(f.id, "precio", e.target.value)} placeholder="0.00" className={celdaCls} /></td>
                       <td className="p-2 text-right font-semibold text-emerald-900">{moneda((Number(f.cantidad) || 0) * (Number(f.precio) || 0))}</td>
-                      <td className="p-2"><input value={f.referencia} onChange={(e) => actualizar(f.id, "referencia", e.target.value)} placeholder="Referencia" className={celdaCls} /></td>
                       <td className="p-2">
-                        <input list="catalogo-proveedores" value={f.proveedor} onChange={(e) => actualizar(f.id, "proveedor", e.target.value)} onBlur={(e) => revisarProveedor(e.target.value, f.compraUnica)} placeholder="Elige o escribe" className={celdaCls} />
-                        <label className="flex items-center gap-1.5 mt-1 text-[11px] text-[var(--gray-500)] cursor-pointer" title="No pide dar de alta al proveedor">
-                          <input type="checkbox" checked={f.compraUnica} onMouseDown={(e) => e.preventDefault()} onChange={(e) => actualizar(f.id, "compraUnica", e.target.checked)} />
-                          Compra única
-                        </label>
+                        <div className="flex items-center gap-1">
+                          <input value={f.referencia} onChange={(e) => actualizar(f.id, "referencia", e.target.value)} placeholder="Referencia" className={celdaCls} />
+                          <button type="button" onClick={() => elegirFoto(f.id, true)} title="Tomar foto de referencia" aria-label="Tomar foto de referencia" className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[var(--gray-500)] hover:bg-[var(--gray-100)] hover:text-[var(--navy)]">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" /><circle cx="12" cy="13.5" r="3.5" /></svg>
+                          </button>
+                          <button type="button" onClick={() => elegirFoto(f.id, false)} title="Insertar foto de referencia" aria-label="Insertar foto de referencia" className="shrink-0 w-8 h-8 flex items-center justify-center rounded-md text-[var(--gray-500)] hover:bg-[var(--gray-100)] hover:text-[var(--navy)]">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="1.7" /><path d="M21 16l-5-5-9 9" /></svg>
+                          </button>
+                        </div>
+                        {f.foto && (
+                          <div className="relative mt-1.5 w-[56px]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={f.foto} alt="Foto de referencia" className="w-14 h-14 object-cover rounded-md border border-[var(--gray-200)]" />
+                            <button type="button" onClick={() => actualizar(f.id, "foto", "")} aria-label="Quitar foto" className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-white border border-[var(--gray-300)] text-[11px] leading-none text-[var(--red)] shadow-sm">✕</button>
+                          </div>
+                        )}
+                      </td>
+                      <td className="p-2">
+                        <input list="catalogo-proveedores" value={f.proveedor} onChange={(e) => actualizar(f.id, "proveedor", e.target.value)} onBlur={(e) => revisarProveedor(e.target.value)} placeholder="Opcional · elige o escribe" className={celdaCls} />
                       </td>
                       <td className="p-2 text-center"><button type="button" onClick={() => eliminarFila(f.id)} className="text-[var(--red)] text-[15px]" aria-label="Eliminar fila">✕</button></td>
                     </tr>
@@ -271,7 +374,14 @@ export default function ComprasPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+            <button type="button" onClick={() => setMasDetalles((v) => !v)} aria-expanded={masDetalles} className="mt-5 inline-flex items-center gap-1.5 rounded-lg border border-[var(--gray-300)] bg-white px-3.5 py-1.5 text-[12.5px] font-bold text-[var(--navy)] hover:bg-[var(--gray-100)]">
+              {masDetalles ? "Ocultar detalles" : "Más detalles"}
+              <svg className={`transition-transform ${masDetalles ? "rotate-180" : ""}`} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
+            </button>
+            <p className="text-[11.5px] text-[var(--gray-400)] m-0 mt-1">Vehículo, consumo, combustible, tiempo de regreso, viáticos y justificación.</p>
+
+            <div className={`grid grid-cols-1 ${masDetalles ? "md:grid-cols-2" : ""} gap-4 mt-4`}>
+              {masDetalles && (
               <div className="grid grid-cols-2 gap-3 content-start">
                 <label className="block">
                   <span className={labelCls}>Vehículo (ECO)</span>
@@ -293,9 +403,10 @@ export default function ComprasPage() {
                   <button type="button" className="text-[12px] font-bold text-[var(--blue)]" onClick={() => setViaticos((p) => [...p, { concepto: "", monto: "" }])}>+ Agregar viático</button>
                 </div>
               </div>
+              )}
               <div className="flex flex-col gap-3">
-                <label className="block"><span className={labelCls}>Justificación de la compra</span><textarea rows={4} value={justificacion} onChange={(e) => setJustificacion(e.target.value)} className={celdaCls} /></label>
-                <div className="border border-[var(--gray-200)] rounded-lg p-3 text-[12.5px]">
+                {masDetalles && <label className="block"><span className={labelCls}>Justificación de la compra</span><textarea rows={4} value={justificacion} onChange={(e) => setJustificacion(e.target.value)} className={celdaCls} /></label>}
+                <div className={`border border-[var(--gray-200)] rounded-lg p-3 text-[12.5px] ${masDetalles ? "" : "max-w-[420px] md:ml-auto w-full"}`}>
                   <div className="flex justify-between"><span>Artículos</span><b>{moneda(totalArticulos)}</b></div>
                   <div className="flex justify-between"><span>Combustible</span><b>{moneda(Number(combustible) || 0)}</b></div>
                   <div className="flex justify-between"><span>Viáticos</span><b>{moneda(totalViaticos)}</b></div>
@@ -324,10 +435,11 @@ export default function ComprasPage() {
             {!cargandoConsultas && !errorConsulta && ordenes.length === 0 && <p className="text-[13px] text-[var(--gray-400)]">Aún no hay órdenes de compra.</p>}
             {!cargandoConsultas && ordenes.length > 0 && (
               <div className="overflow-x-auto border border-[var(--gray-200)] rounded-lg">
-                <table className="w-full text-left text-[12.5px] border-collapse min-w-[720px]">
+                <table className="w-full text-left text-[12.5px] border-collapse min-w-[820px]">
                   <thead className="bg-[#f8fafc] text-[var(--navy)] font-bold border-b border-[var(--gray-200)]">
                     <tr>
                       <th className="p-3">Folio</th>
+                      <th className="p-3">Referencia</th>
                       <th className="p-3">Fecha</th>
                       <th className="p-3">Solicitó</th>
                       <th className="p-3 text-center">Artículos</th>
@@ -339,12 +451,16 @@ export default function ComprasPage() {
                     {ordenes.map((o) => (
                       <tr key={o.id ?? o.folio} className="border-b border-[var(--gray-200)]">
                         <td className="p-3"><button type="button" className="font-bold text-[var(--blue)] hover:underline" onClick={() => setDetalle(o)}>{o.folio}</button></td>
+                        <td className="p-3 max-w-[220px]">
+                          <span className="block truncate" title={referenciasDe(o)}>{referenciasDe(o) || "—"}</span>
+                          {productosDe(o).some((p) => p.tieneFoto) && <span className="text-[10.5px] text-[var(--gray-400)]">📷 con foto</span>}
+                        </td>
                         <td className="p-3">{fechaCorta(o.fecha || o.created_at)}</td>
                         <td className="p-3">{o.solicitado_por || "—"}</td>
                         <td className="p-3 text-center">{productosDe(o).length}</td>
                         <td className="p-3 text-right font-semibold">{moneda(o.total_general)}</td>
                         <td className="p-3 text-center">
-                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${esAutorizada(o.estado) ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{o.estado || "Pendiente"}</span>
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11.5px] font-bold ${esAutorizada(o.estado) ? "bg-emerald-50 text-emerald-700" : esRechazada(o.estado) ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700"}`}>{o.estado || "Pendiente"}</span>
                         </td>
                       </tr>
                     ))}
@@ -353,6 +469,13 @@ export default function ComprasPage() {
               </div>
             )}
           </div>
+        )}
+        {tab === "graficas" && (
+          <>
+            {cargandoConsultas && ordenes.length === 0 && <p className="text-[13px] text-[var(--gray-400)]">Cargando…</p>}
+            {errorConsulta && <p className="text-[13px] text-[var(--red)]">{errorConsulta}</p>}
+            <GraficaCompras ordenes={ordenes} />
+          </>
         )}
       </main>
 

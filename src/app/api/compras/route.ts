@@ -39,6 +39,8 @@ export async function POST(req: NextRequest) {
         proveedor: String(p.proveedor || "").trim(),
         proveedores: p.proveedor ? [String(p.proveedor).trim()] : [],
         compraUnica: p.compraUnica === true,
+        // Foto de referencia (tomada o insertada): imagen comprimida en el navegador.
+        foto: typeof p.foto === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(p.foto) && p.foto.length < 600_000 ? p.foto : "",
         autorizado: true,
       };
     });
@@ -79,7 +81,12 @@ export async function GET() {
   try {
     await ensureSchema();
     const result = await getPool().query(`SELECT * FROM ordenes_compra ORDER BY created_at DESC`);
-    return NextResponse.json(result.rows);
+    // Las fotos de referencia no viajan en el listado (pesan): se piden aparte en /api/compras/fotos.
+    const rows = result.rows.map((o) => ({
+      ...o,
+      productos: Array.isArray(o.productos) ? o.productos.map(({ foto, ...resto }: { foto?: string; [k: string]: unknown }) => ({ ...resto, tieneFoto: !!foto })) : o.productos,
+    }));
+    return NextResponse.json(rows);
   } catch (error: any) {
     console.error("Error en GET /api/compras:", error);
     return NextResponse.json({ error: "Error al obtener las órdenes de compra", details: error.message }, { status: 500 });

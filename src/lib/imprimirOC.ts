@@ -21,6 +21,17 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   const productos = productosDe(orden);
   const autorizados = productos.filter((p) => p.autorizado !== false);
   const noAutorizados = productos.filter((p) => p.autorizado === false);
+  // Fotos de referencia de los artículos (no viajan en el listado): se piden aparte.
+  let fotos: (string | null)[] = [];
+  if (productos.some((p) => p.tieneFoto)) {
+    try {
+      const r = await fetch(`/api/compras/fotos?folio=${encodeURIComponent(orden.folio)}`, { cache: "no-store" }).then((x) => x.json());
+      fotos = r.fotos || [];
+    } catch {
+      /* se imprime sin fotos */
+    }
+  }
+  const fotoDe = new Map(productos.map((p, i) => [p, fotos[i] || ""]));
   const catalogo = new Map(proveedores.map((p) => [p.nombre.trim().toLowerCase(), p]));
   const buscar = (n: string) => catalogo.get(n.trim().toLowerCase());
 
@@ -51,7 +62,7 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
         <table class="items">
           <thead><tr><th style="width:8%">#</th><th>Descripción</th><th style="width:16%">Referencia</th><th class="c" style="width:8%">Cant.</th><th class="r" style="width:13%">P/U</th><th class="r tot" style="width:14%">Total</th></tr></thead>
           <tbody>${filas
-            .map((p, k) => `<tr><td>${k + 1}</td><td>${esc(p.articulo)}</td><td>${esc(p.referencia || "")}</td><td class="c">${esc(p.cantidad)}</td><td class="r">${moneda(p.precioUnitario)}</td><td class="r tot">${moneda(p.totalProducto)}</td></tr>`)
+            .map((p, k) => `<tr><td>${k + 1}</td><td>${esc(p.articulo)}</td><td>${esc(p.referencia || "")}${fotoDe.get(p) ? `<br /><img class="rf" src="${fotoDe.get(p)}" alt="Referencia" />` : ""}</td><td class="c">${esc(p.cantidad)}</td><td class="r">${moneda(p.precioUnitario)}</td><td class="r tot">${moneda(p.totalProducto)}</td></tr>`)
             .join("")}${Array.from({ length: vacias }).map(() => `<tr class="vacia"><td></td><td></td><td></td><td></td><td></td><td class="tot r">-</td></tr>`).join("")}</tbody>
           <tfoot><tr><td colspan="5" class="r">Subtotal ${esc(nombre)}</td><td class="r tot">${moneda(subtotal)}</td></tr></tfoot>
         </table>
@@ -111,7 +122,7 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   const html = `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>OC ${esc(orden.folio)}</title>
 <style>
   @page { size: letter; margin: 12mm; }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   body { font-family: Helvetica, Arial, sans-serif; color: #1e1e1e; font-size: 10.5px; margin: 0; }
   .cab { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
   .empresa { display: flex; gap: 10px; align-items: flex-start; }
@@ -125,14 +136,15 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   .kv div { border: 1px solid #9aa3b8; padding: 2px 6px; text-align: center; }
   .kv .ref { background: #eef1f8; font-weight: bold; color: #16215c; }
   .info { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-  .info th { background: #16215c; color: #fff; font-size: 9.5px; padding: 4px 6px; text-transform: uppercase; border: 1px solid #16215c; }
+  .info th { background: #1d4ed8; color: #fff; font-size: 9.5px; padding: 4px 6px; text-transform: uppercase; border: 1px solid #1d4ed8; }
   .info td { border: 1px solid #9aa3b8; padding: 5px 6px; text-align: center; }
   .seccion { margin-bottom: 12px; break-inside: avoid; }
   .barra { display: flex; justify-content: space-between; background: #16215c; color: #fff; font-weight: bold; padding: 4px 8px; font-size: 10.5px; }
   .barra.gris { background: #8a8f9c; }
   .prov-datos { border: 1px solid #9aa3b8; border-top: 0; padding: 4px 8px; font-size: 9.5px; color: #444; }
   table.items { width: 100%; border-collapse: collapse; }
-  .items th { background: #2c3e78; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 4px 6px; border: 1px solid #2c3e78; text-align: left; }
+  .items th { background: #1d4ed8; color: #fff; font-size: 9.5px; text-transform: uppercase; padding: 4px 6px; border: 1px solid #1d4ed8; text-align: left; }
+  .rf { width: 44px; height: 44px; object-fit: cover; margin-top: 3px; border: 1px solid #9aa3b8; }
   .items td { border-left: 1px solid #9aa3b8; border-right: 1px solid #9aa3b8; border-bottom: 1px solid #dfe3ec; padding: 4px 6px; height: 18px; vertical-align: top; }
   .items tbody tr:last-child td { border-bottom: 1px solid #9aa3b8; }
   .items .tot { background: #eef1f8; }
@@ -148,13 +160,13 @@ export async function imprimirOC(orden: OrdenCompra, proveedores: Proveedor[]) {
   .totales td:last-child { text-align: right; border: 1px solid #c9ced9; }
   .totales tr.gran td { border-top: 2px solid #16215c; font-size: 12px; color: #16215c; }
   .totales tr.gran td:last-child { background: #c7d2ee; font-weight: bold; }
-  .ruta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; break-inside: avoid; }
+  .ruta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding-left: 2ch; break-inside: avoid; } /* sangría de 2 espacios */
   .bloque { border: 1px solid #9aa3b8; min-width: 210px; }
   .bloque .enc { background: #16215c; color: #fff; font-weight: bold; padding: 4px 8px; font-size: 9.5px; text-transform: uppercase; }
   .linea { display: flex; justify-content: space-between; gap: 10px; padding: 3px 8px; border-bottom: 1px solid #eef0f4; }
-  .mapa { width: 150px; border: 1px solid #9aa3b8; padding: 6px; text-align: center; }
+  .mapa { width: 210px; border: 1px solid #9aa3b8; padding: 6px; text-align: center; }
   .mapa-nombre { font-weight: bold; color: #16215c; margin: 0 0 4px; }
-  .mapa-img { width: 100%; height: 92px; object-fit: cover; display: block; }
+  .mapa-img { width: 100%; height: 129px; object-fit: cover; display: block; }
   .mapa-img.vacio { background: #f2f4f8; color: #999; display: flex; align-items: center; justify-content: center; font-size: 9px; }
   .mapa-tiempo { margin: 4px 0; font-size: 9px; }
   .qr { width: 72px; height: 72px; }

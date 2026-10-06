@@ -19,6 +19,7 @@ export async function POST(req: NextRequest) {
     const pool = getPool();
     const r = await pool.query(`SELECT id, estado, productos FROM ordenes_compra WHERE folio = $1 ORDER BY id DESC LIMIT 1`, [folio]);
     if (!r.rowCount) return NextResponse.json({ error: "La orden no existe." }, { status: 404 });
+    if (r.rows[0].estado !== "Pendiente de autorización") return NextResponse.json({ error: `La orden ya fue atendida (${r.rows[0].estado}).` }, { status: 409 });
     const actuales: any[] = Array.isArray(r.rows[0].productos) ? r.rows[0].productos : [];
     if (actuales.length !== productos.length) return NextResponse.json({ error: "La lista de productos no coincide con la orden." }, { status: 400 });
 

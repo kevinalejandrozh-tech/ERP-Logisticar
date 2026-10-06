@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import AvisoNotasVencidas from "@/components/AvisoNotasVencidas";
 import NotasEnVivo from "@/components/NotasEnVivo";
+import OCPorAutorizar from "@/components/OCPorAutorizar";
 import SistemaEnVivo from "@/components/SistemaEnVivo";
 import BarraGlobal from "@/components/BarraGlobal";
 import localFont from "next/font/local";
@@ -39,6 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <RegistroActividad />
         <AvisoNotasVencidas />
         <NotasEnVivo />
+        <OCPorAutorizar />
         <SistemaEnVivo />
         <BarraGlobal />
         <ZoomControls>

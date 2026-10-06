@@ -4,6 +4,21 @@ export type Novedad = { id: string; fecha: string; titulo: string; resumen: stri
 
 export const NOVEDADES: Novedad[] = [
   {
+    id: "2026-10-06-compras",
+    fecha: "2026-10-06T01:17:00-06:00",
+    titulo: "Mejoras en Compras: fotos de referencia, autorización al instante y gráficas",
+    resumen: "La orden de compra ahora lleva foto de referencia, avisa de inmediato a quien autoriza y tiene gráficas de compras por día.",
+    detalles: [
+      "Referencia: se puede tomar o insertar una foto por artículo; se ve en el detalle y en el PDF.",
+      "Vehículo, consumo, combustible, regreso, viáticos y justificación quedan ocultos tras el botón Más detalles.",
+      "Se quitó Compra única: el proveedor ya no es obligatorio.",
+      "Al pulsar Solicitar autorización, quien autoriza recibe un globo junto a las notificaciones que no se quita hasta Autorizar o Rechazar la orden.",
+      "La página de Compras pide confirmación al retroceder, actualizar o salir.",
+      "Historial: botón azul más pequeño, columna Referencia después del folio y nuevo botón Ver gráficas (líneas y puntos por día con el total de compras).",
+      "PDF de la OC: encabezados en azul fuerte con letra blanca, imagen del proveedor 40 % más grande con sangría de 2 espacios.",
+    ],
+  },
+  {
     id: "2026-10-06-informe-chat-notas",
     fecha: "2026-10-05T20:41:00-06:00",
     titulo: "Mejoras: Informe General, Mensajes, Notas y Calendario de viajes",

@@ -13,6 +13,8 @@ export type ProductoOC = {
   razon?: string | null;
   indicaciones?: string | null;
   fechaProgramada?: string | null;
+  foto?: string; // foto de referencia (solo al capturar o al abrir el detalle)
+  tieneFoto?: boolean;
 };
 
 export type Viatico = { concepto: string; monto: number };
@@ -70,6 +72,8 @@ export function productosDe(o: OrdenCompra): ProductoOC[] {
 
 export const moneda = (v: number | string | undefined | null) =>
   new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(v) || 0);
+
+export const esRechazada = (estado?: string) => (estado || "").toLowerCase() === "rechazada";
 
 // Autorizada o ya recibida (total o parcial) en almacén.
 export const esAutorizada = (estado?: string) => ["autorizada", "recibida", "parcialmente recibida"].includes((estado || "").toLowerCase());

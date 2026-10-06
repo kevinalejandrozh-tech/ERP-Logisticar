@@ -65,7 +65,8 @@ export function datosEstructuradosSitio(c: SitioContenido) {
     },
   };
 
-  if (esReal(c.contacto.telefono, d.telefono)) ld.telephone = c.contacto.telefono;
+  const telefonos = [c.contacto.telefono, ...c.contacto.telefonosExtra].filter((t) => esReal(t, d.telefono));
+  if (telefonos.length) ld.telephone = telefonos.length === 1 ? telefonos[0] : telefonos;
   if (esReal(c.contacto.correo, d.correo)) ld.email = c.contacto.correo;
   if (esReal(c.contacto.direccion, d.direccion)) {
     ld.address = { "@type": "PostalAddress", streetAddress: c.contacto.direccion, addressCountry: "MX" };

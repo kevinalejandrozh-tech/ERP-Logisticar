@@ -1,0 +1,267 @@
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index caa1441..a4ace76 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -24,8 +24,14 @@ const roboto = localFont({
+ export const metadata: Metadata = {
+   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://erp.transporteslogisticar.com.mx"),
+   robots: { index: false, follow: false }, // el ERP no se indexa; solo /sitio (ver su metadata)
+-  title: "Gestión Logisticar",
++  title: { default: "Gestión Logisticar", template: "%s | Gestión Logisticar" },
+   description: "Sistema de control operativo - Transportes Logisticar",
++  applicationName: "Gestión Logisticar",
++  authors: [{ name: "Transportes Logisticar" }],
++  creator: "Transportes Logisticar",
++  publisher: "Transportes Logisticar",
++  formatDetection: { telephone: false, email: false, address: false },
++  openGraph: { siteName: "Transportes Logisticar", locale: "es_MX", type: "website" },
+ };
+ 
+ export const viewport: Viewport = {
+@@ -37,7 +43,7 @@ export const viewport: Viewport = {
+ 
+ export default function RootLayout({ children }: LayoutProps<"/">) {
+   return (
+-    <html lang="es" className={`${roboto.variable} h-full antialiased`}>
++    <html lang="es-MX" className={`${roboto.variable} h-full antialiased`}>
+       <body className="min-h-full flex flex-col">
+         <RegistroActividad />
+         <AvisoNotasVencidas />
+diff --git a/src/app/robots.ts b/src/app/robots.ts
+index c789baf..231b0ee 100644
+--- a/src/app/robots.ts
++++ b/src/app/robots.ts
+@@ -3,9 +3,28 @@ import type { MetadataRoute } from "next";
+ const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://erp.transporteslogisticar.com.mx";
+ 
+ // Los buscadores solo pueden rastrear el sitio web público; el ERP queda fuera.
++// Se permiten también los recursos que la página necesita para dibujarse (JS/CSS de Next e imágenes),
++// porque Google renderiza la página y, si los recursos están bloqueados, la evalúa mal.
+ export default function robots(): MetadataRoute.Robots {
+   return {
+-    rules: { userAgent: "*", allow: ["/$", "/sitio"], disallow: ["/"] },
++    rules: {
++      userAgent: "*",
++      allow: [
++        "/$",
++        "/sitio",
++        "/sitio-web/",
++        "/api/sitio/imagen",
++        "/_next/static/",
++        "/_next/image",
++        "/logo-completo.png",
++        "/fondo-logisticar.jpg",
++        "/favicon.ico",
++        "/icon",
++        "/apple-icon",
++      ],
++      disallow: ["/"],
++    },
+     sitemap: `${BASE}/sitemap.xml`,
++    host: BASE,
+   };
+ }
+diff --git a/src/app/sitemap.ts b/src/app/sitemap.ts
+index a4aa52e..2392d4e 100644
+--- a/src/app/sitemap.ts
++++ b/src/app/sitemap.ts
+@@ -2,6 +2,14 @@ import type { MetadataRoute } from "next";
+ 
+ const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://erp.transporteslogisticar.com.mx";
+ 
++// Solo el sitio público va en el sitemap. Si se agregan páginas públicas nuevas (p. ej. /sitio/servicios), se añaden aquí.
+ export default function sitemap(): MetadataRoute.Sitemap {
+-  return [{ url: `${BASE}/sitio`, changeFrequency: "weekly", priority: 1 }];
++  return [
++    {
++      url: `${BASE}/sitio`,
++      changeFrequency: "weekly",
++      priority: 1,
++      images: [`${BASE}/logo-completo.png`],
++    },
++  ];
+ }
+diff --git a/src/app/sitio/opengraph-image.tsx b/src/app/sitio/opengraph-image.tsx
+new file mode 100644
+index 0000000..66ab0b0
+--- /dev/null
++++ b/src/app/sitio/opengraph-image.tsx
+@@ -0,0 +1,33 @@
++import { ImageResponse } from "next/og";
++
++// Imagen que se ve al compartir el sitio en WhatsApp, Facebook, LinkedIn, etc. (1200×630).
++export const alt = "Transportes Logisticar — transporte de carga terrestre";
++export const size = { width: 1200, height: 630 };
++export const contentType = "image/png";
++
++export default function OpengraphImage() {
++  return new ImageResponse(
++    (
++      <div
++        style={{
++          width: "100%",
++          height: "100%",
++          display: "flex",
++          flexDirection: "column",
++          justifyContent: "center",
++          padding: "0 80px",
++          background: "linear-gradient(135deg, #0b1f3a 0%, #14346a 100%)",
++          color: "#ffffff",
++        }}
++      >
++        <div style={{ display: "flex", width: 120, height: 10, background: "#d62828", marginBottom: 36 }} />
++        <div style={{ display: "flex", fontSize: 84, fontWeight: 700, lineHeight: 1.05 }}>Transportes Logisticar</div>
++        <div style={{ display: "flex", fontSize: 40, marginTop: 28, color: "#dbe6f7" }}>Transporte de carga terrestre en México</div>
++        <div style={{ display: "flex", fontSize: 30, marginTop: 40, color: "#9fb6d9" }}>
++          Guadalajara · Monterrey · Chihuahua · Monitoreo GPS
++        </div>
++      </div>
++    ),
++    { ...size },
++  );
++}
+diff --git a/src/app/sitio/page.tsx b/src/app/sitio/page.tsx
+index 685ae5c..bc741ff 100644
+--- a/src/app/sitio/page.tsx
++++ b/src/app/sitio/page.tsx
+@@ -3,6 +3,7 @@ import { getPool } from "@/lib/db";
+ import { ensureSitioSchema } from "@/lib/sitioDB";
+ import { normalizarContenido, SITIO_DEFAULT, SitioContenido } from "@/lib/sitioData";
+ import SitioWeb from "@/components/sitio/SitioWeb";
++import { SITIO_DESCRIPCION, SITIO_PALABRAS_CLAVE, SITIO_TITULO, datosEstructuradosSitio } from "@/lib/sitioSeo";
+ import "./sitio.css";
+ 
+ // Sitio web público de la empresa. Siempre muestra el contenido más reciente guardado desde el modo edición.
+@@ -10,18 +11,29 @@ export const dynamic = "force-dynamic";
+ export const revalidate = 0;
+ 
+ export const metadata: Metadata = {
+-  title: "Transportes Logisticar | Transporte de carga terrestre",
+-  description: "Transporte de carga terrestre con rutas nacionales, monitoreo GPS y flota con mantenimiento propio.",
+-  robots: { index: true, follow: true },
++  title: { absolute: SITIO_TITULO },
++  description: SITIO_DESCRIPCION,
++  keywords: SITIO_PALABRAS_CLAVE,
++  robots: {
++    index: true,
++    follow: true,
++    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
++  },
+   alternates: { canonical: "/sitio" },
+   openGraph: {
+-    title: "Transportes Logisticar | Transporte de carga terrestre",
+-    description: "Transporte de carga terrestre con rutas nacionales, monitoreo GPS y flota con mantenimiento propio.",
++    title: SITIO_TITULO,
++    description: SITIO_DESCRIPCION,
+     url: "/sitio",
+     siteName: "Transportes Logisticar",
+     locale: "es_MX",
+     type: "website",
+-    images: ["/logo-completo.png"],
++    images: [{ url: "/sitio/opengraph-image", width: 1200, height: 630, alt: "Transportes Logisticar — transporte de carga terrestre" }],
++  },
++  twitter: {
++    card: "summary_large_image",
++    title: SITIO_TITULO,
++    description: SITIO_DESCRIPCION,
++    images: ["/sitio/opengraph-image"],
+   },
+ };
+ 
+@@ -37,5 +49,13 @@ async function leerContenido(): Promise<SitioContenido> {
+ }
+ 
+ export default async function SitioPage() {
+-  return <SitioWeb inicial={await leerContenido()} />;
++  const contenido = await leerContenido();
++  // Datos estructurados (JSON-LD) para que Google entienda quién es la empresa y qué ofrece.
++  const jsonLd = JSON.stringify(datosEstructuradosSitio(contenido)).replace(/</g, "\\u003c");
++  return (
++    <>
++      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
++      <SitioWeb inicial={contenido} />
++    </>
++  );
+ }
+diff --git a/src/lib/sitioSeo.ts b/src/lib/sitioSeo.ts
+new file mode 100644
+index 0000000..16ed0e8
+--- /dev/null
++++ b/src/lib/sitioSeo.ts
+@@ -0,0 +1,76 @@
++// SEO del sitio web público (/sitio): textos para buscadores y datos estructurados (JSON-LD).
++// Las palabras clave salen del propio contenido del sitio (soluciones, rutas, servicios).
++import type { SitioContenido } from "./sitioData";
++import { SITIO_DEFAULT } from "./sitioData";
++
++const BASE = process.env.NEXT_PUBLIC_SITE_URL || "https://erp.transporteslogisticar.com.mx";
++
++export const SITIO_TITULO = "Transportes Logisticar | Transporte de carga terrestre en México";
++
++// Máx. ~160 caracteres para que Google no la corte.
++export const SITIO_DESCRIPCION =
++  "Transporte de carga terrestre en México: carga completa y rutas a Guadalajara, Monterrey y Chihuahua con monitoreo GPS y flota con mantenimiento propio.";
++
++export const SITIO_PALABRAS_CLAVE = [
++  "transportes logisticar",
++  "transporte de carga terrestre",
++  "transporte de carga en México",
++  "fletes en México",
++  "carga completa",
++  "transporte de carga completa",
++  "rutas nacionales de carga",
++  "transporte de carga a Guadalajara",
++  "transporte de carga a Monterrey",
++  "transporte de carga a Chihuahua",
++  "fletes Guadalajara Monterrey Chihuahua",
++  "monitoreo GPS de unidades",
++  "monitoreo satelital de carga",
++  "empresa de transporte de carga",
++  "logística y distribución",
++  "cotización de fletes",
++  "flota con mantenimiento preventivo",
++  "operadores capacitados",
++];
++
++// Un dato se publica solo si ya lo capturaron en el modo edición (no el texto de ejemplo).
++const esReal = (valor: string, ejemplo: string) => valor.trim() !== "" && valor.trim() !== ejemplo;
++
++export function datosEstructuradosSitio(c: SitioContenido) {
++  const d = SITIO_DEFAULT.contacto;
++  const sameAs = [...new Set([c.redes.facebook, c.redes.instagram, c.redes.linkedin, c.accesos.facebook].filter(Boolean))];
++
++  const ld: Record<string, unknown> = {
++    "@context": "https://schema.org",
++    "@type": "LocalBusiness",
++    "@id": `${BASE}/sitio#empresa`,
++    name: "Transportes Logisticar",
++    url: `${BASE}/sitio`,
++    logo: `${BASE}/logo-completo.png`,
++    image: `${BASE}/sitio/opengraph-image`,
++    description: SITIO_DESCRIPCION,
++    knowsAbout: ["Transporte de carga terrestre", "Carga completa", "Monitoreo GPS", "Mantenimiento de flota"],
++    areaServed: [
++      { "@type": "Country", name: "México" },
++      { "@type": "City", name: "Guadalajara" },
++      { "@type": "City", name: "Monterrey" },
++      { "@type": "City", name: "Chihuahua" },
++    ],
++    hasOfferCatalog: {
++      "@type": "OfferCatalog",
++      name: c.soluciones.titulo,
++      itemListElement: c.soluciones.tarjetas.map((t) => ({
++        "@type": "Offer",
++        itemOffered: { "@type": "Service", name: t.titulo, description: t.texto, provider: { "@id": `${BASE}/sitio#empresa` } },
++      })),
++    },
++  };
++
++  if (esReal(c.contacto.telefono, d.telefono)) ld.telephone = c.contacto.telefono;
++  if (esReal(c.contacto.correo, d.correo)) ld.email = c.contacto.correo;
++  if (esReal(c.contacto.direccion, d.direccion)) {
++    ld.address = { "@type": "PostalAddress", streetAddress: c.contacto.direccion, addressCountry: "MX" };
++  }
++  if (c.accesos.maps) ld.hasMap = c.accesos.maps;
++  if (sameAs.length) ld.sameAs = sameAs;
++  return ld;
++}

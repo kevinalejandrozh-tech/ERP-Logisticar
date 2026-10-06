@@ -24,8 +24,14 @@ const roboto = localFont({
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://erp.transporteslogisticar.com.mx"),
   robots: { index: false, follow: false }, // el ERP no se indexa; solo /sitio (ver su metadata)
-  title: "Gestión Logisticar",
+  title: { default: "Gestión Logisticar", template: "%s | Gestión Logisticar" },
   description: "Sistema de control operativo - Transportes Logisticar",
+  applicationName: "Gestión Logisticar",
+  authors: [{ name: "Transportes Logisticar" }],
+  creator: "Transportes Logisticar",
+  publisher: "Transportes Logisticar",
+  formatDetection: { telephone: false, email: false, address: false },
+  openGraph: { siteName: "Transportes Logisticar", locale: "es_MX", type: "website" },
 };
 
 export const viewport: Viewport = {
@@ -37,7 +43,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="es" className={`${roboto.variable} h-full antialiased`}>
+    <html lang="es-MX" className={`${roboto.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <RegistroActividad />
         <AvisoNotasVencidas />

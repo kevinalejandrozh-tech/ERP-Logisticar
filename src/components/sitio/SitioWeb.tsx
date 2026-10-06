@@ -3,8 +3,21 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import Link from "next/link";
 import { useSesion } from "@/lib/useSesion";
 import { compressImage } from "@/lib/imageUtils";
-import { escribirCampo, RutaCampo, SitioContenido } from "@/lib/sitioData";
-import { BotonAccion, Imagen, SitioContext, Texto, useSitio } from "./Editable";
+import {
+  escribirCampo,
+  estiloAjuste,
+  intervaloSegundos,
+  leerCampo,
+  LIMITES,
+  NUEVA_DIAPOSITIVA,
+  NUEVO_SERVICIO,
+  rutaAjuste,
+  RutaCampo,
+  SitioContenido,
+  TELEFONO_NUEVO,
+} from "@/lib/sitioData";
+import { BotonAccion, Imagen, OpcionesImagen, SitioContext, Texto, useSitio } from "./Editable";
+import AjusteImagen from "./AjusteImagen";
 import { PanelRedes, PanelSuscriptores } from "./PanelesSitio";
 
 const CONTENEDOR = "max-w-[1140px] mx-auto px-5 md:px-8";
@@ -83,6 +96,44 @@ function Redes({ claro = false }: { claro?: boolean }) {
   );
 }
 
+// Logotipo oficial de Facebook (círculo azul con la "f" blanca).
+function IconoFacebookOficial({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 36 36" aria-hidden="true">
+      <path
+        fill="#1877F2"
+        d="M20.181 35.87C29.094 34.791 36 27.202 36 18c0-9.941-8.059-18-18-18S0 8.059 0 18c0 8.442 5.811 15.526 13.652 17.471L14 34h5.5l.681 1.87Z"
+      />
+      <path
+        fill="#fff"
+        d="M13.651 35.471v-11.97H9.936V18h3.715v-2.37c0-6.127 2.772-8.964 8.784-8.964 1.138 0 3.103.223 3.91.446v4.983c-.425-.043-1.167-.065-2.081-.065-2.952 0-4.09 1.116-4.09 4.025V18h5.883l-1.008 5.5h-4.867v12.37a18.183 18.183 0 0 1-6.53-.399Z"
+      />
+    </svg>
+  );
+}
+
+// Ícono oficial de Google Maps (pin de cuatro colores). El tamaño es el alto.
+function IconoMapsOficial({ size = 32 }: { size?: number }) {
+  return (
+    <svg width={Math.round(size * 0.7)} height={size} viewBox="0 0 92.3 132.3" aria-hidden="true">
+      <path fill="#1a73e8" d="M60.2 2.2C55.8.8 51 0 46.1 0 32 0 19.3 6.4 10.8 16.5l21.8 18.3L60.2 2.2z" />
+      <path fill="#ea4335" d="M10.8 16.5C4.1 24.5 0 34.9 0 46.1c0 8.7 1.7 15.7 4.6 22l28-33.3-21.8-18.3z" />
+      <path
+        fill="#4285f4"
+        d="M46.2 28.5c9.8 0 17.7 7.9 17.7 17.7 0 4.3-1.6 8.3-4.2 11.4 0 0 13.9-16.6 27.5-32.7-5.6-10.8-15.3-19-27-22.7L32.6 34.8c3.3-3.8 8.1-6.3 13.6-6.3"
+      />
+      <path
+        fill="#fbbc04"
+        d="M46.2 63.8c-9.8 0-17.7-7.9-17.7-17.7 0-4.3 1.5-8.3 4.1-11.3l-28 33.3c4.8 10.6 12.8 19.2 21 29.9l34.1-40.5c-3.3 3.9-8.1 6.3-13.5 6.3"
+      />
+      <path
+        fill="#34a853"
+        d="M59.1 109.2c15.4-24.1 33.3-35 33.3-63 0-7.7-1.9-14.9-5.2-21.3L25.6 98c2.6 3.4 5.3 7.3 7.9 11.3 9.5 14.9 6.9 23.1 12.6 23.1s3.1-8.2 13-23.2"
+      />
+    </svg>
+  );
+}
+
 function IconoTelefono({ size = 15 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -108,11 +159,12 @@ function IconoUbicacion({ size = 15 }: { size?: number }) {
 }
 
 // Teléfono / correo: enlace en vista pública, texto editable en modo edición.
-function DatoContacto({ tipo, className = "" }: { tipo: "telefono" | "correo"; className?: string }) {
+// Con "indice" es uno de los teléfonos adicionales.
+function DatoContacto({ tipo, indice, className = "" }: { tipo: "telefono" | "correo"; indice?: number; className?: string }) {
   const { contenido, editando } = useSitio();
-  const ruta: RutaCampo = ["contacto", tipo];
+  const ruta: RutaCampo = indice === undefined ? ["contacto", tipo] : ["contacto", "telefonosExtra", indice];
   if (editando) return <Texto ruta={ruta} className={className} />;
-  const valor = contenido.contacto[tipo];
+  const valor = leerCampo(contenido, ruta);
   const href = tipo === "telefono" ? `tel:${valor.replace(/[^\d+]/g, "")}` : `mailto:${valor}`;
   return (
     <a href={href} className={`${className} hover:underline underline-offset-2`}>
@@ -121,41 +173,77 @@ function DatoContacto({ tipo, className = "" }: { tipo: "telefono" | "correo"; c
   );
 }
 
-// Junto al teléfono: botón de llamada directa e íconos de Facebook y Google Maps (enlaces editables por el sysadmin).
+// Teléfono principal + teléfonos adicionales. En modo edición se pueden agregar y eliminar.
+function ListaTelefonos({ variante }: { variante: "barra" | "pie" }) {
+  const { contenido, editando, actualizar } = useSitio();
+  const extras = contenido.contacto.telefonosExtra;
+  const agregar = () =>
+    actualizar((c) => ({ ...c, contacto: { ...c.contacto, telefonosExtra: [...c.contacto.telefonosExtra, TELEFONO_NUEVO] } }));
+  const quitar = (i: number) =>
+    actualizar((c) => ({ ...c, contacto: { ...c.contacto, telefonosExtra: c.contacto.telefonosExtra.filter((_, j) => j !== i) } }));
+  return (
+    <span className={variante === "barra" ? "flex flex-wrap items-center gap-x-3 gap-y-1" : "flex flex-col items-start gap-1"}>
+      <DatoContacto tipo="telefono" />
+      {extras.map((_, i) => (
+        <span key={i} className="inline-flex items-center gap-1.5">
+          {variante === "barra" && <span className="w-px h-3.5 bg-white/30" aria-hidden="true" />}
+          <DatoContacto tipo="telefono" indice={i} />
+          {editando && (
+            <button
+              type="button"
+              onClick={() => quitar(i)}
+              title="Eliminar este teléfono"
+              aria-label={`Eliminar el teléfono ${i + 2}`}
+              className="w-5 h-5 shrink-0 rounded-full bg-white/15 hover:bg-[var(--red)] text-white text-[13px] leading-none flex items-center justify-center"
+            >
+              ×
+            </button>
+          )}
+        </span>
+      ))}
+      {editando && extras.length < LIMITES.telefonosExtra && (
+        <button type="button" onClick={agregar} className="rounded-full bg-white/15 hover:bg-white/25 text-white text-[11.5px] font-medium px-2.5 py-0.5">
+          + Teléfono
+        </button>
+      )}
+    </span>
+  );
+}
+
+// Junto al teléfono: botón de llamada directa e íconos oficiales de Facebook y Google Maps (enlaces editables por el sysadmin).
 function AccesosTelefono({ compacto = false }: { compacto?: boolean }) {
   const { contenido, editando } = useSitio();
-  const tel = contenido.contacto.telefono.replace(/[^\d+]/g, "");
-  const icono = "w-7 h-7 rounded-md flex items-center justify-center text-white/90 hover:text-white hover:bg-white/15";
-  const iconoClaro = "w-9 h-9 rounded-md flex items-center justify-center text-[var(--navy)] hover:bg-[var(--gray-100)] border border-[var(--gray-200)]";
-  const cls = compacto ? iconoClaro : icono;
-  const enlace = (url: string, nombre: string, svg: React.ReactNode) =>
+  const telefonos = [contenido.contacto.telefono, ...contenido.contacto.telefonosExtra]
+    .map((texto) => ({ texto, tel: texto.replace(/[^\d+]/g, "") }))
+    .filter((t) => t.tel);
+  const tam = compacto ? 40 : 32;
+  const claseIcono = "flex items-center justify-center transition-transform hover:scale-110 focus-visible:scale-110";
+  const enlace = (url: string, nombre: string, icono: React.ReactNode) =>
     url ? (
-      <a href={editando ? undefined : url} onClick={(e) => editando && e.preventDefault()} target="_blank" rel="noopener noreferrer" aria-label={nombre} title={nombre} className={cls}>
-        {svg}
+      <a href={editando ? undefined : url} onClick={(e) => editando && e.preventDefault()} target="_blank" rel="noopener noreferrer" aria-label={nombre} title={nombre} className={claseIcono}>
+        {icono}
       </a>
     ) : null;
   return (
-    <span className="flex items-center gap-1.5">
-      {tel && (
-        <a
-          href={editando ? undefined : `tel:${tel}`}
-          onClick={(e) => editando && e.preventDefault()}
-          className={compacto ? "btn btn-primario py-1.5 text-[13px]" : "rounded-full bg-white/15 hover:bg-white/25 text-white text-[11.5px] font-medium px-2.5 py-0.5"}
-          aria-label="Llamar ahora"
-        >
-          Llamar
-        </a>
-      )}
-      {enlace(
-        contenido.accesos.facebook,
-        "Facebook",
-        <svg width={compacto ? 18 : 16} height={compacto ? 18 : 16} viewBox="0 0 24 24" aria-hidden="true">{ICONOS_RED.facebook.path}</svg>
-      )}
-      {enlace(
-        contenido.accesos.maps,
-        "Ubicación en Google Maps",
-        <IconoUbicacion size={compacto ? 18 : 16} />
-      )}
+    <span className={`flex items-center gap-2.5 ${compacto ? "flex-wrap" : ""}`}>
+      {compacto
+        ? telefonos.map((t, i) => (
+            <a key={i} href={editando ? undefined : `tel:${t.tel}`} onClick={(e) => editando && e.preventDefault()} className="btn btn-primario py-1.5 text-[13px]" aria-label={`Llamar al ${t.texto}`}>
+              Llamar {telefonos.length > 1 ? t.texto : ""}
+            </a>
+          ))
+        : telefonos[0] && (
+            <a
+              href={editando ? undefined : `tel:${telefonos[0].tel}`}
+              onClick={(e) => editando && e.preventDefault()}
+              className="rounded-full bg-white/15 hover:bg-white/25 text-white text-[11.5px] font-medium px-2.5 py-0.5"
+              aria-label="Llamar ahora"
+            >
+              Llamar
+            </a>
+          )}
+      {enlace(contenido.accesos.facebook, "Facebook", <IconoFacebookOficial size={tam} />)}
+      {enlace(contenido.accesos.maps, "Ubicación en Google Maps", <IconoMapsOficial size={tam + 4} />)}
     </span>
   );
 }
@@ -194,10 +282,10 @@ function Encabezado({ sesionActiva }: { sesionActiva: boolean }) {
           <Marca />
         </a>
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="sw-oscuro hidden md:flex items-center justify-end gap-6 h-9 px-6 lg:px-12 bg-[var(--navy)] text-white text-[12.5px]">
+          <div className="sw-oscuro hidden md:flex flex-wrap items-center justify-end gap-x-6 gap-y-1 min-h-11 py-1 px-6 lg:px-12 bg-[var(--navy)] text-white text-[12.5px]">
             <span className="flex items-center gap-2">
               <IconoTelefono size={14} />
-              <DatoContacto tipo="telefono" />
+              <ListaTelefonos variante="barra" />
               <AccesosTelefono />
             </span>
             <span className="flex items-center gap-2">
@@ -252,65 +340,127 @@ function Encabezado({ sesionActiva }: { sesionActiva: boolean }) {
   );
 }
 
-// ---------- Portada (3 diapositivas) ----------
+// ---------- Portada (diapositivas que cambian solas) ----------
+const VISTAS_PORTADA = [
+  { nombre: "Escritorio", aspecto: 8 / 3 },
+  { nombre: "Móvil", aspecto: 4 / 5 },
+];
+
 function Portada() {
-  const { contenido, editando } = useSitio();
-  const total = contenido.hero.diapositivas.length;
+  const { contenido, editando, cambiar, actualizar } = useSitio();
+  const diapositivas = contenido.hero.diapositivas;
+  const total = diapositivas.length;
+  const segundos = intervaloSegundos(contenido.hero.intervalo);
   const [activa, setActiva] = useState(0);
   const [pausa, setPausa] = useState(false);
+  const idx = Math.min(activa, total - 1); // si se eliminan diapositivas, la activa nunca queda fuera de rango
 
   useEffect(() => {
     if (editando || pausa || total < 2) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const t = window.setInterval(() => setActiva((a) => (a + 1) % total), 7000);
+    const t = window.setInterval(() => setActiva((a) => (Math.min(a, total - 1) + 1) % total), segundos * 1000);
     return () => window.clearInterval(t);
-  }, [editando, pausa, total]);
+  }, [editando, pausa, total, segundos]);
 
   const destinos = ["#soluciones", "#servicios", "#contacto"];
 
+  const agregar = () => {
+    actualizar((c) => ({ ...c, hero: { ...c.hero, diapositivas: [...c.hero.diapositivas, NUEVA_DIAPOSITIVA] } }));
+    setActiva(total);
+  };
+  const eliminar = () => {
+    if (total <= 1) return;
+    if (!window.confirm(`¿Eliminar la diapositiva ${idx + 1} ("${diapositivas[idx].titulo}")?`)) return;
+    actualizar((c) => ({ ...c, hero: { ...c.hero, diapositivas: c.hero.diapositivas.filter((_, j) => j !== idx) } }));
+    setActiva(Math.max(0, idx - 1));
+  };
+  const fijarIntervalo = (valor: string) => cambiar(["hero", "intervalo"], valor);
+
   return (
-    <section
-      id="inicio"
-      aria-roledescription="carrusel"
-      className="sw-oscuro relative h-[480px] md:h-[540px] overflow-hidden bg-[var(--navy-dark)]"
-      onMouseEnter={() => setPausa(true)}
-      onMouseLeave={() => setPausa(false)}
-    >
-      {contenido.hero.diapositivas.map((d, i) => (
-        <div
-          key={i}
-          inert={i !== activa}
-          className={`absolute inset-0 transition-opacity duration-700 ${i === activa ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none"}`}
-        >
-          <Imagen ruta={["hero", "diapositivas", i, "imagen"]} alt={d.titulo} anchoMaximo={1920} className="absolute inset-0 w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-[rgba(15,24,69,0.55)] md:bg-transparent md:bg-[linear-gradient(90deg,rgba(15,24,69,0.88)_0%,rgba(15,24,69,0.62)_42%,rgba(15,24,69,0.08)_75%)]" />
-          <div className={`relative h-full ${CONTENEDOR} flex flex-col justify-center pb-10`}>
-            <div className="max-w-[560px] text-white">
-              <Texto ruta={["hero", "diapositivas", i, "subtitulo"]} como="p" className="text-[18px] md:text-[22px] font-medium text-[#d5e0f7]" />
-              <Texto ruta={["hero", "diapositivas", i, "titulo"]} como="h1" className="block mt-2 text-[30px] md:text-[42px] leading-[1.12] font-bold" />
-              <div className="mt-7">
-                <BotonAccion ruta={["hero", "diapositivas", i, "boton"]} destino={destinos[i] || "#contacto"} />
+    <>
+      {editando && (
+        <div className="bg-[var(--gray-100)] border-b border-[var(--gray-200)]">
+          <div className={`${CONTENEDOR} py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-[var(--navy)]`}>
+            <span className="font-medium">
+              Portada · diapositiva {idx + 1} de {total}
+            </span>
+            <button type="button" onClick={agregar} disabled={total >= LIMITES.diapositivas} className="sw-btn-imagen" title={total >= LIMITES.diapositivas ? `Máximo ${LIMITES.diapositivas} diapositivas` : undefined}>
+              + Agregar diapositiva
+            </button>
+            <button type="button" onClick={eliminar} disabled={total <= 1} className="sw-btn-imagen sw-btn-peligro" title={total <= 1 ? "La portada necesita al menos una diapositiva" : undefined}>
+              Eliminar esta diapositiva
+            </button>
+            <label className="flex items-center gap-2">
+              Cambiar de imagen cada
+              <input
+                type="number"
+                inputMode="numeric"
+                min={LIMITES.intervaloMin}
+                max={LIMITES.intervaloMax}
+                value={contenido.hero.intervalo}
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => fijarIntervalo(e.target.value.replace(/\D/g, "").slice(0, 2))}
+                onBlur={() => {
+                  const n = Number(contenido.hero.intervalo);
+                  fijarIntervalo(String(Number.isFinite(n) && n > 0 ? Math.min(LIMITES.intervaloMax, Math.max(LIMITES.intervaloMin, n)) : LIMITES.intervaloInicial));
+                }}
+                className="w-16 border border-[var(--gray-300)] rounded-md px-2 py-1 text-[13px] bg-white"
+              />
+              segundos
+            </label>
+          </div>
+        </div>
+      )}
+      <section
+        id="inicio"
+        aria-roledescription="carrusel"
+        className="sw-oscuro relative h-[480px] md:h-[540px] overflow-hidden bg-[var(--navy-dark)]"
+        onMouseEnter={() => setPausa(true)}
+        onMouseLeave={() => setPausa(false)}
+      >
+        {diapositivas.map((d, i) => (
+          <div
+            key={i}
+            inert={i !== idx}
+            className={`absolute inset-0 transition-opacity duration-700 ${i === idx ? "opacity-100 z-10" : "opacity-0 z-0 pointer-events-none"}`}
+          >
+            <Imagen
+              ruta={["hero", "diapositivas", i, "imagen"]}
+              alt={d.titulo}
+              anchoMaximo={1920}
+              aspecto={VISTAS_PORTADA[0].aspecto}
+              vistas={VISTAS_PORTADA}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-[rgba(15,24,69,0.55)] md:bg-transparent md:bg-[linear-gradient(90deg,rgba(15,24,69,0.88)_0%,rgba(15,24,69,0.62)_42%,rgba(15,24,69,0.08)_75%)]" />
+            <div className={`relative h-full ${CONTENEDOR} flex flex-col justify-center pb-10`}>
+              <div className="max-w-[560px] text-white">
+                <Texto ruta={["hero", "diapositivas", i, "subtitulo"]} como="p" className="text-[18px] md:text-[22px] font-medium text-[#d5e0f7]" />
+                <Texto ruta={["hero", "diapositivas", i, "titulo"]} como="h1" className="block mt-2 text-[30px] md:text-[42px] leading-[1.12] font-bold" />
+                <div className="mt-7">
+                  <BotonAccion ruta={["hero", "diapositivas", i, "boton"]} destino={destinos[i] || "#contacto"} />
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      ))}
-      <div className={`absolute z-20 bottom-8 left-0 right-0 ${CONTENEDOR} flex gap-6`}>
-        {contenido.hero.diapositivas.map((_, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => setActiva(i)}
-            aria-label={`Ver diapositiva ${i + 1}`}
-            aria-current={i === activa}
-            className="group flex flex-col items-start gap-2 text-[14px] font-bold"
-          >
-            <span className={i === activa ? "text-white" : "text-white/60 group-hover:text-white"}>{String(i + 1).padStart(2, "0")}</span>
-            <span className={`block h-[2px] w-14 md:w-20 ${i === activa ? "bg-[var(--red)]" : "bg-white/40 group-hover:bg-white/70"}`} />
-          </button>
         ))}
-      </div>
-    </section>
+        <div className={`absolute z-20 bottom-8 left-0 right-0 ${CONTENEDOR} flex flex-wrap gap-x-5 gap-y-3 ${total > 5 ? "md:gap-x-6" : "gap-x-6"}`}>
+          {diapositivas.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setActiva(i)}
+              aria-label={`Ver diapositiva ${i + 1}`}
+              aria-current={i === idx}
+              className="group flex flex-col items-start gap-2 text-[14px] font-bold"
+            >
+              <span className={i === idx ? "text-white" : "text-white/60 group-hover:text-white"}>{String(i + 1).padStart(2, "0")}</span>
+              <span className={`block h-[2px] ${total > 5 ? "w-9 md:w-12" : "w-14 md:w-20"} ${i === idx ? "bg-[var(--red)]" : "bg-white/40 group-hover:bg-white/70"}`} />
+            </button>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -325,7 +475,7 @@ function Soluciones() {
           {contenido.soluciones.tarjetas.map((t, i) => (
             <article key={i}>
               <div className="relative w-[220px] max-w-full aspect-[22/13] rounded-md overflow-hidden bg-[var(--navy)]">
-                <Imagen ruta={["soluciones", "tarjetas", i, "imagen"]} alt={t.titulo} anchoMaximo={700} botonCompacto className="w-full h-full object-cover" />
+                <Imagen ruta={["soluciones", "tarjetas", i, "imagen"]} alt={t.titulo} anchoMaximo={700} aspecto={22 / 13} botonCompacto className="w-full h-full object-cover" />
               </div>
               <Texto ruta={["soluciones", "tarjetas", i, "titulo"]} como="h3" className="block mt-4 text-[16.5px] font-bold text-[var(--navy)]" />
               <Texto ruta={["soluciones", "tarjetas", i, "texto"]} como="p" multilinea className="block mt-2 text-[13.5px] leading-[1.6] text-[var(--gray-500)]" />
@@ -340,39 +490,97 @@ function Soluciones() {
   );
 }
 
-// ---------- Servicios (imagen grande + 3 miniaturas circulares) ----------
+// ---------- Servicios (imagen grande + miniaturas circulares) ----------
+const VISTAS_SERVICIOS = [
+  { nombre: "Escritorio", aspecto: 1.5 },
+  { nombre: "Móvil", aspecto: 1.2 },
+  { nombre: "Miniatura", aspecto: 1 },
+];
+
 function Servicios() {
-  const { contenido } = useSitio();
+  const { contenido, editando, actualizar } = useSitio();
+  const items = contenido.servicios.items;
+  const total = items.length;
   const [activo, setActivo] = useState(0);
-  const item = contenido.servicios.items[activo];
+  const idx = Math.min(activo, total - 1); // si se elimina un servicio, el activo nunca queda fuera de rango
+  const item = items[idx];
+  const lleno = total >= LIMITES.servicios;
+
+  const agregar = () => {
+    if (lleno) return;
+    actualizar((c) => ({ ...c, servicios: { ...c.servicios, items: [...c.servicios.items, NUEVO_SERVICIO] } }));
+    setActivo(total);
+  };
+  const eliminar = () => {
+    if (total <= 1) return;
+    if (!window.confirm(`¿Eliminar el servicio "${item.encabezado}"?`)) return;
+    actualizar((c) => ({ ...c, servicios: { ...c.servicios, items: c.servicios.items.filter((_, j) => j !== idx) } }));
+    setActivo(Math.max(0, idx - 1));
+  };
+
+  const medida = total > 5 ? "w-12 h-12 md:w-[48px] md:h-[48px]" : "w-14 h-14 md:w-[60px] md:h-[60px]";
 
   return (
     <section id="servicios" className="grid md:grid-cols-2 scroll-mt-4">
       <div className="relative min-h-[320px] md:min-h-[480px] bg-[var(--navy-dark)]">
-        <Imagen key={activo} ruta={["servicios", "items", activo, "imagen"]} alt={item.encabezado} anchoMaximo={1200} className="absolute inset-0 w-full h-full object-cover" />
-        <div className="absolute z-10 bottom-4 left-1/2 -translate-x-1/2 flex flex-row gap-3 md:bottom-auto md:left-auto md:right-0 md:top-1/2 md:-translate-y-1/2 md:translate-x-1/2 md:flex-col">
-          {contenido.servicios.items.map((s, i) => (
+        <div className="absolute inset-0 overflow-hidden">
+          <Imagen
+            key={idx}
+            ruta={["servicios", "items", idx, "imagen"]}
+            alt={item.encabezado}
+            anchoMaximo={1200}
+            aspecto={VISTAS_SERVICIOS[0].aspecto}
+            vistas={VISTAS_SERVICIOS}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        </div>
+        <div className="absolute z-10 bottom-4 left-1/2 -translate-x-1/2 flex flex-row flex-wrap justify-center gap-3 max-w-[92%] md:max-w-none md:bottom-auto md:left-auto md:right-0 md:top-1/2 md:-translate-y-1/2 md:translate-x-1/2 md:flex-col md:flex-nowrap">
+          {items.map((s, i) => (
             <button
               key={i}
               type="button"
               onClick={() => setActivo(i)}
               aria-label={`Ver: ${s.encabezado}`}
-              aria-current={i === activo}
-              className={`w-14 h-14 md:w-[60px] md:h-[60px] rounded-full overflow-hidden border-[3px] shadow-[0_4px_14px_rgba(15,24,69,0.25)] ${i === activo ? "border-[var(--red)]" : "border-white hover:border-[#d5e0f7]"}`}
+              aria-current={i === idx}
+              className={`${medida} rounded-full overflow-hidden border-[3px] shadow-[0_4px_14px_rgba(15,24,69,0.25)] ${i === idx ? "border-[var(--red)]" : "border-white hover:border-[#d5e0f7]"}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={s.imagen} alt="" className="w-full h-full object-cover" draggable={false} />
+              <img src={s.imagen} alt="" className="w-full h-full object-cover" style={estiloAjuste(s.imagenAjuste)} draggable={false} />
             </button>
           ))}
+          {editando && !lleno && (
+            <button
+              type="button"
+              onClick={agregar}
+              aria-label="Agregar servicio"
+              title="Agregar servicio"
+              className={`${medida} rounded-full border-[3px] border-dashed border-white bg-[var(--navy)] text-white text-[26px] leading-none flex items-center justify-center shadow-[0_4px_14px_rgba(15,24,69,0.25)] hover:bg-[var(--red)]`}
+            >
+              +
+            </button>
+          )}
         </div>
       </div>
       <div className="bg-[var(--blue-light)] px-6 md:px-14 lg:px-20 py-14 md:py-16 flex items-center">
-        <div className="max-w-[500px]">
+        <div className="max-w-[500px] w-full">
+          {editando && (
+            <div className="sw-controles-edicion mb-6">
+              <span className="font-medium">
+                Servicio {idx + 1} de {total}
+              </span>
+              <button type="button" onClick={agregar} disabled={lleno} className="sw-btn-imagen" title={lleno ? `Máximo ${LIMITES.servicios} servicios` : undefined}>
+                + Agregar servicio
+              </button>
+              <button type="button" onClick={eliminar} disabled={total <= 1} className="sw-btn-imagen sw-btn-peligro" title={total <= 1 ? "Debe quedar al menos un servicio" : undefined}>
+                Eliminar este servicio
+              </button>
+            </div>
+          )}
           <Texto ruta={["servicios", "titulo"]} como="h2" className="block text-[28px] md:text-[32px] font-bold text-[var(--navy)]" />
           <Texto ruta={["servicios", "subtitulo"]} como="p" className="block mt-1 text-[15px] font-medium text-[var(--red)]" />
-          <Texto ruta={["servicios", "items", activo, "encabezado"]} como="h3" className="block mt-7 text-[19px] font-bold text-[var(--navy)]" />
-          <Texto ruta={["servicios", "items", activo, "parrafo1"]} como="p" multilinea className="block mt-3 text-[14px] leading-[1.65] text-[var(--gray-500)]" />
-          <Texto ruta={["servicios", "items", activo, "parrafo2"]} como="p" multilinea className="block mt-3 text-[14px] leading-[1.65] text-[var(--gray-500)]" />
+          <Texto ruta={["servicios", "items", idx, "encabezado"]} como="h3" className="block mt-7 text-[19px] font-bold text-[var(--navy)]" />
+          <Texto ruta={["servicios", "items", idx, "parrafo1"]} como="p" multilinea className="block mt-3 text-[14px] leading-[1.65] text-[var(--gray-500)]" />
+          <Texto ruta={["servicios", "items", idx, "parrafo2"]} como="p" multilinea className="block mt-3 text-[14px] leading-[1.65] text-[var(--gray-500)]" />
           <div className="mt-8">
             <BotonAccion ruta={["servicios", "boton"]} destino="#contacto" />
           </div>
@@ -417,13 +625,13 @@ function Testimonios() {
               className={`rounded-full overflow-hidden ${i === activo ? "w-16 h-16 ring-[3px] ring-[var(--red)] ring-offset-2" : "w-14 h-14 opacity-80 hover:opacity-100"}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={t.foto} alt="" className="w-full h-full object-cover" draggable={false} />
+              <img src={t.foto} alt="" className="w-full h-full object-cover" style={estiloAjuste(t.fotoAjuste)} draggable={false} />
             </button>
           ))}
         </div>
         {editando && (
           <div className="flex justify-center mt-4">
-            <Imagen ruta={["testimonios", "items", activo, "foto"]} alt="" anchoMaximo={300} soloBoton etiqueta="Cambiar foto del testimonio" />
+            <Imagen ruta={["testimonios", "items", activo, "foto"]} alt="" anchoMaximo={300} aspecto={1} soloBoton etiqueta="Cambiar foto del testimonio" />
           </div>
         )}
       </div>
@@ -541,7 +749,7 @@ function PorQue() {
       </div>
       <div className="flex flex-col sm:flex-row gap-5 mt-6">
         <div className="relative w-full sm:w-[190px] shrink-0 aspect-[16/10] rounded-md overflow-hidden bg-[var(--navy)]">
-          <Imagen key={activo} ruta={["porque", "items", activo, "imagen"]} alt={item.texto} anchoMaximo={700} botonCompacto className="w-full h-full object-cover" />
+          <Imagen key={activo} ruta={["porque", "items", activo, "imagen"]} alt={item.texto} anchoMaximo={700} aspecto={1.6} botonCompacto className="w-full h-full object-cover" />
         </div>
         <Texto ruta={["porque", "items", activo, "texto"]} como="p" multilinea className="block text-[15px] leading-[1.6] font-medium text-[var(--navy)] sm:pt-1" />
       </div>
@@ -575,7 +783,7 @@ function Pie() {
       <div className={`${CONTENEDOR} grid sm:grid-cols-3 gap-7 py-9`}>
         {[
           { icono: <IconoUbicacion size={20} />, etiqueta: "etiquetaDireccion" as const, valor: <Texto ruta={["contacto", "direccion"]} multilinea /> },
-          { icono: <IconoTelefono size={20} />, etiqueta: "etiquetaTelefono" as const, valor: <DatoContacto tipo="telefono" /> },
+          { icono: <IconoTelefono size={20} />, etiqueta: "etiquetaTelefono" as const, valor: <ListaTelefonos variante="pie" /> },
           { icono: <IconoCorreo size={20} />, etiqueta: "etiquetaCorreo" as const, valor: <DatoContacto tipo="correo" className="break-all" /> },
         ].map((c) => (
           <div key={c.etiqueta} className="flex gap-3.5">
@@ -640,7 +848,7 @@ function BarraAdmin({
           {editando
             ? hayCambios
               ? "Tienes cambios sin guardar."
-              : "Modo edición: haz clic en un texto para escribir o en una imagen para cambiarla."
+              : "Modo edición: haz clic en un texto para escribir; en cada imagen puedes cambiarla o ajustar su zoom y posición."
             : "Estás viendo el sitio como lo ven tus visitantes."}
         </p>
         <div className="flex flex-wrap items-center gap-2">
@@ -690,6 +898,8 @@ export default function SitioWeb({ inicial }: { inicial: SitioContenido }) {
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [panel, setPanel] = useState<null | "redes" | "suscriptores">(null);
+  const [ajusteImg, setAjusteImg] = useState<null | { ruta: RutaCampo; src: string; ajuste: string; nueva: boolean; opciones: OpcionesImagen }>(null);
+  const [subiendoImg, setSubiendoImg] = useState(false);
   const [aviso, setAviso] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
 
   // Siempre el contenido más reciente (para guardar justo después de terminar de escribir un texto).
@@ -718,23 +928,48 @@ export default function SitioWeb({ inicial }: { inicial: SitioContenido }) {
     setContenido((c) => escribirCampo(c, ruta, valor));
   }, []);
 
-  const subirImagen = useCallback(async (ruta: RutaCampo, archivo: File, anchoMaximo: number) => {
+  // Abre el ajuste de zoom y posición. Con archivo: imagen nueva (aún no se sube; se sube al aplicar). Sin archivo: la imagen actual.
+  const editarImagen = useCallback(async (ruta: RutaCampo, archivo: File | null, opciones: OpcionesImagen) => {
     try {
-      if (!archivo.type.startsWith("image/")) throw new Error("El archivo debe ser una imagen (JPG, PNG o WEBP).");
-      const dataUrl = await compressImage(archivo, anchoMaximo, 0.82, 1_800_000);
+      if (archivo) {
+        if (!archivo.type.startsWith("image/")) throw new Error("El archivo debe ser una imagen (JPG, PNG o WEBP).");
+        const dataUrl = await compressImage(archivo, opciones.anchoMaximo, 0.82, 1_800_000);
+        setAjusteImg({ ruta, src: dataUrl, ajuste: "", nueva: true, opciones });
+      } else {
+        const actual = contenidoRef.current;
+        setAjusteImg({ ruta, src: leerCampo(actual, ruta), ajuste: leerCampo(actual, rutaAjuste(ruta)), nueva: false, opciones });
+      }
+    } catch (err) {
+      setAviso({ tipo: "error", texto: err instanceof Error ? err.message : "No se pudo preparar la imagen." });
+    }
+  }, []);
+
+  const aplicarAjusteImagen = async (ajuste: string) => {
+    const a = ajusteImg;
+    if (!a) return;
+    if (!a.nueva) {
+      cambiar(rutaAjuste(a.ruta), ajuste);
+      setAjusteImg(null);
+      return;
+    }
+    setSubiendoImg(true);
+    try {
       const r = await fetch("/api/sitio/imagen", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl }),
+        body: JSON.stringify({ dataUrl: a.src }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || "No se pudo subir la imagen.");
-      setContenido((c) => escribirCampo(c, ruta, d.url));
+      setContenido((c) => escribirCampo(escribirCampo(c, a.ruta, d.url), rutaAjuste(a.ruta), ajuste));
+      setAjusteImg(null);
       setAviso({ tipo: "ok", texto: "Imagen lista. Recuerda guardar los cambios." });
     } catch (err) {
       setAviso({ tipo: "error", texto: err instanceof Error ? err.message : "No se pudo subir la imagen." });
+    } finally {
+      setSubiendoImg(false);
     }
-  }, []);
+  };
 
   const guardar = async () => {
     // Asegura que el texto que se está escribiendo se registre antes de guardar.
@@ -766,7 +1001,10 @@ export default function SitioWeb({ inicial }: { inicial: SitioContenido }) {
     setEditando(false);
   };
 
-  const ctx = useMemo(() => ({ contenido, editando, cambiar, subirImagen }), [contenido, editando, cambiar, subirImagen]);
+  const ctx = useMemo(
+    () => ({ contenido, editando, cambiar, actualizar: setContenido, editarImagen }),
+    [contenido, editando, cambiar, editarImagen]
+  );
 
   return (
     <SitioContext.Provider value={ctx}>
@@ -815,6 +1053,18 @@ export default function SitioWeb({ inicial }: { inicial: SitioContenido }) {
           />
         )}
         {panel === "suscriptores" && <PanelSuscriptores onCerrar={() => setPanel(null)} />}
+        {ajusteImg && (
+          <AjusteImagen
+            src={ajusteImg.src}
+            ajusteInicial={ajusteImg.ajuste}
+            aspecto={ajusteImg.opciones.aspecto}
+            vistas={ajusteImg.opciones.vistas}
+            esNueva={ajusteImg.nueva}
+            aplicando={subiendoImg}
+            onAplicar={aplicarAjusteImagen}
+            onCancelar={() => !subiendoImg && setAjusteImg(null)}
+          />
+        )}
       </div>
     </SitioContext.Provider>
   );

@@ -1,12 +1,22 @@
 "use client";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
-import { leerCampo, RutaCampo, SitioContenido } from "@/lib/sitioData";
+import { estiloAjuste, leerCampo, rutaAjuste, RutaCampo, SitioContenido } from "@/lib/sitioData";
+import type { VistaImagen } from "./AjusteImagen";
+
+export type OpcionesImagen = {
+  anchoMaximo: number; // ancho máximo al que se comprime una imagen nueva
+  aspecto: number; // proporción (ancho / alto) del marco donde se muestra
+  vistas?: VistaImagen[]; // proporciones alternativas para la vista previa (p. ej. escritorio y móvil)
+};
 
 type ContextoSitio = {
   contenido: SitioContenido;
   editando: boolean;
   cambiar: (ruta: RutaCampo, valor: string) => void;
-  subirImagen: (ruta: RutaCampo, archivo: File, anchoMaximo: number) => Promise<void>;
+  // Cambios que afectan varias partes del contenido a la vez (agregar o eliminar elementos de una lista).
+  actualizar: (fn: (c: SitioContenido) => SitioContenido) => void;
+  // Abre el ajuste de zoom y posición: con un archivo nuevo, o (archivo = null) con la imagen que ya está puesta.
+  editarImagen: (ruta: RutaCampo, archivo: File | null, opciones: OpcionesImagen) => Promise<void>;
 };
 
 export const SitioContext = createContext<ContextoSitio | null>(null);
@@ -84,12 +94,15 @@ export function Texto({
   );
 }
 
-// Imagen editable: en modo edición muestra el botón "Cambiar imagen".
+// Imagen editable: en modo edición muestra los botones "Cambiar imagen" y "Ajustar" (zoom, posición y recorte).
+// El encuadre se guarda aparte ("<campo>Ajuste"), sin modificar el archivo.
 export function Imagen({
   ruta,
   alt,
   className = "",
   anchoMaximo = 1600,
+  aspecto = 16 / 9,
+  vistas,
   botonCompacto = false,
   soloBoton = false,
   etiqueta = "Cambiar imagen",
@@ -98,43 +111,52 @@ export function Imagen({
   alt: string;
   className?: string;
   anchoMaximo?: number;
+  aspecto?: number;
+  vistas?: VistaImagen[];
   botonCompacto?: boolean;
-  soloBoton?: boolean; // solo el botón (la imagen se muestra en otro lugar, p. ej. dentro de otro botón)
+  soloBoton?: boolean; // solo los botones (la imagen se muestra en otro lugar, p. ej. dentro de otro botón)
   etiqueta?: string;
 }) {
-  const { contenido, editando, subirImagen } = useSitio();
+  const { contenido, editando, editarImagen } = useSitio();
   const src = leerCampo(contenido, ruta);
+  const ajuste = leerCampo(contenido, rutaAjuste(ruta));
   const input = useRef<HTMLInputElement>(null);
-  const [subiendo, setSubiendo] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const opciones: OpcionesImagen = { anchoMaximo, aspecto, vistas };
 
   const elegir = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const archivo = e.target.files?.[0];
     e.target.value = "";
     if (!archivo) return;
-    setSubiendo(true);
+    setOcupado(true);
     try {
-      await subirImagen(ruta, archivo, anchoMaximo);
+      await editarImagen(ruta, archivo, opciones);
     } finally {
-      setSubiendo(false);
+      setOcupado(false);
     }
+  };
+
+  const detener = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
   };
 
   if (soloBoton && !editando) return null;
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      {!soloBoton && <img src={src} alt={alt} className={className} draggable={false} />}
+      {!soloBoton && <img src={src} alt={alt} className={className} style={estiloAjuste(ajuste)} draggable={false} />}
       {editando && (
         <span className={soloBoton ? "sw-cambiar-imagen-suelto" : "sw-cambiar-imagen"}>
           <button
             type="button"
             onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
+              detener(e);
               input.current?.click();
             }}
-            disabled={subiendo}
+            disabled={ocupado}
             title="Cambiar imagen"
+            aria-label={botonCompacto ? "Cambiar imagen" : undefined}
             className={botonCompacto ? "sw-btn-imagen sw-btn-imagen-compacto" : "sw-btn-imagen"}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
@@ -142,7 +164,24 @@ export function Imagen({
               <circle cx="9" cy="10" r="2" />
               <path d="M21 16l-5-5-8 8" />
             </svg>
-            {!botonCompacto && (subiendo ? "Subiendo..." : etiqueta)}
+            {!botonCompacto && (ocupado ? "Cargando..." : etiqueta)}
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              detener(e);
+              void editarImagen(ruta, null, opciones);
+            }}
+            disabled={ocupado}
+            title="Ajustar zoom, posición y recorte"
+            aria-label={botonCompacto ? "Ajustar zoom, posición y recorte" : undefined}
+            className={botonCompacto ? "sw-btn-imagen sw-btn-imagen-compacto" : "sw-btn-imagen"}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+              <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+            </svg>
+            {!botonCompacto && "Ajustar"}
           </button>
           <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={elegir} />
         </span>

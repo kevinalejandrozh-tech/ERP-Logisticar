@@ -2,19 +2,31 @@
 import { useEffect, useState } from "react";
 import { SitioContenido } from "@/lib/sitioData";
 
-function Modal({ titulo, onCerrar, children }: { titulo: string; onCerrar: () => void; children: React.ReactNode }) {
+export function Modal({
+  titulo,
+  onCerrar,
+  children,
+  ancho = "max-w-[520px]",
+  cerrarAlClicFuera = true,
+}: {
+  titulo: string;
+  onCerrar: () => void;
+  children: React.ReactNode;
+  ancho?: string;
+  cerrarAlClicFuera?: boolean;
+}) {
   useEffect(() => {
     const tecla = (e: KeyboardEvent) => e.key === "Escape" && onCerrar();
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [onCerrar]);
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(15,24,69,0.55)] px-4" onClick={onCerrar}>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgba(15,24,69,0.55)] px-4" onClick={cerrarAlClicFuera ? onCerrar : undefined}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={titulo}
-        className="w-full max-w-[520px] max-h-[85vh] flex flex-col bg-white rounded-lg shadow-[0_12px_40px_rgba(15,24,69,0.3)]"
+        className={`w-full ${ancho} max-h-[92vh] flex flex-col bg-white rounded-lg shadow-[0_12px_40px_rgba(15,24,69,0.3)]`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--gray-200)]">

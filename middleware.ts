@@ -29,7 +29,7 @@ const API_PUBLICA = new Set([
 
 // Escrituras permitidas al supervisor (solo lectura): sus propios favoritos, marcar notificaciones vistas
 // y su propio perfil (foto y contraseña).
-const API_ESCRITURA_PERSONAL = new Set(["/api/favoritos", "/api/notificaciones", "/api/auth/perfil"]);
+const API_ESCRITURA_PERSONAL = new Set(["/api/favoritos", "/api/notificaciones", "/api/auth/perfil", "/api/sistema/preferencias", "/api/chat", "/api/chat/mensajes"]);
 
 function denegar(req: NextRequest, pathname: string, mensaje: string) {
   if (pathname.startsWith("/api/")) return NextResponse.json({ error: mensaje }, { status: 403 });

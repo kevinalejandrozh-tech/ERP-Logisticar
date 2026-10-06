@@ -4,6 +4,8 @@ import Link from "next/link";
 
 type Notificacion = {
   id: number;
+  tipo?: "actividad" | "aviso" | "novedad" | "vencida";
+  detalle?: string[];
   usuario: string;
   accion: string;
   pagina: string;
@@ -35,6 +37,8 @@ export default function CampanaNotificaciones() {
   const [noLeidas, setNoLeidas] = useState(0);
   const [items, setItems] = useState<Notificacion[]>([]);
   const [cargando, setCargando] = useState(true);
+  const [detalleId, setDetalleId] = useState<number | null>(null);
+  const [limite, setLimite] = useState(50);
 
   const cargar = useCallback(async () => {
     try {
@@ -43,6 +47,7 @@ export default function CampanaNotificaciones() {
       if (d.ok) {
         setNoLeidas(d.noLeidas);
         setItems(d.items);
+        if (d.limite) setLimite(d.limite);
       }
     } catch {
       // sin conexión: se reintenta en el siguiente ciclo
@@ -63,6 +68,15 @@ export default function CampanaNotificaciones() {
       window.removeEventListener("notas-avisos", alEnfocar);
     };
   }, [cargar]);
+
+  const borrarTodo = async () => {
+    if (!items.length || !confirm("¿Borrar todas las notificaciones?")) return;
+    setItems((l) => l.filter((n) => n.tipo === "vencida")); // las notas vencidas siguen hasta marcarlas como terminadas
+    setNoLeidas(items.filter((n) => n.tipo === "vencida").length);
+    setDetalleId(null);
+    await fetch("/api/notificaciones", { method: "DELETE" }).catch(() => {});
+    cargar();
+  };
 
   const abrir = () => {
     const nuevo = !abierto;
@@ -96,33 +110,65 @@ export default function CampanaNotificaciones() {
           <div className="fixed left-3 right-3 top-[76px] sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[380px] bg-white border border-[var(--gray-200)] rounded-xl shadow-lg z-50 overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--gray-200)]">
               <span className="text-[14px] font-bold text-[var(--navy)]">Notificaciones</span>
-              <span className="text-[11px] text-[var(--gray-400)]">Movimientos de otros usuarios</span>
+              <button type="button" onClick={borrarTodo} disabled={!items.length} className="text-[12px] font-bold text-[var(--red)] disabled:text-[var(--gray-300)]">Borrar todo</button>
             </div>
             <div className="max-h-[420px] overflow-y-auto">
               {cargando ? (
                 <p className="px-4 py-5 text-[13px] text-[var(--gray-500)] m-0">Cargando...</p>
               ) : items.length === 0 ? (
-                <p className="px-4 py-5 text-[13px] text-[var(--gray-500)] m-0">Aún no hay movimientos de otros usuarios.</p>
+                <p className="px-4 py-5 text-[13px] text-[var(--gray-500)] m-0">No hay notificaciones.</p>
               ) : (
                 <ul className="list-none m-0 p-0">
-                  {items.map((n) => (
-                    <li key={n.id} className={`border-b border-[var(--gray-100)] last:border-b-0 ${n.nueva ? "bg-[#f3f7ff]" : ""}`}>
-                      <Link href={n.pagina} onClick={() => setAbierto(false)} className="flex gap-3 px-4 py-3 no-underline hover:bg-[var(--gray-100)]">
-                        <span className="w-9 h-9 rounded-full bg-[var(--blue-light)] text-[var(--blue)] text-[12px] font-bold flex items-center justify-center shrink-0">{iniciales(n.usuario)}</span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[13px] text-[var(--navy)] leading-snug">
-                            <b>{n.usuario}</b> · {n.accion} en <b className="text-[var(--blue)]">{n.paginaTitulo}</b>
-                            {n.veces > 1 && <span className="text-[var(--gray-500)]"> ({n.veces} cambios)</span>}
+                  {items.map((n) => {
+                    const abierta = detalleId === n.id;
+                    const f = new Date(n.fecha);
+                    return (
+                      <li key={n.id} className={`border-b border-[var(--gray-100)] last:border-b-0 ${n.nueva ? "bg-[#f3f7ff]" : ""}`}>
+                        <button type="button" onClick={() => setDetalleId(abierta ? null : n.id)} aria-expanded={abierta} className="w-full text-left flex gap-3 px-4 py-3 hover:bg-[var(--gray-100)]">
+                          <span className="w-9 h-9 rounded-full bg-[var(--blue-light)] text-[var(--blue)] text-[12px] font-bold flex items-center justify-center shrink-0">{iniciales(n.usuario)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[13px] text-[var(--navy)] leading-snug">
+                              {n.tipo === "novedad" ? (
+                                <b>{n.accion}</b>
+                              ) : (
+                                <>
+                                  <b>{n.usuario}</b> · {n.accion}
+                                  {n.tipo === "actividad" && <> en <b className="text-[var(--blue)]">{n.paginaTitulo}</b></>}
+                                </>
+                              )}
+                              {n.veces > 1 && <span className="text-[var(--gray-500)]"> ({n.veces} cambios)</span>}
+                            </span>
+                            <span className="block text-[11px] text-[var(--gray-400)] mt-0.5">{haceCuanto(n.fecha)}</span>
                           </span>
-                          <span className="block text-[11px] text-[var(--gray-400)] mt-0.5">{haceCuanto(n.fecha)}</span>
-                        </span>
-                        {n.nueva && <span className="w-2 h-2 rounded-full bg-[var(--red)] mt-1.5 shrink-0" aria-label="Nueva" />}
-                      </Link>
-                    </li>
-                  ))}
+                          {n.nueva && <span className="w-2 h-2 rounded-full bg-[var(--red)] mt-1.5 shrink-0" aria-label="Nueva" />}
+                          <svg className={`shrink-0 mt-1 transition-transform ${abierta ? "rotate-180" : ""}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9aa1b0" strokeWidth="2.2" strokeLinecap="round"><path d="M6 9l6 6 6-6" /></svg>
+                        </button>
+                        {abierta && (
+                          <div className="px-4 pb-3 pl-[64px] text-[12px] text-[var(--gray-600,#4b5563)] leading-relaxed">
+                            {n.tipo === "novedad" ? (
+                              <ul className="m-0 pl-4 list-disc">
+                                {(n.detalle || []).map((d, i) => <li key={i} className={i === 0 ? "list-none -ml-4 mb-1 font-medium text-[var(--navy)]" : ""}>{d}</li>)}
+                              </ul>
+                            ) : (
+                              <>
+                                <p className="m-0"><b>Quién:</b> {n.usuario}</p>
+                                <p className="m-0"><b>Qué:</b> {n.accion}{n.veces > 1 ? ` (${n.veces} veces seguidas)` : ""}</p>
+                                <p className="m-0"><b>Dónde:</b> {n.paginaTitulo}</p>
+                              </>
+                            )}
+                            <p className="m-0"><b>Cuándo:</b> {f.toLocaleString("es-MX", { dateStyle: "long", timeStyle: "short" })}</p>
+                            {n.tipo !== "novedad" && (
+                              <Link href={n.pagina} onClick={() => setAbierto(false)} className="inline-block mt-1.5 font-bold text-[var(--blue)] no-underline hover:underline">Ir a {n.paginaTitulo} →</Link>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
+            <p className="m-0 px-4 py-2 border-t border-[var(--gray-100)] text-[10.5px] text-[var(--gray-400)]">Se guardan las {limite} más recientes · se cambia en el engrane</p>
           </div>
         </>
       )}

@@ -3,7 +3,7 @@ import type { PoolClient } from "pg";
 import { getPool } from "@/lib/db";
 import { ensureAsistenciaSchema, sesionAsistencia } from "@/lib/asistenciaDB";
 import { sumarDiasIso } from "@/lib/asistenciaData";
-import { CAMPOS_VIAJE, calcularEstatusViaje, esViajeLocal } from "@/lib/viajesData";
+import { CAMPOS_VIAJE, NA_PREFIJO, calcularEstatusViaje, esViajeLocal } from "@/lib/viajesData";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,7 +19,9 @@ function limpiarDatos(datos: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   if (datos && typeof datos === "object") {
     for (const [k, v] of Object.entries(datos as Record<string, unknown>)) {
-      if (CLAVES.has(k) && v !== null && v !== undefined && String(v).trim() !== "") out[k] = String(v).slice(0, 300);
+      if (k.startsWith(NA_PREFIJO) && CLAVES.has(k.slice(NA_PREFIJO.length))) {
+        if (String(v) === "1") out[k] = "1";
+      } else if (CLAVES.has(k) && v !== null && v !== undefined && String(v).trim() !== "") out[k] = String(v).slice(0, 300);
     }
   }
   return out;
@@ -68,11 +70,15 @@ export async function GET(req: NextRequest) {
     const pool = getPool();
     const unidades = await pool.query(`SELECT eco, datos->>'Unidad' AS unidad, datos->>'Placas' AS placas, datos->>'Ref. Capacidad' AS capacidad, disponible FROM unidades ORDER BY eco ASC`);
     const viajes = await pool.query(
-      `SELECT id, eco, to_char(fecha, 'YYYY-MM-DD') AS fecha, datos, operador_id, ayudante_id FROM viajes_calendario WHERE fecha BETWEEN $1 AND $2 ORDER BY id`,
+      // Incluye los viajes iniciados antes del periodo cuyo término estimado cae dentro (para la barra tipo Gantt).
+      `SELECT id, eco, to_char(fecha, 'YYYY-MM-DD') AS fecha, datos, operador_id, ayudante_id FROM viajes_calendario
+       WHERE fecha BETWEEN $1 AND $2
+          OR (fecha < $1::date AND substring(COALESCE(NULLIF(datos->>'TERMINO DE SERVICIO', ''), NULLIF(datos->>'TERMINO ESTIMADO DE TERMINO DEL SERVICIO', ''), '') from 1 for 10) >= $1::text)
+       ORDER BY id`,
       [desde, hasta]
     );
     const personas = await pool.query(`SELECT id, nombre, puesto FROM expedientes WHERE COALESCE(estatus_laboral, 'Activo') != 'Baja' ORDER BY nombre`);
-    const rutas = await pool.query(`SELECT id, nombre, estado_destino, bono FROM rutas WHERE activa ORDER BY nombre`);
+    const rutas = await pool.query(`SELECT id, nombre, estado_destino, bono, horas_ida::float AS horas_ida, horas_regreso_vacio::float AS horas_regreso_vacio FROM rutas WHERE activa ORDER BY nombre`);
     const bonos = await pool.query(`SELECT ruta_id, eco, bono FROM rutas_bonos_unidad`);
     return NextResponse.json({
       ok: true,
@@ -83,6 +89,8 @@ export async function GET(req: NextRequest) {
         nombre: r.nombre,
         estado_destino: r.estado_destino,
         bono: Number(r.bono) || 0,
+        horas_ida: Number(r.horas_ida) || 0,
+        horas_regreso_vacio: Number(r.horas_regreso_vacio) || 0,
         bonos_unidad: Object.fromEntries(bonos.rows.filter((b) => b.ruta_id === r.id).map((b) => [b.eco, Number(b.bono) || 0])),
       })),
     });
@@ -134,6 +142,9 @@ async function guardar(req: NextRequest, id: number | null) {
       viajeId = r.rows[0].id;
     }
     await sincronizarAsistencia(c, viajeId!);
+    // La cuenta capturada que no esté en el catálogo de clientes se agrega automáticamente.
+    const cuenta = String(datos["NOMBRE CUENTA"] || "").replace(/\s+/g, " ").trim();
+    if (cuenta) await c.query(`INSERT INTO clientes_catalogo (nombre) VALUES ($1) ON CONFLICT (LOWER(nombre)) DO NOTHING`, [cuenta]);
     await c.query("COMMIT");
     return NextResponse.json({ ok: true, id: viajeId });
   } catch (e) {

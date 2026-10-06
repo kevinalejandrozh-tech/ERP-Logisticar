@@ -48,7 +48,7 @@ const contenido = compactoMovil ? (
 const clases = "group bg-white border border-[var(--gray-200)] rounded-xl p-3.5 sm:p-5 md:p-6 text-left block h-full shadow-[0_1px_4px_rgba(22,33,92,0.05)] hover:border-[var(--blue)] hover:shadow-[0_4px_14px_rgba(22,33,92,0.09)]";
 if (href) {
 return (
-<Link href={href} className={`${clases} no-underline`}>
+<Link href={href} draggable={false} className={`${clases} no-underline`}>
 {contenido}
 </Link>
 );

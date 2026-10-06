@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureActividadSchema, sesionDeRequest } from "@/lib/actividadDB";
 import { tituloDeRuta } from "@/lib/paginas";
+import { sinNotificacion } from "@/lib/actividadReglas";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
     const metodo = String(body.metodo || "POST").toUpperCase().slice(0, 10);
     const api = String(body.api || "").split("?")[0].slice(0, 200);
     const pagina = String(body.pagina || "/").split("?")[0].slice(0, 200);
-    if (!api.startsWith("/api/")) return NextResponse.json({ ok: false });
+    if (!api.startsWith("/api/") || sinNotificacion(api)) return NextResponse.json({ ok: false });
     await ensureActividadSchema();
     const p = getPool();
     const actualizado = await p.query(

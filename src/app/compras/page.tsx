@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Logo from "@/components/Logo";
-import FavoritoEstrella from "@/components/FavoritoEstrella";
+import TituloFavorito from "@/components/TituloFavorito";
 import AltaProveedorModal from "@/components/compras/AltaProveedorModal";
 import DetalleOCModal from "@/components/compras/DetalleOCModal";
 import { OrdenCompra, Viatico, esAutorizada, moneda, productosDe } from "@/lib/comprasData";
@@ -189,10 +189,7 @@ export default function ComprasPage() {
           <div className="flex items-center gap-3">
             <Logo size={36} />
             <div>
-              <div className="flex items-center gap-1">
-                <h1 className="font-display text-[16px] sm:text-[18px] font-bold text-[var(--navy)] m-0">Gestión de Compras</h1>
-                <FavoritoEstrella titulo="Compras" />
-              </div>
+              <TituloFavorito titulo="Compras" className="font-display text-[16px] sm:text-[18px] font-bold text-[var(--navy)] m-0">Gestión de Compras</TituloFavorito>
               <p className="text-[11px] sm:text-[12px] text-[var(--gray-400)] m-0">Transportes Logisticar</p>
             </div>
           </div>

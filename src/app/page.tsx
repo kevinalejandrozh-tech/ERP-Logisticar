@@ -11,6 +11,7 @@ import AccesosDirectos from "@/components/inicio/AccesosDirectos";
 import PerfilModal from "@/components/inicio/PerfilModal";
 import BotonesPersonalizados from "@/components/inicio/BotonesPersonalizados";
 import BuzonIcono from "@/components/inicio/BuzonIcono";
+import { Arrastrable, OrdenInicioProvider } from "@/components/inicio/Ordenable";
 import { puedeVerSeccion } from "@/lib/permisos";
 const ICON_STROKE = "#2f6fed";
 const sw = { fill: "none", stroke: ICON_STROKE, strokeWidth: 2 };
@@ -223,24 +224,25 @@ Cerrar sesión
 </div>
 </aside>
 </div>
+<OrdenInicioProvider>
 <div className="px-0 md:px-4">
 <p className="text-[12px] md:text-[14px] font-medium tracking-[0.18em] uppercase text-[var(--blue)] m-0 mb-4 md:mb-6">Centro de operaciones</p>
 <p className="text-[20px] md:text-[27px] text-[var(--gray-500)] m-0 mb-6 md:mb-9">Gestiona tu operación desde un solo lugar.</p>
 <div className="flex flex-wrap gap-3 md:gap-4 mb-7 md:mb-9">
 {sesion.rol !== "supervisor_tms" && (
 <>
-{sec("monitoreo_rutas") && ver("Monitoreo de Rutas planeación programa de cargas") && <Link href="/planeacion-cargas" className="btn btn-primario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg! shadow-[0_2px_6px_rgba(22,33,92,0.2)]">
+{sec("monitoreo_rutas") && ver("Monitoreo de Rutas planeación programa de cargas") && <Arrastrable id="btn-rutas" grupo="acciones"><Link href="/planeacion-cargas" draggable={false} className="btn btn-primario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg! shadow-[0_2px_6px_rgba(22,33,92,0.2)]">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 10h18M8 4v18M8 15h13" /></svg>
 Monitoreo de Rutas
-</Link>}
-{sec("menu_dia") && ver("Menú del día comida") && <Link href="/menu-dia" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
+</Link></Arrastrable>}
+{sec("menu_dia") && ver("Menú del día comida") && <Arrastrable id="btn-menu" grupo="acciones"><Link href="/menu-dia" draggable={false} className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M6 2v20M6 2c-2 0-3 1.5-3 3.5S4 9 6 9M18 2v20M18 2a3.5 3.5 0 013.5 3.5v3a3.5 3.5 0 01-3.5 3.5" /></svg>
 Menú del día
-</Link>}
-{sec("notas") && ver("Notas recordatorios") && <Link href="/notas" className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
+</Link></Arrastrable>}
+{sec("notas") && ver("Notas recordatorios") && <Arrastrable id="btn-notas" grupo="acciones"><Link href="/notas" draggable={false} className="btn btn-secundario text-[13.5px]! md:text-[16.5px]! md:px-7! md:py-3.5! rounded-lg!">
 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--navy)" strokeWidth="2"><path d="M14 3H6a2 2 0 00-2 2v14a2 2 0 002 2h12a2 2 0 002-2V9z" /><path d="M14 3v6h6M8 13h8M8 17h5" /></svg>
 Notas
-</Link>}
+</Link></Arrastrable>}
 </>
 )}
 </div>
@@ -251,71 +253,89 @@ Notas
 )}
 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-[22px]">
 {sec("unidades") && ver("Unidades flota placas aceite eco Administra y consulta la información de las unidades.") && (
-<MenuCard
+<Arrastrable id="unidades" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/unidades"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
 titulo="Unidades"
 descripcion="Administra y consulta la información de las unidades."
 />
+</Arrastrable>
 )}
 {sesion.rol === "supervisor_tms" ? (
 sec("expedientes") && ver("Expedientes Consulta los expedientes del personal (cuenta TMS).") && (
-<MenuCard
+<Arrastrable id="expedientes" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/personas/expedientes"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M9 13h6M9 17h6" /></svg>}
 titulo="Expedientes"
 descripcion="Consulta los expedientes del personal (cuenta TMS)."
 />
+</Arrastrable>
 )
 ) : (
 <>
 {(sec("expedientes") || sec("organigrama") || sec("recursos_humanos") || sec("nomina")) && ver("Recursos Humanos personas expedientes nómina capacitaciones uniformes organigrama candidatos documentos mochilas Gestiona la información del personal del sistema.") && (
-<MenuCard
+<Arrastrable id="rh" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/personas"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><circle cx="9" cy="8" r="3.2" /><path d="M2.5 20c0-3.5 3-6 6.5-6s6.5 2.5 6.5 6" /><circle cx="17.5" cy="9" r="2.4" /><path d="M15 14c2.6.2 5 2.1 5 6" /></svg>}
 titulo="Recursos Humanos"
 descripcion="Gestiona la información del personal del sistema."
 />
+</Arrastrable>
 )}
 {sec("asistencia") && ver("Asistencia vacaciones descansos Registro por QR, vacaciones, permisos y faltas.") && (
-<MenuCard
+<Arrastrable id="asistencia" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/asistencia"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><path d="M8 15l2.5 2.5L16 13" /></svg>}
 titulo="Asistencia"
 descripcion="Registro por QR, vacaciones, permisos y faltas."
 />
+</Arrastrable>
+)}
+{sec("informe_general") && ver("Informe General asistencia del día reporte de monitoreo bitácora entrega de turno incidencias liquidación de viajes") && (
+<Arrastrable id="informe-general" grupo="tarjetas" className="h-full">
+<MenuCard
+compactoMovil
+href="/informe-general"
+icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M8 13h8M8 17h5M8 9h2" /></svg>}
+titulo="Informe General"
+descripcion="Asistencia del día, monitoreo, incidencias y liquidación de viajes."
+/>
+</Arrastrable>
 )}
 {sec("viajes") && ver("Control de Viajes rutas calendario gastos viáticos casetas combustible monitoreo Organiza y consulta la información de tus viajes.") && (
-<MenuCard
+<Arrastrable id="viajes" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/control-viajes"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><rect x="1" y="7" width="14" height="11" /><path d="M15 10h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="1.7" /><circle cx="17.5" cy="18.5" r="1.7" /></svg>}
 titulo="Control de Viajes"
 descripcion="Organiza y consulta la información de tus viajes."
 />
+</Arrastrable>
 )}
 {sec("compras") && ver("Compras comparativo cotizaciones Gestiona y da seguimiento a tus compras.") && (
-<MenuCard
+<Arrastrable id="compras" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/compras"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><line x1="12" y1="1" x2="12" y2="23" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>}
 titulo="Compras"
 descripcion="Gestiona y da seguimiento a tus compras."
 />
+</Arrastrable>
 )}
 
 {sec("inventario") && ver("Control de inventario categorías Consulta equipos, mobiliario y sus códigos QR.") && (
-<MenuCard
+<Arrastrable id="inventario" grupo="tarjetas" className="h-full"><MenuCard
 compactoMovil
 href="/inventario"
 icono={<svg width="24" height="24" viewBox="0 0 24 24" {...sw}><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8M12 13v8" /></svg>}
 titulo="Control de inventario"
 descripcion="Consulta equipos, mobiliario y sus códigos QR."
 />
+</Arrastrable>
 )}
 </>
 )}
@@ -324,6 +344,7 @@ descripcion="Consulta equipos, mobiliario y sus códigos QR."
 </div>
 </div>
 </div>
+</OrdenInicioProvider>
 </div>
 {perfilAbierto && <PerfilModal nombre={sesion.nombre || ""} foto={foto} onFotoCambiada={setFoto} onCerrar={() => setPerfilAbierto(false)} />}
 </div>

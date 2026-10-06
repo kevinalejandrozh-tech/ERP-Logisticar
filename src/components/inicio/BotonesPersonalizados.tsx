@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import MenuCard from "@/components/MenuCard";
 import { EVENTO_MODO, modoEdicionActivo } from "@/components/modoEdicion";
+import { Arrastrable } from "@/components/inicio/Ordenable";
 
 type Boton = { id: number; slug: string; titulo: string; descripcion: string | null };
 const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
@@ -41,7 +42,7 @@ export default function BotonesPersonalizados({ esSysadmin }: { esSysadmin: bool
   return (
     <>
       {botones.map((b) => (
-        <div key={b.id} className="relative">
+        <Arrastrable key={b.id} id={`custom-${b.id}`} grupo="tarjetas" className="relative h-full">
           <MenuCard
             compactoMovil
             href={`/modulo/${b.slug}`}
@@ -52,10 +53,10 @@ export default function BotonesPersonalizados({ esSysadmin }: { esSysadmin: bool
           {modo && (
             <button type="button" data-no-editable onClick={() => quitar(b)} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-[var(--red)] text-white text-[13px]" title="Quitar botón">✕</button>
           )}
-        </div>
+        </Arrastrable>
       ))}
       {modo && (
-        <div data-no-editable className="border-2 border-dashed border-[var(--blue)] rounded-[18px] p-5 flex flex-col justify-center gap-2 bg-white/60 min-h-[150px]">
+        <div data-no-editable style={{ order: 100000 }} className="border-2 border-dashed border-[var(--blue)] rounded-[18px] p-5 flex flex-col justify-center gap-2 bg-white/60 min-h-[150px]">
           {nuevo ? (
             <>
               <input autoFocus value={nuevo.titulo} onChange={(e) => setNuevo({ ...nuevo, titulo: e.target.value })} placeholder="Nombre del botón" className="border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13px]" />

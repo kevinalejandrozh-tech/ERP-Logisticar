@@ -1,10 +1,10 @@
 "use client";
 import { useEffect } from "react";
+import { sinNotificacion } from "@/lib/actividadReglas";
 
 // Registra automáticamente los movimientos (altas, cambios y bajas) que hace el usuario en cualquier página.
 // Intercepta las llamadas a /api/ que modifican datos y, si salieron bien, avisa a /api/actividad.
 // Así las notificaciones del inicio funcionan en todos los módulos sin tocar cada uno.
-const API_EXCLUIDAS = ["/api/auth/", "/api/actividad", "/api/notificaciones", "/api/favoritos", "/api/sistema/"];
 
 export default function RegistroActividad() {
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function RegistroActividad() {
         if (metodo !== "GET" && metodo !== "HEAD" && respuesta.ok) {
           const texto = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
           const url = new URL(texto, window.location.origin);
-          if (url.origin === window.location.origin && url.pathname.startsWith("/api/") && !API_EXCLUIDAS.some((e) => url.pathname.startsWith(e))) {
+          if (url.origin === window.location.origin && url.pathname.startsWith("/api/") && !sinNotificacion(url.pathname)) {
             fetchOriginal("/api/actividad", {
               method: "POST",
               headers: { "Content-Type": "application/json" },

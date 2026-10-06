@@ -97,6 +97,9 @@ async function crearEsquema() {
     );
   `);
   await p.query(`CREATE INDEX IF NOT EXISTS idx_viajes_calendario_fecha ON viajes_calendario (fecha);`);
+  // Catálogo de clientes (Nombre cuenta): lo que se captura en un viaje y no existe se agrega solo.
+  await p.query(`CREATE TABLE IF NOT EXISTS clientes_catalogo (id SERIAL PRIMARY KEY, nombre TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_clientes_catalogo_nombre ON clientes_catalogo (LOWER(nombre));`);
 
   // Vacaciones: ajustes por persona y año de servicio (días, prima, saldos y comentarios).
   await p.query(`

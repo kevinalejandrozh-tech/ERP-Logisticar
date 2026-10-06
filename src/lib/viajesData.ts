@@ -1,5 +1,8 @@
 // Calendario de viajes por unidad: campos del registro de viaje.
-export type TipoCampoViaje = "texto" | "fecha_hora" | "numero" | "estado" | "ruta" | "persona" | "eco" | "servicio" | "calculado" | "moneda";
+export type TipoCampoViaje = "texto" | "fecha_hora" | "numero" | "estado" | "ruta" | "persona" | "eco" | "servicio" | "calculado" | "moneda" | "tipo_unidad" | "cuenta";
+
+// Marca "N/A" por campo: se guarda en los datos del viaje como NA::<CLAVE> = "1" (el campo queda deshabilitado y vacío).
+export const NA_PREFIJO = "NA::";
 export type CampoViaje = { clave: string; etiqueta: string; tipo: TipoCampoViaje; grupo: string };
 
 export const CAMPOS_VIAJE: CampoViaje[] = [
@@ -9,7 +12,7 @@ export const CAMPOS_VIAJE: CampoViaje[] = [
   { clave: "CARGA PLANEADA X LOGISTICAR", etiqueta: "Carga planeada x Logisticar", tipo: "fecha_hora", grupo: "Planeación" },
   { clave: "INICIO DE RUTA PROGRAMADO", etiqueta: "Inicio de ruta programado", tipo: "fecha_hora", grupo: "Planeación" },
   { clave: "HORARIO DE CITA DE ENTREGA", etiqueta: "Horario de cita de entrega", tipo: "fecha_hora", grupo: "Planeación" },
-  { clave: "NOMBRE CUENTA", etiqueta: "Nombre cuenta", tipo: "texto", grupo: "Servicio" },
+  { clave: "NOMBRE CUENTA", etiqueta: "Nombre cuenta", tipo: "cuenta", grupo: "Servicio" },
   { clave: "PROYECTO DELL", etiqueta: "Proyecto DELL", tipo: "texto", grupo: "Servicio" },
   { clave: "CARTA PORTE", etiqueta: "Carta porte", tipo: "texto", grupo: "Servicio" },
   { clave: "ESTADO DESTINO", etiqueta: "Estado destino", tipo: "estado", grupo: "Servicio" },
@@ -17,7 +20,7 @@ export const CAMPOS_VIAJE: CampoViaje[] = [
   { clave: "N° DE CAJAS", etiqueta: "N° de cajas", tipo: "numero", grupo: "Servicio" },
   { clave: "TIPO MERCANCIA", etiqueta: "Tipo mercancía", tipo: "texto", grupo: "Servicio" },
   { clave: "TIROS", etiqueta: "Tiros", tipo: "numero", grupo: "Servicio" },
-  { clave: "TIPO", etiqueta: "Tipo", tipo: "texto", grupo: "Unidad y personal" },
+  { clave: "TIPO", etiqueta: "Tipo", tipo: "tipo_unidad", grupo: "Unidad y personal" },
   { clave: "ECO", etiqueta: "ECO", tipo: "eco", grupo: "Unidad y personal" },
   { clave: "OPERADOR", etiqueta: "Operador", tipo: "persona", grupo: "Unidad y personal" },
   { clave: "AYUDANTE", etiqueta: "Ayudante", tipo: "persona", grupo: "Unidad y personal" },

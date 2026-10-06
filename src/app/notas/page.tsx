@@ -35,6 +35,10 @@ const ICONOS = {
   camara: <><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" /><circle cx="12" cy="13.5" r="3.5" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></>,
   persona: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0116 0" /></>,
+  plegarTodas: <path d="M7 20l5-5 5 5M7 4l5 5 5-5" />,
+  desplegarTodas: <path d="M7 15l5 5 5-5M7 9l5-5 5 5" />,
+  chevronAbajo: <path d="M6 9l6 6 6-6" />,
+  chevronArriba: <path d="M6 15l6-6 6 6" />,
   carpeta: <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />,
   carpetaMas: <><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M12 10.5v5M9.5 13h5" /></>,
   palomita: <path d="M5 12.5l4.5 4.5L19 7.5" />,
@@ -62,6 +66,55 @@ function progresoChecks(html: string) {
   return { total: tags.length, hechas, pct: tags.length ? Math.round((hechas * 100) / tags.length) : 0 };
 }
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// ---- Modo casilla: cada renglón nuevo lleva su casilla; doble Enter (casilla vacía) lo desactiva ----
+const ZW = "\u200B";
+const esLinea = (n: Node) => n.nodeType === 1 && /^(DIV|P|LI)$/.test((n as HTMLElement).tagName);
+// Agrupa en <div> los nodos sueltos del editor (una línea por <div>).
+function normalizarEditor(ed: HTMLElement) {
+  let run: Node[] = [];
+  const volcar = (antesDe: Node | null) => {
+    if (!run.length) return;
+    const d = document.createElement("div");
+    ed.insertBefore(d, antesDe);
+    run.forEach((x) => d.appendChild(x));
+    run = [];
+  };
+  Array.from(ed.childNodes).forEach((n) => {
+    if (esLinea(n)) volcar(n);
+    else if (n.nodeName === "BR") {
+      run.push(n);
+      volcar(n.nextSibling);
+    } else run.push(n);
+  });
+  volcar(null);
+}
+function bloqueActual(ed: HTMLElement): HTMLElement | null {
+  const sel = window.getSelection();
+  let n: Node | null = sel && sel.rangeCount ? sel.anchorNode : null;
+  if (!n || !ed.contains(n) || n === ed) return null;
+  while (n && n.parentNode !== ed) n = n.parentNode;
+  return n as HTMLElement | null;
+}
+function ponerCursor(nodo: Node, pos: number) {
+  const r = document.createRange();
+  r.setStart(nodo, pos);
+  r.collapse(true);
+  const sel = window.getSelection();
+  sel?.removeAllRanges();
+  sel?.addRange(r);
+}
+function convertirEnCheck(div: HTMLElement) {
+  if (div.classList.contains("nota-check")) return;
+  div.classList.add("nota-check");
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  div.querySelectorAll("br").forEach((b) => b.remove());
+  div.insertBefore(cb, div.firstChild);
+  if (!(div.textContent || "").trim()) div.appendChild(document.createTextNode(ZW));
+  ponerCursor(div, div.childNodes.length);
+}
+const lineaVacia = (div: HTMLElement) => !(div.textContent || "").replace(/[\u200B\u00A0\s]/g, "");
 
 // Convierte en enlaces las URL escritas o pegadas como texto.
 function enlazar(raiz: HTMLElement) {
@@ -152,6 +205,8 @@ export default function NotasPage() {
   const [grande, setGrande] = useState(false);
   const [prog, setProg] = useState({ total: 0, hechas: 0 });
   const [grabando, setGrabando] = useState(false);
+  const [modoCasilla, setModoCasilla] = useState(false);
+  const [minimizadas, setMinimizadas] = useState<number[]>([]);
   const [seg, setSeg] = useState(0);
   const [parcial, setParcial] = useState("");
   const editor = useRef<HTMLDivElement>(null);
@@ -180,6 +235,10 @@ export default function NotasPage() {
   }, []);
   useEffect(() => {
     cargar();
+    fetch("/api/sistema/preferencias?clave=notas_min", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => Array.isArray(d.valor) && setMinimizadas(d.valor.map(Number)))
+      .catch(() => {});
     fetch("/api/notas/compartir", { cache: "no-store" })
       .then((r) => r.json())
       .then((d) => setUsuarios(d.usuarios || []))
@@ -206,6 +265,7 @@ export default function NotasPage() {
   }, [carpetas, filtro]);
 
   const abrir = (n?: Nota) => {
+    setModoCasilla(false);
     setVerReloj(false);
     setVerCompartir(false);
     setProg(n ? { total: progresoChecks(n.contenido).total, hechas: progresoChecks(n.contenido).hechas } : { total: 0, hechas: 0 });
@@ -223,6 +283,7 @@ export default function NotasPage() {
     setBorrador(null);
     setGrande(false);
     setVerCompartir(false);
+    setModoCasilla(false);
   };
 
   // Avance del checklist en el editor; al marcar todas, la nota queda terminada.
@@ -247,11 +308,78 @@ export default function NotasPage() {
     sel.removeAllRanges();
   };
 
-  const insertarCheck = () => {
-    editor.current?.focus();
-    document.execCommand("insertHTML", false, `<div class="nota-check"><input type="checkbox" />&nbsp;Pendiente</div>`);
+  // Casilla: queda activa (resaltada); cada salto de línea agrega una casilla; con dos saltos seguidos se desactiva.
+  const alternarCasilla = () => {
+    const ed = editor.current;
+    if (!ed) return;
+    if (modoCasilla) return setModoCasilla(false);
+    ed.focus();
+    normalizarEditor(ed);
+    let bloque = bloqueActual(ed);
+    if (!bloque) {
+      bloque = (ed.lastElementChild as HTMLElement | null) && esLinea(ed.lastElementChild as Node) ? (ed.lastElementChild as HTMLElement) : null;
+      if (!bloque) {
+        bloque = document.createElement("div");
+        ed.appendChild(bloque);
+      }
+    }
+    convertirEnCheck(bloque);
+    setModoCasilla(true);
     actualizarProgreso();
   };
+  const alTeclear = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const ed = editor.current;
+    if (!modoCasilla || !ed || (e.nativeEvent as KeyboardEvent).isComposing) return;
+    if (e.key !== "Enter" && e.key !== "Backspace") return;
+    if (e.key === "Enter" && e.shiftKey) return;
+    const sel = window.getSelection();
+    const bloque = bloqueActual(ed);
+    if (!sel || !sel.rangeCount || !bloque) return;
+    const esCheck = bloque.classList.contains("nota-check");
+    if (e.key === "Backspace") {
+      // Backspace en una casilla vacía: la quita y desactiva el modo.
+      if (esCheck && lineaVacia(bloque) && sel.isCollapsed) {
+        e.preventDefault();
+        const p = document.createElement("div");
+        p.innerHTML = "<br>";
+        bloque.replaceWith(p);
+        ponerCursor(p, 0);
+        setModoCasilla(false);
+        actualizarProgreso();
+      }
+      return;
+    }
+    e.preventDefault();
+    if (esCheck && lineaVacia(bloque)) {
+      // Segundo salto de línea: se quita la casilla vacía y se desactiva automáticamente.
+      const p = document.createElement("div");
+      p.innerHTML = "<br>";
+      bloque.replaceWith(p);
+      ponerCursor(p, 0);
+      setModoCasilla(false);
+      actualizarProgreso();
+      return;
+    }
+    // Divide la línea en el cursor: lo que sigue pasa a una línea nueva con su casilla.
+    const r = sel.getRangeAt(0);
+    r.deleteContents();
+    const resto = document.createRange();
+    resto.selectNodeContents(bloque);
+    resto.setStart(r.endContainer, r.endOffset);
+    const frag = resto.extractContents();
+    if (!bloque.childNodes.length) bloque.appendChild(document.createElement("br"));
+    const nueva = document.createElement("div");
+    bloque.after(nueva);
+    nueva.appendChild(frag);
+    convertirEnCheck(nueva);
+    ponerCursor(nueva, 1);
+    actualizarProgreso();
+  };
+  const cambiarMinimizadas = (lista: number[]) => {
+    setMinimizadas(lista);
+    fetch("/api/sistema/preferencias", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave: "notas_min", valor: lista }) }).catch(() => {});
+  };
+  const alternarMin = (id: number) => cambiarMinimizadas(minimizadas.includes(id) ? minimizadas.filter((x) => x !== id) : [...minimizadas, id]);
 
   const adjuntar = async (files: FileList | null) => {
     if (!files) return;
@@ -384,7 +512,7 @@ export default function NotasPage() {
     cs.forEach((c) => (c.checked ? c.setAttribute("checked", "") : c.removeAttribute("checked")));
     const todasMarcadas = cs.length > 0 && cs.every((c) => c.checked);
     const contenido = editor.current.innerHTML;
-    const titulo = (editor.current.innerText.split("\n").find((l) => l.trim()) || "Sin título").trim();
+    const titulo = (editor.current.innerText.replace(/\u200B/g, "").split("\n").find((l) => l.trim()) || "Sin título").trim();
     setGuardando(true);
     try {
       const res = await fetch("/api/notas", {
@@ -493,6 +621,7 @@ export default function NotasPage() {
   };
 
   const visibles = notas.filter((n) => (filtro === "todas" ? true : filtro === "sin" ? !n.carpeta_id : n.carpeta_id === filtro));
+  const todasMin = visibles.length > 0 && visibles.every((n) => minimizadas.includes(n.id));
   const nombreCarpeta = (id: number | null) => carpetas.find((c) => c.id === id)?.nombre;
   const chip = (activa: boolean, soltando: boolean) => `inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${soltando ? "border-[var(--blue)] bg-[var(--blue-light)] text-[var(--blue)] ring-2 ring-[var(--blue)]" : activa ? "bg-[var(--navy)] border-[var(--navy)] text-white" : "bg-white border-[var(--gray-200)] text-[var(--gray-500)] hover:text-[var(--navy)]"}`;
 
@@ -579,7 +708,18 @@ export default function NotasPage() {
           <button type="button" onClick={abrirConVoz} title="Grabar nota de voz" aria-label="Grabar nota de voz" className="w-10 h-10 flex items-center justify-center rounded-lg border border-[var(--gray-200)] bg-white text-[var(--navy)] hover:bg-[var(--gray-100)]">
             <Ic>{ICONOS.mic}</Ic>
           </button>
-          {visibles.length > 1 && <span className="text-[11.5px] text-[var(--gray-400)] ml-2">Arrastra una nota para cambiarla de lugar o soltarla en una carpeta.</span>}
+          {visibles.length > 1 && <span className="hidden sm:inline text-[11.5px] text-[var(--gray-400)] ml-2">Arrastra una nota para cambiarla de lugar o soltarla en una carpeta.</span>}
+          {visibles.length > 0 && (
+            <button
+              type="button"
+              title={todasMin ? "Expandir todas las notas" : "Minimizar todas las notas"}
+              aria-label={todasMin ? "Expandir todas las notas" : "Minimizar todas las notas"}
+              onClick={() => cambiarMinimizadas(todasMin ? minimizadas.filter((id) => !visibles.some((n) => n.id === id)) : Array.from(new Set([...minimizadas, ...visibles.map((n) => n.id)])))}
+              className="ml-auto w-8 h-8 flex items-center justify-center rounded-lg text-[var(--gray-400)] hover:bg-white hover:text-[var(--navy)]"
+            >
+              <Ic size={17}>{todasMin ? ICONOS.desplegarTodas : ICONOS.plegarTodas}</Ic>
+            </button>
+          )}
         </div>
         {error && <p className="text-[13px] text-[var(--red)]">{error}</p>}
         {cargando ? (
@@ -591,6 +731,7 @@ export default function NotasPage() {
             {visibles.map((n) => {
               const pr = progresoChecks(n.contenido);
               const gris = n.terminada ? "opacity-55 grayscale" : "";
+              const min = minimizadas.includes(n.id);
               return (
                 <div
                   key={n.id}
@@ -622,59 +763,69 @@ export default function NotasPage() {
                     arrastrandoRef.current = null;
                     if (origen !== null) mover(origen, n.id);
                   }}
-                  className={`relative rounded-xl border p-4 flex flex-col gap-2 cursor-grab active:cursor-grabbing transition-shadow ${n.terminada ? "bg-[#f1f2f4]" : "bg-white"} ${vencida(n) ? "border-[var(--red)]" : "border-[var(--gray-200)]"} ${arrastrando === n.id ? "opacity-40" : ""} ${sobre === n.id ? "ring-2 ring-[var(--blue)] shadow-lg" : ""}`}
+                  onClick={() => abrir(n)}
+                  className={`relative rounded-xl border ${min ? "px-4 py-3" : "p-4"} flex flex-col gap-2 cursor-pointer active:cursor-grabbing transition-shadow ${n.terminada ? "bg-[#f1f2f4]" : "bg-white"} ${vencida(n) ? "border-[var(--red)]" : "border-[var(--gray-200)]"} ${arrastrando === n.id ? "opacity-40" : ""} ${sobre === n.id ? "ring-2 ring-[var(--blue)] shadow-lg" : ""}`}
                 >
                   <div className={`flex flex-col gap-2 ${gris}`}>
-                    {n.importante && (
-                      <span className="absolute top-3 right-4">
-                        <GloboPrioridad />
-                      </span>
-                    )}
-                    <button type="button" onClick={() => abrir(n)} className={`text-left text-[15px] font-bold m-0 text-[var(--navy)] ${n.importante ? "pr-9" : ""} ${n.terminada ? "line-through" : ""}`}>
-                      {n.titulo}
-                    </button>
-                    {n.vence_en && <span className={`text-[11.5px] font-bold ${vencida(n) ? "text-[var(--red)]" : "text-[var(--gray-500)]"}`}>⏰ {vencida(n) ? "Venció" : "Vence"} {fh(n.vence_en)}</span>}
-                    {pr.total > 0 && (
-                      <div>
-                        <div className="flex justify-between text-[11.5px] font-bold text-[var(--gray-500)] mb-1">
-                          <span>Avance {pr.hechas}/{pr.total}</span>
-                          <span className={pr.pct === 100 ? "text-[var(--green)]" : ""}>{pr.pct}%</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-[var(--gray-100)] overflow-hidden">
-                          <div className={`h-full rounded-full ${pr.pct === 100 ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`} style={{ width: `${pr.pct}%` }} />
-                        </div>
+                    <span className="absolute top-2.5 right-3 flex items-center gap-1.5">
+                      {n.importante && <GloboPrioridad size={18} />}
+                      <button type="button" title={min ? "Expandir nota" : "Minimizar nota"} aria-label={min ? "Expandir nota" : "Minimizar nota"} onClick={(e) => { e.stopPropagation(); alternarMin(n.id); }} className="w-5 h-5 flex items-center justify-center rounded text-[var(--gray-300)] hover:text-[var(--gray-500)]">
+                        <Ic size={14}>{min ? ICONOS.chevronAbajo : ICONOS.chevronArriba}</Ic>
+                      </button>
+                    </span>
+                    {min ? (
+                      <div className="flex items-center gap-3 pr-14 min-w-0">
+                        <h3 className={`text-[14px] font-bold m-0 text-[var(--navy)] truncate flex-1 ${n.terminada ? "line-through" : ""}`}>{n.titulo}</h3>
+                        {pr.total > 0 && <span className={`text-[12px] font-bold shrink-0 ${pr.pct === 100 ? "text-[var(--green)]" : "text-[var(--gray-500)]"}`}>{pr.pct}%</span>}
                       </div>
+                    ) : (
+                      <>
+                        <h3 className={`text-left text-[15px] font-bold m-0 text-[var(--navy)] pr-14 ${n.terminada ? "line-through" : ""}`}>{n.titulo}</h3>
+                        {n.vence_en && <span className={`text-[11.5px] font-bold ${vencida(n) ? "text-[var(--red)]" : "text-[var(--gray-500)]"}`}>⏰ {vencida(n) ? "Venció" : "Vence"} {fh(n.vence_en)}</span>}
+                        {pr.total > 0 && (
+                          <div>
+                            <div className="flex justify-between text-[11.5px] font-bold text-[var(--gray-500)] mb-1">
+                              <span>Avance {pr.hechas}/{pr.total}</span>
+                              <span className={pr.pct === 100 ? "text-[var(--green)]" : ""}>{pr.pct}%</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-[var(--gray-100)] overflow-hidden">
+                              <div className={`h-full rounded-full ${pr.pct === 100 ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`} style={{ width: `${pr.pct}%` }} />
+                            </div>
+                          </div>
+                        )}
+                        {n.num_oc > 0 && (
+                          <span className="flex items-center gap-1.5 text-[11.5px] font-bold text-[var(--green)]">
+                            <Ic size={14}>{ICONOS.carrito}</Ic> {n.num_oc} orden(es) de compra · {moneda(n.monto_oc)}
+                          </span>
+                        )}
+                        {!n.propia ? (
+                          <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida por {n.autor}</span>
+                        ) : n.compartida_con.length > 0 ? (
+                          <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida con {n.compartida_con.map((u) => u.nombre).join(", ")}</span>
+                        ) : null}
+                        {filtro === "todas" && n.carpeta_id && nombreCarpeta(n.carpeta_id) && (
+                          <span className="flex items-center gap-1 text-[11.5px] text-[var(--gray-500)]">
+                            <Ic size={13}>{ICONOS.carpeta}</Ic> {nombreCarpeta(n.carpeta_id)}
+                          </span>
+                        )}
+                        <span className="text-[11px] text-[var(--gray-400)]">Editada {fh(n.updated_at)}{n.editado_por ? ` por ${n.editado_por}` : ""} · {n.adjuntos.length} archivo(s)</span>
+                      </>
                     )}
-                    {n.num_oc > 0 && (
-                      <span className="flex items-center gap-1.5 text-[11.5px] font-bold text-[var(--green)]">
-                        <Ic size={14}>{ICONOS.carrito}</Ic> {n.num_oc} orden(es) de compra · {moneda(n.monto_oc)}
-                      </span>
-                    )}
-                    {!n.propia ? (
-                      <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida por {n.autor}</span>
-                    ) : n.compartida_con.length > 0 ? (
-                      <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida con {n.compartida_con.map((u) => u.nombre).join(", ")}</span>
-                    ) : null}
-                    {filtro === "todas" && n.carpeta_id && nombreCarpeta(n.carpeta_id) && (
-                      <span className="flex items-center gap-1 text-[11.5px] text-[var(--gray-500)]">
-                        <Ic size={13}>{ICONOS.carpeta}</Ic> {nombreCarpeta(n.carpeta_id)}
-                      </span>
-                    )}
-                    <span className="text-[11px] text-[var(--gray-400)]">Editada {fh(n.updated_at)}{n.editado_por ? ` por ${n.editado_por}` : ""} · {n.adjuntos.length} archivo(s)</span>
                   </div>
-                  <div className="flex items-center gap-3 mt-auto pt-2 text-[12px] font-bold">
-                    <button
-                      type="button"
-                      title={n.terminada ? "Terminada — clic para reabrir" : "Marcar terminada"}
-                      aria-label={n.terminada ? "Reabrir nota" : "Marcar nota como terminada"}
-                      onClick={() => terminar(n, !n.terminada)}
-                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${n.terminada ? "bg-[var(--green)] text-white shadow-[0_2px_8px_rgba(33,168,102,0.5)]" : "text-[var(--gray-300)] hover:text-[var(--green)]"}`}
-                    >
-                      <Ic size={n.terminada ? 16 : 20}>{ICONOS.palomita}</Ic>
-                    </button>
-                    <button type="button" className="text-[var(--blue)]" onClick={() => abrir(n)}>Abrir</button>
-                    {n.propia && <button type="button" className="text-[var(--red)] ml-auto" onClick={() => eliminar(n)}>Eliminar</button>}
-                  </div>
+                  {!min && (
+                    <div className="flex items-center gap-3 mt-auto pt-2 text-[12px] font-bold">
+                      <button
+                        type="button"
+                        title={n.terminada ? "Terminada — clic para reabrir" : "Marcar terminada"}
+                        aria-label={n.terminada ? "Reabrir nota" : "Marcar nota como terminada"}
+                        onClick={(e) => { e.stopPropagation(); terminar(n, !n.terminada); }}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${n.terminada ? "bg-[var(--green)] text-white shadow-[0_2px_8px_rgba(33,168,102,0.5)]" : "text-[var(--gray-300)] hover:text-[var(--green)]"}`}
+                      >
+                        <Ic size={n.terminada ? 16 : 20}>{ICONOS.palomita}</Ic>
+                      </button>
+                      {n.propia && <button type="button" className="text-[var(--red)] ml-auto" onClick={(e) => { e.stopPropagation(); eliminar(n); }}>Eliminar</button>}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -691,7 +842,7 @@ export default function NotasPage() {
                 {borrador.importante ? <GloboPrioridad size={18} /> : <Ic>{ICONOS.campana}</Ic>}
               </button>
               <button type="button" title="Subtítulo (texto seleccionado)" onMouseDown={(e) => e.preventDefault()} onClick={subtitulo} className={btn}><Ic>{ICONOS.subtitulo}</Ic></button>
-              <button type="button" title="Agregar casilla" onMouseDown={(e) => e.preventDefault()} onClick={insertarCheck} className={btn}><Ic>{ICONOS.casilla}</Ic></button>
+              <button type="button" title={modoCasilla ? "Casillas activas: Enter agrega otra · doble Enter termina" : "Casillas (lista de pendientes)"} aria-pressed={modoCasilla} onMouseDown={(e) => e.preventDefault()} onClick={alternarCasilla} className={`${btn} ${modoCasilla ? activo : ""}`}><Ic>{ICONOS.casilla}</Ic></button>
               <button type="button" title="Fecha y hora de vencimiento" onClick={() => setVerReloj((v) => !v)} className={`${btn} ${borrador.vence_en ? activo : ""}`}><Ic>{ICONOS.reloj}</Ic></button>
               <button type="button" title="Adjuntar imágenes o archivos (PDF, Word, Excel)" onClick={() => inputArchivo.current?.click()} className={btn}><Ic>{ICONOS.clip}</Ic></button>
               <button type="button" title="Tomar foto" onClick={() => inputCamara.current?.click()} className={btn}><Ic>{ICONOS.camara}</Ic></button>
@@ -763,6 +914,7 @@ export default function NotasPage() {
               suppressContentEditableWarning
               onBlur={() => editor.current && enlazar(editor.current)}
               onInput={actualizarProgreso}
+              onKeyDown={alTeclear}
               onClick={(e) => {
                 const a = (e.target as HTMLElement).closest("a");
                 if (a) window.open(a.getAttribute("href") || "", "_blank", "noopener");

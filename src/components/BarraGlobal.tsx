@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useSesion } from "@/lib/useSesion";
+import ChatIcono from "./ChatIcono";
 import { EVENTO_MODO, cambiarModoEdicion, modoEdicionActivo } from "./modoEdicion";
 
 // Casita (inicio) y engrane en todas las páginas, arriba a la derecha.
@@ -13,11 +14,31 @@ export default function BarraGlobal() {
   const router = useRouter();
   const sesion = useSesion();
   const [menu, setMenu] = useState(false);
+  const [mant, setMant] = useState(false);
+  const [notifMax, setNotifMax] = useState(50);
   const [edicion, setEdicion] = useState(false);
   const [editando, setEditando] = useState<{ nodo: Text; original: string; valor: string; x: number; y: number } | null>(null);
   const originales = useRef(new WeakMap<Text, string>());
   const textos = useRef<Map<string, string>>(new Map());
   const esSysadmin = sesion.rol === "sysadmin";
+
+  // Al abrir el engrane: estado del modo mantenimiento (sysadmin) y límite de notificaciones guardadas.
+  useEffect(() => {
+    if (!menu) return;
+    fetch("/api/sistema/preferencias?clave=notif_max", { cache: "no-store" }).then((r) => r.json()).then((d) => d.ok && d.valor && setNotifMax(Number(d.valor))).catch(() => {});
+    if (esSysadmin) fetch("/api/sistema/mantenimiento", { cache: "no-store" }).then((r) => r.json()).then((d) => d.ok && setMant(d.activo === true)).catch(() => {});
+  }, [menu, esSysadmin]);
+  const cambiarMantenimiento = async () => {
+    const nuevo = !mant;
+    setMant(nuevo);
+    await fetch("/api/sistema/mantenimiento", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ activo: nuevo }) }).catch(() => setMant(!nuevo));
+    window.dispatchEvent(new Event("mantenimiento-cambio"));
+  };
+  const cambiarNotifMax = async (n: number) => {
+    setNotifMax(n);
+    await fetch("/api/sistema/preferencias", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clave: "notif_max", valor: n }) }).catch(() => {});
+    window.dispatchEvent(new Event("notas-avisos")); // refresca la campana
+  };
   const oculto = ruta === "/login" || ruta.startsWith("/sitio");
 
   useEffect(() => {
@@ -123,6 +144,18 @@ export default function BarraGlobal() {
               <button type="button" className="w-full text-left px-3 py-2 rounded-lg text-[13px] hover:bg-[var(--gray-100)]" onClick={() => { setMenu(false); router.push("/?perfil=1"); }}>
                 👤 Mi perfil
               </button>
+              <label className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-[13px] hover:bg-[var(--gray-100)]" title="Al llegar al límite se conservan solo las más recientes y se borran las más antiguas">
+                <span>🔔 Notificaciones guardadas</span>
+                <select value={notifMax} onChange={(e) => cambiarNotifMax(Number(e.target.value))} className="border border-[var(--gray-300)] rounded-md px-1 py-0.5 text-[12px] bg-white">
+                  {[10, 25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              {esSysadmin && (
+                <button type="button" className="w-full text-left px-3 py-2 rounded-lg text-[13px] hover:bg-[var(--gray-100)] flex items-center justify-between gap-2" onClick={cambiarMantenimiento} title="Muestra a todos los usuarios el aviso de que se están cargando mejoras">
+                  <span>🛠 Aviso de mejoras</span>
+                  <span className={`text-[11.5px] font-bold ${mant ? "text-[var(--green)]" : "text-[var(--gray-400)]"}`}>{mant ? "Activo" : "Apagado"}</span>
+                </button>
+              )}
               {esSysadmin && (
                 <button type="button" className="w-full text-left px-3 py-2 rounded-lg text-[13px] hover:bg-[var(--gray-100)] flex items-center gap-2" onClick={() => { setMenu(false); cambiarModoEdicion(!edicion); }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
@@ -132,6 +165,10 @@ export default function BarraGlobal() {
             </div>
           )}
         </div>
+      </div>
+      {/* Mensajes: debajo de la casita */}
+      <div data-no-editable className="fixed top-[52px] right-[50px] z-[75] print:hidden">
+        <ChatIcono />
       </div>
       {edicion && esSysadmin && (
         <div data-no-editable className="fixed top-2 left-1/2 -translate-x-1/2 z-[75] bg-[var(--blue)] text-white text-[12px] font-bold rounded-full px-4 py-1.5 shadow print:hidden">

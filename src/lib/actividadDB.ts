@@ -28,6 +28,7 @@ async function crearEsquema() {
       visto_hasta TIMESTAMPTZ NOT NULL DEFAULT now()
     );
   `);
+  await p.query(`ALTER TABLE notificaciones_vistas ADD COLUMN IF NOT EXISTS borrado_hasta TIMESTAMPTZ;`);
   await p.query(`
     CREATE TABLE IF NOT EXISTS favoritos_usuarios (
       usuario_id INTEGER NOT NULL,

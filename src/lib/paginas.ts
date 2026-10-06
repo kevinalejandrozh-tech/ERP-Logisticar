@@ -45,6 +45,8 @@ export const PAGINAS_SISTEMA: PaginaSistema[] = [
   { ruta: "/comparativo", titulo: "Generar comparativo", seccion: "Compras", palabras: "comparativo cotizaciones proveedores" },
   { ruta: "/inventario", titulo: "Control de inventario", seccion: "Inventario", palabras: "equipos mobiliario qr" },
   { ruta: "/inventario/categorias", titulo: "Categorías de inventario", seccion: "Inventario", palabras: "categorias" },
+  { ruta: "/informe-general", titulo: "Informe General", seccion: "Operación", palabras: "informe diario asistencia monitoreo bitacora entrega de turno incidencias liquidacion viajes tarjetas pase radios mochilas" },
+  { ruta: "/mensajes", titulo: "Mensajes", seccion: "General", palabras: "chat mensajes conversacion usuarios" },
   { ruta: "/buzon-sugerencias", titulo: "Buzón de sugerencias", seccion: "General", palabras: "ideas mejora sugerencias" },
   { ruta: "/menu-dia", titulo: "Menú del día", seccion: "General", palabras: "comida pedidos comedor" },
   { ruta: "/auditoria-mochila-covid", titulo: "Auditoría mochila Covid", seccion: "Recursos Humanos", palabras: "auditoria covid" },

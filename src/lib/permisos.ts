@@ -73,6 +73,7 @@ export const SECCIONES_SISTEMA: SeccionSistema[] = [
   { clave: "inventario", titulo: "Control de inventario", descripcion: "Equipos, mobiliario y QR", paginas: ["/inventario"], apis: ["/api/inventario"] },
   { clave: "buzon", titulo: "Buzón de sugerencias", descripcion: "Ideas y sugerencias del equipo", paginas: ["/buzon-sugerencias"], apis: ["/api/buzon-sugerencias"] },
   { clave: "menu_dia", titulo: "Menú del día", descripcion: "Pedidos de comida", paginas: ["/menu-dia"], apis: ["/api/menu-dia"] },
+  { clave: "informe_general", titulo: "Informe General", descripcion: "Informe diario: asistencia, monitoreo, incidencias y liquidación", paginas: ["/informe-general"], apis: ["/api/informe-general", "/api/unidades/list"] },
   { clave: "notas", titulo: "Notas", descripcion: "Notas personales (solo si se activa en el rol)", paginas: ["/notas"], apis: ["/api/notas"] },
 ];
 
@@ -91,6 +92,7 @@ const API_COMUNES = [
   "/api/sistema",
   "/api/actividad",
   "/api/personalizacion",
+  "/api/chat",
 ];
 
 // Exclusivo del sysadmin (rol principal).
@@ -128,7 +130,7 @@ export function rutaPermitida(pathname: string, rol: string, secciones: string[]
   if (rol === "sysadmin") return true;
   if (esSoloSysadmin(pathname)) return false;
   const lista = secciones === undefined ? seccionesPorDefecto(rol) : secciones;
-  if (pathname === "/" || pathname === "/sitio" || pathname.startsWith("/modulo/")) return true;
+  if (pathname === "/" || pathname === "/sitio" || pathname.startsWith("/modulo/") || pathname === "/mensajes") return true;
   const esApi = pathname.startsWith("/api/");
   if (esApi && API_COMUNES.some((p) => coincide(pathname, p))) return true;
   const ruta = (s: SeccionSistema) => (esApi ? s.apis : s.paginas).some((p) => coincide(pathname, p));

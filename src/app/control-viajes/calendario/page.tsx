@@ -6,7 +6,8 @@ import CampoMoneda from "@/components/CampoMoneda";
 import { exportarExcel } from "@/lib/exportExcel";
 import { ESTADOS_MX, ahoraMx, sumarDiasIso } from "@/lib/asistenciaData";
 import { moneda } from "@/lib/nominaCalculo";
-import { CAMPOS_VIAJE, GASTOS_VIAJE, GRUPOS_ESTATUS, GRUPOS_VIAJE, GrupoEstatus, OPCIONES_TIPO_SERVICIO, Viaje, calcularEstatusViaje, duracionViaje, esViajeLocal, estadoViaje, etiquetaViaje, grupoEstatus } from "@/lib/viajesData";
+import { TIPOS_UNIDAD_CASETA } from "@/lib/catalogosRutaData";
+import { CAMPOS_VIAJE, GASTOS_VIAJE, NA_PREFIJO, GRUPOS_ESTATUS, GRUPOS_VIAJE, GrupoEstatus, OPCIONES_TIPO_SERVICIO, Viaje, calcularEstatusViaje, duracionViaje, esViajeLocal, estadoViaje, etiquetaViaje, grupoEstatus } from "@/lib/viajesData";
 
 type Unidad = { eco: string; unidad: string | null; placas: string | null; capacidad: string | null; disponible: boolean };
 type Conciliacion = {
@@ -17,7 +18,7 @@ type Conciliacion = {
   personas: { id: number; nombre: string }[];
 };
 type Persona = { id: number; nombre: string; puesto: string | null };
-type Ruta = { nombre: string; estado_destino: string | null; bono: number; bonos_unidad: Record<string, number> };
+type Ruta = { nombre: string; estado_destino: string | null; bono: number; bonos_unidad: Record<string, number>; horas_ida?: number; horas_regreso_vacio?: number };
 type Edicion = { id: number | null; eco: string; fecha: string; datos: Record<string, string>; operador_id: number | null; ayudante_id: number | null };
 
 async function pedir<T>(url: string, init?: RequestInit): Promise<T> {
@@ -44,6 +45,25 @@ const numeroSemana = (iso: string, ini: number) => {
   const k = Math.floor(diasEntre(inicioSemana(FECHA_REF, ini), inicioSemana(iso, ini)) / 7);
   return ((((SEMANA_REF - 1 + k) % 52) + 52) % 52) + 1;
 };
+// Término estimado del viaje ("AAAA-MM-DDTHH:mm"): el capturado (real o estimado) y, si no hay, inicio de ruta + horas de ida y regreso de la ruta.
+const TERMINO_EST = "TERMINO ESTIMADO DE TERMINO DEL SERVICIO";
+function finEstimadoFH(d: Record<string, string>, rutas: Ruta[]): string {
+  const capturado = [d["TERMINO DE SERVICIO"], d[TERMINO_EST], d["ARRIBO A PATIOO"]].map((x) => (x || "").trim()).filter((x) => /^\d{4}-\d{2}-\d{2}/.test(x)).sort().pop();
+  if (capturado) return capturado.length >= 16 ? capturado.slice(0, 16) : `${capturado.slice(0, 10)}T23:59`;
+  if (esViajeLocal(d)) return "";
+  const r = rutas.find((x) => x.nombre === d["RUTA O DESTINO"]);
+  const horas = (r?.horas_ida || 0) + (r?.horas_regreso_vacio || 0);
+  const base = (d["INICIO DE RUTA"] || d["INICIO DE RUTA PROGRAMADO"] || "").trim();
+  const m = base.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  if (!m || horas <= 0) return "";
+  return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) + horas * 3600000).toISOString().slice(0, 16);
+}
+const ahoraLocal = () => {
+  const a = ahoraMx();
+  return `${a.fecha}T${String(a.hora).slice(0, 5)}`;
+};
+const VERDE = "border-[var(--green)]! bg-[#eefaf3]!"; // campo ya llenado
+
 const ANCHO_DIA = 150; // ancho fijo de cada columna de día (las etiquetas no lo modifican)
 const ANCHO_UNIDAD = 190;
 const MESES_MIN = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
@@ -121,6 +141,8 @@ export default function CalendarioViajesPage() {
   const [edicion, setEdicion] = useState<Edicion | null>(null);
   const [gastoAbierto, setGastoAbierto] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
+  const [clientes, setClientes] = useState<string[]>([]);
+  const [manualHora, setManualHora] = useState<Record<string, boolean>>({});
   const [vista, setVista] = useState<"calendario" | "tabla">("calendario");
   const [filtroEstatus, setFiltroEstatus] = useState<"todos" | GrupoEstatus>("todos");
   const [filtroCuenta, setFiltroCuenta] = useState("");
@@ -139,6 +161,13 @@ export default function CalendarioViajesPage() {
     else left = Math.max(12, vw - w - 12);
     setResumen({ v, left, top, w, maxH: vh - top - 12 });
   };
+
+  useEffect(() => {
+    fetch("/api/viajes-calendario/clientes", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => d?.ok && setClientes(d.clientes || []))
+      .catch(() => {});
+  }, []);
 
   const dias = useMemo(() => {
     const n = Math.max(1, Math.min(MAX_DIAS, diasEntre(desde, hasta) + 1));
@@ -208,6 +237,23 @@ export default function CalendarioViajesPage() {
     return m;
   }, [viajes]);
 
+  // Cronograma: días ocupados por cada viaje desde el día siguiente al inicio hasta su término estimado.
+  const ocupadas = useMemo(() => {
+    const m = new Map<string, { v: Viaje; fin: string; primero: boolean }[]>();
+    for (const v of viajes) {
+      const fin = finEstimadoFH(v.datos, rutas).slice(0, 10);
+      if (!fin || fin <= v.fecha) continue;
+      const ini = sumarDiasIso(v.fecha, 1);
+      let d = ini < desde ? desde : ini;
+      for (let i = 0; i < 90 && d <= fin && d <= ultimo; i++, d = sumarDiasIso(d, 1)) {
+        const k = `${v.eco}|${d}`;
+        if (!m.has(k)) m.set(k, []);
+        m.get(k)!.push({ v, fin, primero: d === (ini < desde ? desde : ini) });
+      }
+    }
+    return m;
+  }, [viajes, rutas, desde, ultimo]);
+
   const conViajes = useMemo(() => new Set(viajes.map((v) => v.eco)), [viajes]);
   const visibles = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
@@ -267,10 +313,12 @@ export default function CalendarioViajesPage() {
 
   const nuevo = (eco: string, fecha: string) => {
     setGastoAbierto(null);
-    setEdicion({ id: null, eco, fecha, datos: { ECO: eco, "TIPO DE SERVICIO": "FORANEO", "INICIO DE RUTA PROGRAMADO": `${fecha}T08:00` }, operador_id: null, ayudante_id: null });
+    setManualHora({});
+    setEdicion({ id: null, eco, fecha, datos: { ECO: eco, "TIPO DE SERVICIO": "FORANEO", "INICIO DE RUTA PROGRAMADO": `${fecha}T08:00`, [`${NA_PREFIJO}HORARIO DE CITA DE ENTREGA`]: "1" }, operador_id: null, ayudante_id: null });
   };
   const abrir = (v: Viaje) => {
     setGastoAbierto(null);
+    setManualHora({});
     setEdicion({ id: v.id, eco: v.eco, fecha: v.fecha, datos: { ...v.datos }, operador_id: v.operador_id, ayudante_id: v.ayudante_id });
   };
   const setDato = (k: string, v: string) => setEdicion((e) => (e ? { ...e, datos: { ...e.datos, [k]: v } } : e));
@@ -280,7 +328,13 @@ export default function CalendarioViajesPage() {
     setGuardando(true);
     try {
       const url = edicion.id ? `/api/viajes-calendario?id=${edicion.id}` : "/api/viajes-calendario";
-      await pedir(url, { method: edicion.id ? "PUT" : "POST", body: JSON.stringify(edicion) });
+      // Si no se capturó el término estimado, se calcula con las horas de la ruta para sombrear los días ocupados.
+      const datos = { ...edicion.datos };
+      if (!datos[TERMINO_EST] && datos[`${NA_PREFIJO}${TERMINO_EST}`] !== "1") {
+        const est = finEstimadoFH(datos, rutas);
+        if (est) datos[TERMINO_EST] = est;
+      }
+      await pedir(url, { method: edicion.id ? "PUT" : "POST", body: JSON.stringify({ ...edicion, datos }) });
       setEdicion(null);
       await cargar(desde, ultimo);
     } catch (e) {
@@ -313,27 +367,61 @@ export default function CalendarioViajesPage() {
   const campo = (c: (typeof CAMPOS_VIAJE)[number]) => {
     if (!edicion) return null;
     const valor = edicion.datos[c.clave] || "";
+    const naClave = NA_PREFIJO + c.clave;
+    const esNA = edicion.datos[naClave] === "1";
+    const permiteNA = c.tipo !== "eco" && c.tipo !== "calculado";
+    const kPersona = c.clave === "OPERADOR" ? "operador_id" : "ayudante_id";
+    const lleno = !esNA && (c.tipo === "persona" ? edicion[kPersona] != null : c.tipo === "eco" ? !!edicion.eco : c.tipo === "calculado" ? false : valor.trim() !== "");
+    const inp = `${inputCls} ${lleno ? VERDE : ""}`;
+    const alternarNA = () =>
+      setEdicion((e) => {
+        if (!e) return e;
+        const datos = { ...e.datos };
+        if (esNA) delete datos[naClave];
+        else {
+          datos[naClave] = "1";
+          delete datos[c.clave];
+        }
+        return { ...e, datos, ...(c.tipo === "persona" && !esNA ? { [kPersona]: null } : {}) };
+      });
     let control: React.ReactNode;
     if (c.tipo === "eco") {
       control = (
-        <select value={edicion.eco} onChange={(e) => setEdicion({ ...edicion, eco: e.target.value, datos: { ...edicion.datos, ECO: e.target.value } })} className={inputCls}>
+        <select value={edicion.eco} onChange={(e) => setEdicion({ ...edicion, eco: e.target.value, datos: { ...edicion.datos, ECO: e.target.value } })} className={inp}>
           {unidades.map((u) => <option key={u.eco} value={u.eco}>{u.eco}{u.unidad ? ` · ${u.unidad}` : ""}</option>)}
         </select>
       );
     } else if (c.tipo === "persona") {
-      const k = c.clave === "OPERADOR" ? "operador_id" : "ayudante_id";
       control = (
-        <select value={edicion[k] ?? ""} onChange={(e) => setEdicion({ ...edicion, [k]: e.target.value ? Number(e.target.value) : null })} className={inputCls}>
+        <select value={edicion[kPersona] ?? ""} onChange={(e) => setEdicion({ ...edicion, [kPersona]: e.target.value ? Number(e.target.value) : null })} className={inp}>
           <option value="">Sin asignar</option>
           {personas.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
         </select>
       );
     } else if (c.tipo === "estado") {
       control = (
-        <select value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inputCls}>
+        <select value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inp}>
           <option value="">Selecciona</option>
           {ESTADOS_MX.map((x) => <option key={x} value={x}>{x}</option>)}
         </select>
+      );
+    } else if (c.tipo === "tipo_unidad") {
+      // Mismos tipos de unidad que se usan en el catálogo de casetas.
+      control = (
+        <select value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inp}>
+          <option value="">Selecciona</option>
+          {valor && !(TIPOS_UNIDAD_CASETA as readonly string[]).includes(valor) && <option value={valor}>{valor}</option>}
+          {TIPOS_UNIDAD_CASETA.map((x) => <option key={x} value={x}>{x}</option>)}
+        </select>
+      );
+    } else if (c.tipo === "cuenta") {
+      const nueva = valor.trim() !== "" && !clientes.some((x) => x.toLowerCase() === valor.trim().toLowerCase());
+      control = (
+        <>
+          <input list="clientes-viaje" value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inp} placeholder="Elige del catálogo o escribe uno nuevo" />
+          <datalist id="clientes-viaje">{clientes.map((x) => <option key={x} value={x} />)}</datalist>
+          {nueva && <p className="text-[11.5px] text-[var(--amber)] m-0 mt-1">Cliente nuevo: se agregará al catálogo al guardar.</p>}
+        </>
       );
     } else if (c.tipo === "ruta") {
       control = (
@@ -341,7 +429,7 @@ export default function CalendarioViajesPage() {
           <input list="rutas-viaje" value={valor} onChange={(e) => {
             const r = rutas.find((x) => x.nombre === e.target.value);
             setEdicion({ ...edicion, datos: { ...edicion.datos, [c.clave]: e.target.value, ...(r?.estado_destino && !edicion.datos["ESTADO DESTINO"] ? { "ESTADO DESTINO": r.estado_destino } : {}) } });
-          }} className={inputCls} placeholder="Elige o escribe" />
+          }} className={inp} placeholder="Elige o escribe" />
           <datalist id="rutas-viaje">{rutas.map((r) => <option key={r.nombre} value={r.nombre} />)}</datalist>
           {bonoUnidad !== null && (
             <p className="text-[11.5px] text-[var(--gray-500)] m-0 mt-1">
@@ -357,15 +445,45 @@ export default function CalendarioViajesPage() {
           {v || "Se calcula automáticamente"}
         </div>
       );
+    } else if (c.grupo === "Seguimiento" && c.tipo === "fecha_hora") {
+      // Seguimiento: "Marcar hora" registra la hora real en curso; se muestra para confirmarla y editarla (captura atrasada).
+      control =
+        valor || manualHora[c.clave] ? (
+          <div>
+            <input type="datetime-local" value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inp} />
+            <p className="m-0 mt-1 flex items-center justify-between gap-2 text-[11.5px] text-[var(--gray-500)]">
+              <span>{valor ? <>Hora registrada: <b className="text-[var(--green)]">{fmtFH(valor)}</b> · puedes editarla</> : "Captura la hora"}</span>
+              <button type="button" className="font-bold text-[var(--blue)] shrink-0" onClick={() => setDato(c.clave, ahoraLocal())}>Marcar hora</button>
+            </p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={() => setDato(c.clave, ahoraLocal())} className="rounded-md border border-[var(--blue)] text-[var(--blue)] px-3 py-2 text-[12.5px] font-bold hover:bg-[var(--blue-light)]">
+              🕒 Marcar hora
+            </button>
+            <button type="button" onClick={() => setManualHora((m) => ({ ...m, [c.clave]: true }))} className="text-[12px] text-[var(--gray-500)] underline">Capturar manual</button>
+          </div>
+        );
     } else {
+      const estimado = c.clave === TERMINO_EST && !valor ? finEstimadoFH(edicion.datos, rutas) : "";
       control = (
-        <input type={c.tipo === "fecha_hora" ? "datetime-local" : c.tipo === "numero" ? "number" : "text"} min={c.tipo === "numero" ? 0 : undefined} value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inputCls} />
+        <>
+          <input type={c.tipo === "fecha_hora" ? "datetime-local" : c.tipo === "numero" ? "number" : "text"} min={c.tipo === "numero" ? 0 : undefined} value={valor} onChange={(e) => setDato(c.clave, e.target.value)} className={inp} />
+          {estimado && <p className="text-[11.5px] text-[var(--gray-500)] m-0 mt-1">Si lo dejas vacío se estima con la ruta: <b className="text-[var(--navy)] font-medium">{fmtFH(estimado)}</b></p>}
+        </>
       );
     }
     return (
       <div key={c.clave}>
-        <label className={labelCls}>{c.etiqueta}</label>
-        {control}
+        <div className="flex items-center justify-between mb-1">
+          <label className={`${labelCls} mb-0!`}>{c.etiqueta}</label>
+          {permiteNA && (
+            <button type="button" onClick={alternarNA} aria-pressed={esNA} title={esNA ? "Marcado como no aplica — clic para habilitar" : "Marcar como no aplica"} className={`text-[9.5px] font-bold leading-none rounded px-1.5 py-1 border ${esNA ? "bg-[var(--gray-500)] border-[var(--gray-500)] text-white" : "border-[var(--gray-200)] text-[var(--gray-400)] hover:text-[var(--navy)]"}`}>
+              N/A
+            </button>
+          )}
+        </div>
+        <fieldset disabled={esNA} className={`m-0 p-0 border-0 min-w-0 transition-opacity ${esNA ? "opacity-30" : ""}`}>{control}</fieldset>
       </div>
     );
   };
@@ -624,6 +742,22 @@ export default function CalendarioViajesPage() {
                       {dias.map((d) => (
                         <td key={d} className={`px-1.5 py-1.5 border-b border-[var(--gray-200)] align-top overflow-hidden ${u.disponible === false ? "bg-[#fdf3f2]" : d === hoy ? "bg-[#f7f9ff]" : "bg-white group-hover:bg-[var(--gray-50)]"}`}>
                           <div className="grid gap-1 min-w-0">
+                            {(ocupadas.get(`${u.eco}|${d}`) || []).map(({ v, fin, primero }) => {
+                              const g = grupoEstatus(estadoViaje(v.datos));
+                              const ultimoDia = d === fin;
+                              return (
+                                <button
+                                  key={`o${v.id}`}
+                                  type="button"
+                                  onClick={(e) => abrirResumen(v, e.currentTarget)}
+                                  title={`Unidad ocupada hasta el término estimado (${etiquetaDia(fin)}) · ${etiquetaViaje(v.datos).linea1}`}
+                                  className={`h-[26px] -ml-1.5 ${ultimoDia ? "mr-0 rounded-r-md" : "-mr-1.5"} px-2 text-left text-[11px] font-medium truncate border-y`}
+                                  style={{ background: g.fondo, color: g.texto, borderColor: g.borde }}
+                                >
+                                  {primero ? `↳ ${etiquetaViaje(v.datos).linea1}` : ""}
+                                </button>
+                              );
+                            })}
                             {(porCelda.get(`${u.eco}|${d}`) || []).map((v) => {
                               const et = etiquetaViaje(v.datos);
                               const g = grupoEstatus(estadoViaje(v.datos));
@@ -658,6 +792,7 @@ export default function CalendarioViajesPage() {
           {GRUPOS_ESTATUS.map((g) => (
             <span key={g.clave} className="rounded-full px-2.5 py-0.5 font-medium" style={{ background: g.solido, color: g.texto, border: `1px solid ${g.borde}` }}>{g.etiqueta}</span>
           ))}
+          <span className="text-[12px]">· Las barras sombreadas son los días que la unidad sigue ocupada hasta el término estimado del viaje.</span>
         </div>
       </div>
 

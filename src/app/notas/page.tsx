@@ -7,8 +7,9 @@ import { puedeVerSeccion } from "@/lib/permisos";
 import { moneda } from "@/lib/comprasData";
 
 type Adjunto = { id?: number; nombre: string; mime: string; leyenda: string | null; contenido?: string; nuevo?: boolean; borrar?: boolean };
-type Nota = { id: number; titulo: string; contenido: string; importante: boolean; vence_en: string | null; terminada: boolean; updated_at: string; adjuntos: Adjunto[]; propia: boolean; autor: string; compartida_con: { id: number; nombre: string }[]; monto_oc: number; num_oc: number };
-type Borrador = { id?: number; contenido: string; importante: boolean; vence_en: string; terminada: boolean; adjuntos: Adjunto[]; propia: boolean; compartir: number[] };
+type Nota = { id: number; titulo: string; contenido: string; importante: boolean; vence_en: string | null; terminada: boolean; updated_at: string; adjuntos: Adjunto[]; propia: boolean; autor: string; compartida_con: { id: number; nombre: string }[]; monto_oc: number; num_oc: number; editado_por: string | null; carpeta_id: number | null };
+type Carpeta = { id: number; nombre: string };
+type Borrador = { id?: number; contenido: string; importante: boolean; vence_en: string; terminada: boolean; adjuntos: Adjunto[]; propia: boolean; compartir: number[]; base: string };
 type UsuarioNota = { id: number; nombre: string };
 
 const ACEPTA = "image/*,.pdf,.doc,.docx,.xls,.xlsx";
@@ -34,6 +35,9 @@ const ICONOS = {
   camara: <><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V9a1 1 0 011-1z" /><circle cx="12" cy="13.5" r="3.5" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0014 0M12 18v3" /></>,
   persona: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0116 0" /></>,
+  carpeta: <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />,
+  carpetaMas: <><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" /><path d="M12 10.5v5M9.5 13h5" /></>,
+  palomita: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   carrito: <><circle cx="9" cy="20" r="1.4" /><circle cx="18" cy="20" r="1.4" /><path d="M2 3h3l2.6 12.4a1 1 0 00.8.6h9.2a1 1 0 001-.8L21 7H6" /></>,
   agrandar: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
   reducir: <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" />,
@@ -135,6 +139,15 @@ export default function NotasPage() {
   const [verReloj, setVerReloj] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [usuarios, setUsuarios] = useState<UsuarioNota[]>([]);
+  const [carpetas, setCarpetas] = useState<Carpeta[]>([]);
+  const [filtro, setFiltro] = useState<"todas" | "sin" | number>("todas");
+  const [nuevaCarpeta, setNuevaCarpeta] = useState<string | null>(null);
+  const [arrastrando, setArrastrando] = useState<number | null>(null);
+  const [sobre, setSobre] = useState<number | null>(null);
+  const [sobreCarpeta, setSobreCarpeta] = useState<string | null>(null);
+  const versionRef = useRef("");
+  const cargandoRef = useRef(false);
+  const arrastrandoRef = useRef<number | null>(null);
   const [verCompartir, setVerCompartir] = useState(false);
   const [grande, setGrande] = useState(false);
   const [prog, setProg] = useState({ total: 0, hechas: 0 });
@@ -148,14 +161,20 @@ export default function NotasPage() {
   const grab = useRef<{ mr: MediaRecorder | null; stream: MediaStream | null; rec: any; chunks: Blob[]; texto: string; activa: boolean; descartar: boolean; timer: number | null; ini: number }>({ mr: null, stream: null, rec: null, chunks: [], texto: "", activa: false, descartar: false, timer: null, ini: 0 });
 
   const cargar = useCallback(async () => {
+    if (cargandoRef.current) return;
+    cargandoRef.current = true;
     try {
       const res = await fetch("/api/notas", { cache: "no-store" });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "No se pudieron cargar las notas.");
+      versionRef.current = d.version || "";
       setNotas(d.notas || []);
+      setCarpetas(d.carpetas || []);
+      setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
+      cargandoRef.current = false;
       setCargando(false);
     }
   }, []);
@@ -167,11 +186,30 @@ export default function NotasPage() {
       .catch(() => {});
   }, [cargar]);
 
+  // Actualización automática: la huella de cambios llega cada pocos segundos (NotasEnVivo); si cambió, se recarga sola.
+  useEffect(() => {
+    const alCambiar = (e: Event) => {
+      const v = (e as CustomEvent<string>).detail;
+      if (v && v !== versionRef.current && arrastrandoRef.current === null) cargar();
+    };
+    window.addEventListener("notas-version", alCambiar);
+    window.addEventListener("focus", cargar);
+    return () => {
+      window.removeEventListener("notas-version", alCambiar);
+      window.removeEventListener("focus", cargar);
+    };
+  }, [cargar]);
+
+  // Si la carpeta seleccionada ya no existe, se vuelve a "Todas".
+  useEffect(() => {
+    if (typeof filtro === "number" && !carpetas.some((c) => c.id === filtro)) setFiltro("todas");
+  }, [carpetas, filtro]);
+
   const abrir = (n?: Nota) => {
     setVerReloj(false);
     setVerCompartir(false);
     setProg(n ? { total: progresoChecks(n.contenido).total, hechas: progresoChecks(n.contenido).hechas } : { total: 0, hechas: 0 });
-    setBorrador(n ? { id: n.id, contenido: n.contenido, importante: n.importante, vence_en: aLocal(n.vence_en), terminada: n.terminada, adjuntos: n.adjuntos.map((a) => ({ ...a })), propia: n.propia, compartir: n.compartida_con.map((u) => u.id) } : { contenido: "", importante: false, vence_en: "", terminada: false, adjuntos: [], propia: true, compartir: [] });
+    setBorrador(n ? { id: n.id, contenido: n.contenido, importante: n.importante, vence_en: aLocal(n.vence_en), terminada: n.terminada, adjuntos: n.adjuntos.map((a) => ({ ...a })), propia: n.propia, compartir: n.compartida_con.map((u) => u.id), base: n.updated_at } : { contenido: "", importante: false, vence_en: "", terminada: false, adjuntos: [], propia: true, compartir: [], base: "" });
     setTimeout(() => {
       if (editor.current) {
         editor.current.innerHTML = n?.contenido || "";
@@ -356,6 +394,7 @@ export default function NotasPage() {
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error || "No se pudo guardar.");
+      if (!borrador.id && typeof filtro === "number") await fetch("/api/notas/organizar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nota_id: d.id, carpeta_id: filtro }) });
       if (borrador.propia && (borrador.id || borrador.compartir.length)) {
         const rc = await fetch("/api/notas/compartir", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nota_id: d.id, usuarios: borrador.compartir }) });
         if (!rc.ok) alert((await rc.json()).error || "No se pudo compartir la nota.");
@@ -402,6 +441,61 @@ export default function NotasPage() {
     cargar();
   };
 
+  // Arrastrar y soltar: reordena las notas (el orden queda guardado para cada usuario).
+  const mover = async (origen: number, destino: number) => {
+    if (origen === destino) return;
+    const lista = [...notas];
+    const i = lista.findIndex((n) => n.id === origen);
+    const j = lista.findIndex((n) => n.id === destino);
+    if (i < 0 || j < 0) return;
+    const [x] = lista.splice(i, 1);
+    lista.splice(j, 0, x);
+    setNotas(lista);
+    await fetch("/api/notas/organizar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ orden: lista.map((n) => n.id) }) }).catch(() => {});
+    cargar();
+  };
+  const asignarCarpeta = async (notaId: number, carpetaId: number | null) => {
+    setNotas((ns) => ns.map((n) => (n.id === notaId ? { ...n, carpeta_id: carpetaId } : n)));
+    await fetch("/api/notas/organizar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nota_id: notaId, carpeta_id: carpetaId }) }).catch(() => {});
+    cargar();
+  };
+  const crearCarpeta = async () => {
+    const nombre = (nuevaCarpeta || "").trim();
+    if (!nombre) return setNuevaCarpeta(null);
+    const r = await fetch("/api/notas/carpetas", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre }) });
+    const d = await r.json();
+    if (!r.ok) return alert(d.error || "No se pudo crear la carpeta.");
+    setNuevaCarpeta(null);
+    await cargar();
+    setFiltro(d.id);
+  };
+  const renombrarCarpeta = async (c: Carpeta) => {
+    const nombre = prompt("Nuevo nombre de la carpeta:", c.nombre);
+    if (!nombre || nombre.trim() === c.nombre) return;
+    const r = await fetch("/api/notas/carpetas", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: c.id, nombre }) });
+    if (!r.ok) return alert((await r.json()).error || "No se pudo renombrar.");
+    cargar();
+  };
+  const eliminarCarpeta = async (c: Carpeta) => {
+    if (!confirm(`¿Eliminar la carpeta "${c.nombre}"? Las notas NO se borran: regresan a "Sin carpeta".`)) return;
+    await fetch(`/api/notas/carpetas?id=${c.id}`, { method: "DELETE" });
+    setFiltro("todas");
+    cargar();
+  };
+  // Aviso de edición simultánea: otro usuario guardó esta nota mientras la tengo abierta.
+  const notaAbierta = borrador?.id ? notas.find((n) => n.id === borrador.id) : undefined;
+  const hayConflicto = !!(notaAbierta && borrador && borrador.base && notaAbierta.updated_at !== borrador.base);
+  const cargarVersionNueva = () => {
+    if (!notaAbierta || !borrador || !editor.current) return;
+    editor.current.innerHTML = notaAbierta.contenido;
+    setBorrador({ ...borrador, contenido: notaAbierta.contenido, importante: notaAbierta.importante, terminada: notaAbierta.terminada, vence_en: aLocal(notaAbierta.vence_en), base: notaAbierta.updated_at, adjuntos: [...notaAbierta.adjuntos.map((a) => ({ ...a })), ...borrador.adjuntos.filter((a) => a.nuevo)] });
+    actualizarProgreso();
+  };
+
+  const visibles = notas.filter((n) => (filtro === "todas" ? true : filtro === "sin" ? !n.carpeta_id : n.carpeta_id === filtro));
+  const nombreCarpeta = (id: number | null) => carpetas.find((c) => c.id === id)?.nombre;
+  const chip = (activa: boolean, soltando: boolean) => `inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[12.5px] font-bold transition-colors ${soltando ? "border-[var(--blue)] bg-[var(--blue-light)] text-[var(--blue)] ring-2 ring-[var(--blue)]" : activa ? "bg-[var(--navy)] border-[var(--navy)] text-white" : "bg-white border-[var(--gray-200)] text-[var(--gray-500)] hover:text-[var(--navy)]"}`;
+
   const mmss = `${String(Math.floor(seg / 60)).padStart(2, "0")}:${String(seg % 60).padStart(2, "0")}`;
   const btn = "relative w-9 h-9 flex items-center justify-center rounded-lg text-[var(--gray-500)] hover:bg-[var(--gray-100)] hover:text-[var(--navy)] transition-colors";
   const activo = "!bg-[var(--blue-light)] !text-[var(--blue)]";
@@ -426,64 +520,158 @@ export default function NotasPage() {
       `}</style>
       <div className="max-w-[1200px] mx-auto px-4 sm:px-6 md:px-10 pt-6 md:pt-10 pb-10">
         <PageHeader titulo="Notas" subtitulo="Tus notas con recordatorios y archivos. Puedes compartirlas con otros usuarios para editarlas juntos." backHref="/" backLabel="Menú principal" />
-        <div className="flex flex-wrap gap-3 mb-5">
+        <div className="flex flex-wrap items-stretch gap-3 mb-4">
           {kpis.map((k) => (
             <div key={k.etiqueta} className="bg-white border border-[var(--gray-200)] rounded-xl px-4 py-2.5 min-w-[130px]">
               <div className={`text-[22px] font-bold leading-tight ${k.color}`}>{k.valor}</div>
               <div className="text-[11.5px] text-[var(--gray-500)]">{k.etiqueta}</div>
             </div>
           ))}
+          <button type="button" title="Nueva carpeta" aria-label="Nueva carpeta" onClick={() => setNuevaCarpeta(nuevaCarpeta === null ? "" : null)} className={`w-12 flex items-center justify-center rounded-xl border bg-white hover:bg-[var(--gray-100)] ${nuevaCarpeta !== null ? "border-[var(--blue)] text-[var(--blue)]" : "border-[var(--gray-200)] text-[var(--navy)]"}`}>
+            <Ic size={22}>{ICONOS.carpetaMas}</Ic>
+          </button>
+        </div>
+        {nuevaCarpeta !== null && (
+          <div className="flex items-center gap-2 mb-4">
+            <input autoFocus value={nuevaCarpeta} onChange={(e) => setNuevaCarpeta(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") crearCarpeta(); if (e.key === "Escape") setNuevaCarpeta(null); }} placeholder="Nombre de la carpeta" maxLength={60} className="border border-[var(--gray-300)] rounded-lg px-3 py-2 text-[13px] w-[240px]" />
+            <button type="button" onClick={crearCarpeta} className="bg-[var(--navy)] text-white rounded-lg px-4 py-2 text-[12.5px] font-bold">Crear</button>
+            <button type="button" onClick={() => setNuevaCarpeta(null)} className="text-[12.5px] text-[var(--gray-500)]">Cancelar</button>
+          </div>
+        )}
+        {/* Filtro por carpeta · también son destino al arrastrar una nota */}
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <button type="button" onClick={() => setFiltro("todas")} className={chip(filtro === "todas", false)}>
+            Todas <span className="font-normal opacity-80">{notas.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setFiltro("sin")}
+            onDragOver={(e) => { if (arrastrando !== null) { e.preventDefault(); setSobreCarpeta("sin"); } }}
+            onDragLeave={() => setSobreCarpeta(null)}
+            onDrop={(e) => { e.preventDefault(); if (arrastrando !== null) asignarCarpeta(arrastrando, null); setSobreCarpeta(null); setArrastrando(null); arrastrandoRef.current = null; }}
+            className={chip(filtro === "sin", sobreCarpeta === "sin")}
+          >
+            Sin carpeta <span className="font-normal opacity-80">{notas.filter((n) => !n.carpeta_id).length}</span>
+          </button>
+          {carpetas.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setFiltro(c.id)}
+              onDragOver={(e) => { if (arrastrando !== null) { e.preventDefault(); setSobreCarpeta(String(c.id)); } }}
+              onDragLeave={() => setSobreCarpeta(null)}
+              onDrop={(e) => { e.preventDefault(); if (arrastrando !== null) asignarCarpeta(arrastrando, c.id); setSobreCarpeta(null); setArrastrando(null); arrastrandoRef.current = null; }}
+              className={chip(filtro === c.id, sobreCarpeta === String(c.id))}
+            >
+              <Ic size={14}>{ICONOS.carpeta}</Ic>
+              {c.nombre} <span className="font-normal opacity-80">{notas.filter((n) => n.carpeta_id === c.id).length}</span>
+            </button>
+          ))}
+          {typeof filtro === "number" && (
+            <span className="flex items-center gap-3 ml-2 text-[12px] font-bold">
+              <button type="button" className="text-[var(--blue)]" onClick={() => renombrarCarpeta(carpetas.find((c) => c.id === filtro)!)}>Renombrar</button>
+              <button type="button" className="text-[var(--red)]" onClick={() => eliminarCarpeta(carpetas.find((c) => c.id === filtro)!)}>Eliminar carpeta</button>
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 mb-5">
           <button type="button" onClick={() => abrir()} className="bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold">+ Agregar nota</button>
           <button type="button" onClick={abrirConVoz} title="Grabar nota de voz" aria-label="Grabar nota de voz" className="w-10 h-10 flex items-center justify-center rounded-lg border border-[var(--gray-200)] bg-white text-[var(--navy)] hover:bg-[var(--gray-100)]">
             <Ic>{ICONOS.mic}</Ic>
           </button>
+          {visibles.length > 1 && <span className="text-[11.5px] text-[var(--gray-400)] ml-2">Arrastra una nota para cambiarla de lugar o soltarla en una carpeta.</span>}
         </div>
         {error && <p className="text-[13px] text-[var(--red)]">{error}</p>}
         {cargando ? (
           <p className="text-[13px] text-[var(--gray-400)]">Cargando…</p>
-        ) : notas.length === 0 ? (
-          <p className="text-[13px] text-[var(--gray-400)]">Aún no tienes notas.</p>
+        ) : visibles.length === 0 ? (
+          <p className="text-[13px] text-[var(--gray-400)]">{notas.length === 0 ? "Aún no tienes notas." : "No hay notas en esta carpeta."}</p>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {notas.map((n) => {
+            {visibles.map((n) => {
               const pr = progresoChecks(n.contenido);
+              const gris = n.terminada ? "opacity-55 grayscale" : "";
               return (
-                <div key={n.id} className={`relative bg-white rounded-xl border p-4 flex flex-col gap-2 ${vencida(n) ? "border-[var(--red)]" : "border-[var(--gray-200)]"} ${n.terminada ? "opacity-60" : ""}`}>
-                  {n.importante && (
-                    <span className="absolute top-3 right-4">
-                      <GloboPrioridad />
-                    </span>
-                  )}
-                  <button type="button" onClick={() => abrir(n)} className={`text-left text-[15px] font-bold m-0 text-[var(--navy)] ${n.importante ? "pr-9" : ""} ${n.terminada ? "line-through" : ""}`}>
-                    {n.titulo}
-                  </button>
-                  {n.vence_en && <span className={`text-[11.5px] font-bold ${vencida(n) ? "text-[var(--red)]" : "text-[var(--gray-500)]"}`}>⏰ {vencida(n) ? "Venció" : "Vence"} {fh(n.vence_en)}</span>}
-                  {pr.total > 0 && (
-                    <div>
-                      <div className="flex justify-between text-[11.5px] font-bold text-[var(--gray-500)] mb-1">
-                        <span>Checklist {pr.hechas}/{pr.total}</span>
-                        <span className={pr.pct === 100 ? "text-[var(--green)]" : ""}>{pr.pct}%</span>
+                <div
+                  key={n.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.effectAllowed = "move";
+                    e.dataTransfer.setData("text/plain", String(n.id));
+                    arrastrandoRef.current = n.id;
+                    setArrastrando(n.id);
+                  }}
+                  onDragEnd={() => {
+                    arrastrandoRef.current = null;
+                    setArrastrando(null);
+                    setSobre(null);
+                    setSobreCarpeta(null);
+                  }}
+                  onDragOver={(e) => {
+                    if (arrastrando !== null && arrastrando !== n.id) {
+                      e.preventDefault();
+                      setSobre(n.id);
+                    }
+                  }}
+                  onDragLeave={() => setSobre((x) => (x === n.id ? null : x))}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const origen = arrastrando;
+                    setSobre(null);
+                    setArrastrando(null);
+                    arrastrandoRef.current = null;
+                    if (origen !== null) mover(origen, n.id);
+                  }}
+                  className={`relative rounded-xl border p-4 flex flex-col gap-2 cursor-grab active:cursor-grabbing transition-shadow ${n.terminada ? "bg-[#f1f2f4]" : "bg-white"} ${vencida(n) ? "border-[var(--red)]" : "border-[var(--gray-200)]"} ${arrastrando === n.id ? "opacity-40" : ""} ${sobre === n.id ? "ring-2 ring-[var(--blue)] shadow-lg" : ""}`}
+                >
+                  <div className={`flex flex-col gap-2 ${gris}`}>
+                    {n.importante && (
+                      <span className="absolute top-3 right-4">
+                        <GloboPrioridad />
+                      </span>
+                    )}
+                    <button type="button" onClick={() => abrir(n)} className={`text-left text-[15px] font-bold m-0 text-[var(--navy)] ${n.importante ? "pr-9" : ""} ${n.terminada ? "line-through" : ""}`}>
+                      {n.titulo}
+                    </button>
+                    {n.vence_en && <span className={`text-[11.5px] font-bold ${vencida(n) ? "text-[var(--red)]" : "text-[var(--gray-500)]"}`}>⏰ {vencida(n) ? "Venció" : "Vence"} {fh(n.vence_en)}</span>}
+                    {pr.total > 0 && (
+                      <div>
+                        <div className="flex justify-between text-[11.5px] font-bold text-[var(--gray-500)] mb-1">
+                          <span>Avance {pr.hechas}/{pr.total}</span>
+                          <span className={pr.pct === 100 ? "text-[var(--green)]" : ""}>{pr.pct}%</span>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-[var(--gray-100)] overflow-hidden">
+                          <div className={`h-full rounded-full ${pr.pct === 100 ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`} style={{ width: `${pr.pct}%` }} />
+                        </div>
                       </div>
-                      <div className="h-1.5 rounded-full bg-[var(--gray-100)] overflow-hidden">
-                        <div className={`h-full rounded-full ${pr.pct === 100 ? "bg-[var(--green)]" : "bg-[var(--blue)]"}`} style={{ width: `${pr.pct}%` }} />
-                      </div>
-                    </div>
-                  )}
-                  {n.num_oc > 0 && (
-                    <span className="flex items-center gap-1.5 text-[11.5px] font-bold text-[var(--green)]">
-                      <Ic size={14}>{ICONOS.carrito}</Ic> {n.num_oc} orden(es) de compra · {moneda(n.monto_oc)}
-                    </span>
-                  )}
-                  {!n.propia ? (
-                    <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida por {n.autor}</span>
-                  ) : n.compartida_con.length > 0 ? (
-                    <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida con {n.compartida_con.map((u) => u.nombre).join(", ")}</span>
-                  ) : null}
-                  <span className="text-[11px] text-[var(--gray-400)]">Editada {fh(n.updated_at)} · {n.adjuntos.length} archivo(s)</span>
-                  <div className="flex gap-3 mt-auto pt-2 text-[12px] font-bold">
-                    <button type="button" className="text-[var(--green)]" onClick={() => terminar(n, !n.terminada)}>{n.terminada ? "Reabrir" : "Marcar terminada"}</button>
+                    )}
+                    {n.num_oc > 0 && (
+                      <span className="flex items-center gap-1.5 text-[11.5px] font-bold text-[var(--green)]">
+                        <Ic size={14}>{ICONOS.carrito}</Ic> {n.num_oc} orden(es) de compra · {moneda(n.monto_oc)}
+                      </span>
+                    )}
+                    {!n.propia ? (
+                      <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida por {n.autor}</span>
+                    ) : n.compartida_con.length > 0 ? (
+                      <span className="text-[11.5px] font-bold text-[var(--blue)]">👥 Compartida con {n.compartida_con.map((u) => u.nombre).join(", ")}</span>
+                    ) : null}
+                    {filtro === "todas" && n.carpeta_id && nombreCarpeta(n.carpeta_id) && (
+                      <span className="flex items-center gap-1 text-[11.5px] text-[var(--gray-500)]">
+                        <Ic size={13}>{ICONOS.carpeta}</Ic> {nombreCarpeta(n.carpeta_id)}
+                      </span>
+                    )}
+                    <span className="text-[11px] text-[var(--gray-400)]">Editada {fh(n.updated_at)}{n.editado_por ? ` por ${n.editado_por}` : ""} · {n.adjuntos.length} archivo(s)</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-auto pt-2 text-[12px] font-bold">
+                    <button
+                      type="button"
+                      title={n.terminada ? "Terminada — clic para reabrir" : "Marcar terminada"}
+                      aria-label={n.terminada ? "Reabrir nota" : "Marcar nota como terminada"}
+                      onClick={() => terminar(n, !n.terminada)}
+                      className={`w-7 h-7 rounded-full flex items-center justify-center transition-all ${n.terminada ? "bg-[var(--green)] text-white shadow-[0_2px_8px_rgba(33,168,102,0.5)]" : "text-[var(--gray-300)] hover:text-[var(--green)]"}`}
+                    >
+                      <Ic size={n.terminada ? 16 : 20}>{ICONOS.palomita}</Ic>
+                    </button>
                     <button type="button" className="text-[var(--blue)]" onClick={() => abrir(n)}>Abrir</button>
                     {n.propia && <button type="button" className="text-[var(--red)] ml-auto" onClick={() => eliminar(n)}>Eliminar</button>}
                   </div>
@@ -547,6 +735,14 @@ export default function NotasPage() {
                 <button type="button" title="Cerrar" onClick={() => !guardando && cerrar()} className={btn}><Ic>{ICONOS.cerrar}</Ic></button>
               </span>
             </div>
+            {hayConflicto && notaAbierta && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-3 rounded-lg bg-[#fff8e1] border border-[#f5c518] px-3 py-2 text-[12.5px] text-[#8a5a00]">
+                <span className="font-bold">⚠ {notaAbierta.editado_por || "Otro usuario"} modificó esta nota mientras la editabas.</span>
+                <span>Si guardas, se sobrescribirán sus cambios.</span>
+                <button type="button" className="font-bold underline ml-auto" onClick={cargarVersionNueva}>Cargar su versión</button>
+                <button type="button" className="underline" onClick={() => setBorrador({ ...borrador, base: notaAbierta.updated_at })}>Ignorar</button>
+              </div>
+            )}
             {verReloj && (
               <div className="flex items-center gap-2 mb-3">
                 <input type="datetime-local" value={borrador.vence_en} onChange={(e) => setBorrador({ ...borrador, vence_en: e.target.value })} className="border border-[var(--gray-300)] rounded-md px-2 py-1.5 text-[12.5px]" />
@@ -578,7 +774,7 @@ export default function NotasPage() {
             {prog.total > 0 && (
               <div className="mt-3">
                 <div className="flex justify-between text-[12px] font-bold text-[var(--gray-500)] mb-1">
-                  <span>Checklist {prog.hechas}/{prog.total}{borrador.terminada && prog.hechas === prog.total ? " · nota terminada" : ""}</span>
+                  <span>Avance {prog.hechas}/{prog.total}{borrador.terminada && prog.hechas === prog.total ? " · nota terminada" : ""}</span>
                   <span>{Math.round((prog.hechas * 100) / prog.total)}%</span>
                 </div>
                 <div className="h-1.5 rounded-full bg-[var(--gray-100)] overflow-hidden">

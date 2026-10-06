@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
-import { ensureNotasSchema, sesionNotas } from "@/lib/notasDB";
+import { avisar, ensureNotasSchema, sesionNotas } from "@/lib/notasDB";
 import { todosLosRoles } from "@/lib/permisosDB";
 
 export const dynamic = "force-dynamic";
@@ -31,9 +31,16 @@ export async function POST(req: NextRequest) {
     const dueno = await p.query(`SELECT 1 FROM notas WHERE id = $1 AND usuario_id = $2`, [notaId, s.userId]);
     if (!dueno.rowCount) return NextResponse.json({ error: "Solo el dueño de la nota puede compartirla." }, { status: 403 });
     const ids = Array.from(new Set((Array.isArray(b?.usuarios) ? b.usuarios : []).map(Number).filter((n: number) => n > 0 && n !== s.userId)));
+    const previos = (await p.query(`SELECT usuario_id FROM notas_compartidas WHERE nota_id = $1`, [notaId])).rows.map((x) => Number(x.usuario_id));
     await p.query(`DELETE FROM notas_compartidas WHERE nota_id = $1`, [notaId]);
     if (ids.length) {
       await p.query(`INSERT INTO notas_compartidas (nota_id, usuario_id) SELECT $1, id FROM usuarios WHERE id = ANY($2::int[]) ON CONFLICT DO NOTHING`, [notaId, ids]);
+    }
+    // Aviso inmediato a quienes se acaban de agregar
+    const nuevos = (ids as number[]).filter((x) => !previos.includes(x));
+    if (nuevos.length) {
+      const t = await p.query(`SELECT titulo FROM notas WHERE id = $1`, [notaId]);
+      await avisar(nuevos, notaId, "compartida", s.nombre, `compartió contigo la nota «${t.rows[0]?.titulo || "Sin título"}»`);
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

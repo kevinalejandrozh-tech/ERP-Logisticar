@@ -46,7 +46,20 @@ export async function GET(req: NextRequest) {
         /* sin tabla de notas aún */
       }
     }
-    return NextResponse.json({ ok: true, noLeidas: (conteo.rows[0]?.n ?? 0) + vencidas.length, items: [...vencidas, ...items] });
+    // Avisos entre usuarios de Notas (compartidas, ediciones, estado) — llegan al instante junto con el sondeo de Notas.
+    let avisos: typeof items = [];
+    if (puedeVerSeccion("notas", sesion.rol, sesion.secciones)) {
+      try {
+        await ensureNotasSchema();
+        const a = await p.query(`SELECT id, de, texto, creado_en FROM notas_avisos WHERE usuario_id = $1 ORDER BY creado_en DESC LIMIT 20`, [sesion.userId]);
+        avisos = a.rows.map((r) => ({ id: 100_000_000 + Number(r.id), usuario: r.de || "Notas", accion: r.texto, pagina: "/notas", paginaTitulo: "Notas", veces: 1, fecha: r.creado_en, nueva: !vistoHasta || new Date(r.creado_en) > new Date(vistoHasta) }));
+      } catch {
+        /* sin tabla de avisos aún */
+      }
+    }
+    const nuevasAvisos = avisos.filter((x) => x.nueva).length;
+    const todos = [...vencidas, ...avisos, ...items].sort((x, y) => (x.nueva === y.nueva ? new Date(y.fecha).getTime() - new Date(x.fecha).getTime() : x.nueva ? -1 : 1));
+    return NextResponse.json({ ok: true, noLeidas: (conteo.rows[0]?.n ?? 0) + vencidas.length + nuevasAvisos, items: todos.slice(0, 60) });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Error al leer notificaciones." }, { status: 500 });
   }

@@ -56,9 +56,11 @@ export default function CampanaNotificaciones() {
     const id = window.setInterval(cargar, 60000);
     const alEnfocar = () => cargar();
     window.addEventListener("focus", alEnfocar);
+    window.addEventListener("notas-avisos", alEnfocar); // aviso inmediato de otro usuario (Notas)
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", alEnfocar);
+      window.removeEventListener("notas-avisos", alEnfocar);
     };
   }, [cargar]);
 

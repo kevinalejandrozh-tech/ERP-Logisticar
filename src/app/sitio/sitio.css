@@ -101,9 +101,12 @@
     top: 10px;
     right: 10px;
     z-index: 15;
+    display: flex;
+    gap: 6px;
   }
   .sw-cambiar-imagen-suelto {
     display: inline-flex;
+    gap: 6px;
   }
   .sw-btn-imagen {
     display: inline-flex;
@@ -125,6 +128,28 @@
   }
   .sw-btn-imagen-compacto {
     padding: 0.4rem;
+  }
+  .sw-btn-imagen:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .sw-btn-imagen.sw-btn-peligro:hover:not(:disabled) {
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  /* Controles que aparecen solo en modo edición (agregar y eliminar elementos) */
+  .sw-controles-edicion {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: #fff;
+    color: var(--navy);
+    font-size: 12.5px;
+    box-shadow: 0 4px 14px rgba(15, 24, 69, 0.22);
   }
 }
 

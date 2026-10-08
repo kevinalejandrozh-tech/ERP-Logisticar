@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { ensureSchema, getPool } from "@/lib/db";
 import { documentosRequeridos, DOC_MAX_ARCHIVOS, DOC_MAX_BYTES_PDF } from "@/lib/evaluacionCandidatosData";
+import { documentosConfigurados, rutaExpedienteFolio } from "@/lib/candidatoDocumentos";
+import { estadoRegistro, leerConfigCarga } from "@/lib/candidatoDocumentosDB";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,7 +31,15 @@ export async function GET(req: NextRequest) {
     const reg = await registroPorToken(req.nextUrl.searchParams.get("t"));
     if (!reg) return NextResponse.json({ error: "El enlace no es válido o ya no está disponible." }, { status: 404 });
     const a = await getPool().query(`SELECT id, tipo, nombre, mime FROM candidato_registro_documentos WHERE registro_id = $1 ORDER BY id`, [reg.id]);
-    return NextResponse.json({ ok: true, nombre: String(reg.nombre).split(" ")[0], puesto: reg.puesto, requeridos: documentosRequeridos(reg.puesto), archivos: a.rows });
+    const config = await leerConfigCarga();
+    const est = await estadoRegistro(reg.id, config);
+    // "obligatorio" no se envía: solo lo ve el sysadmin.
+    const requeridos = documentosConfigurados(reg.puesto, config).map(({ obligatorio: _o, ...d }) => d);
+    const cita =
+      est?.completo && est.folio
+        ? { folio: est.folio, nombre: reg.nombre, fecha: est.cita_fecha, hora: est.cita_hora, qr: rutaExpedienteFolio(est.folio) }
+        : null;
+    return NextResponse.json({ ok: true, nombre: String(reg.nombre).split(" ")[0], puesto: reg.puesto, requeridos, archivos: a.rows, completo: !!est?.completo, cita });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "Error al leer la documentación." }, { status: 500 });
   }

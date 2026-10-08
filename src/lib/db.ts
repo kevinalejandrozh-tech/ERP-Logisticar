@@ -960,4 +960,20 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`CREATE INDEX IF NOT EXISTS idx_candidato_registro_documentos_reg ON candidato_registro_documentos (registro_id);`);
+// Folio (RLKA01…) y cita, asignados al completar los documentos obligatorios.
+await p.query(`ALTER TABLE candidato_registros ADD COLUMN IF NOT EXISTS folio_num INTEGER UNIQUE;`);
+await p.query(`ALTER TABLE candidato_registros ADD COLUMN IF NOT EXISTS folio TEXT UNIQUE;`);
+await p.query(`ALTER TABLE candidato_registros ADD COLUMN IF NOT EXISTS cita_fecha TEXT;`);
+await p.query(`ALTER TABLE candidato_registros ADD COLUMN IF NOT EXISTS cita_hora TEXT;`);
+await p.query(`ALTER TABLE candidato_registros ADD COLUMN IF NOT EXISTS completado_at TIMESTAMPTZ;`);
+// Configuración de la carga: obligatorios, texto con link por documento y cita.
+await p.query(`
+CREATE TABLE IF NOT EXISTS candidato_docs_config (
+id INTEGER PRIMARY KEY DEFAULT 1,
+documentos JSONB NOT NULL DEFAULT '{}'::jsonb,
+cita_fecha TEXT,
+cita_hora TEXT,
+updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
 }

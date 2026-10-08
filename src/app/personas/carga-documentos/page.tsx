@@ -79,7 +79,7 @@ export default function CargaDocumentosPage() {
 
   return (
     <div className="min-h-screen bg-[#eef1f6] pb-12">
-      <header className="bg-white border-b border-[var(--gray-200)] shadow-sm mb-6">
+      <header className="bg-white/85 backdrop-blur-[2px] border-b border-[var(--gray-200)] shadow-sm mb-6">
         <div className="max-w-[760px] mx-auto px-4 sm:px-6 py-3.5 flex items-center gap-3">
           <Logo size={36} enlace={false} />
           <div>
@@ -89,7 +89,7 @@ export default function CargaDocumentosPage() {
         </div>
       </header>
       <div className="max-w-[760px] mx-auto px-4 sm:px-6">
-        <div className="bg-white rounded-[18px] p-5 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] grid gap-4">
+        <div className="bg-white/80 backdrop-blur-[2px] rounded-[18px] p-5 sm:p-6 shadow-[0_1px_3px_rgba(22,33,92,0.06)] grid gap-4">
           <div>
             <p className="text-[14px] font-bold text-[var(--navy)] m-0 mb-1">Bienvenido</p>
             <p className="text-[13px] text-[var(--gray-400)] m-0">Escribe tus datos para comenzar a cargar tu documentación.</p>

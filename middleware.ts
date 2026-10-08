@@ -68,7 +68,13 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     // Raíz del dominio sin sesión: lo primero que se ve es el sitio web público (desde ahí está "Iniciar sesión").
     url.pathname = pathname === "/" ? "/sitio" : "/login";
-    url.search = esNavegacionManual || pathname === "/" ? "" : `?destino=${encodeURIComponent(pathname)}`;
+    // QR de la cita de candidatos: después de iniciar sesión se abre el PDF del folio escaneado.
+    const esQrCita = pathname === "/personas/documentos-candidatos" && /^RLKA\d{2,6}$/.test(req.nextUrl.searchParams.get("folio") || "");
+    url.search = esQrCita
+      ? `?destino=${encodeURIComponent(`${pathname}?folio=${req.nextUrl.searchParams.get("folio")}`)}`
+      : esNavegacionManual || pathname === "/"
+        ? ""
+        : `?destino=${encodeURIComponent(pathname)}`;
     const redireccion = NextResponse.redirect(url);
     if (esNavegacionManual && token) {
       // Se invalida la sesión: para entrar hay que iniciar sesión de nuevo.

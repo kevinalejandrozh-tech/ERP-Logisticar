@@ -35,7 +35,7 @@ export interface CategoriaInventarioBD extends CategoriaInventario {
   total_equipos?: number;
 }
 
-export const ESTADOS_INVENTARIO = ["Activo", "En reparación", "En almacén", "Baja"] as const;
+export const ESTADOS_INVENTARIO = ["Activo", "Inactivo", "En reparación", "En almacén", "Baja"] as const;
 export type EstadoInventario = (typeof ESTADOS_INVENTARIO)[number];
 
 export function esEstadoValido(valor: unknown): valor is EstadoInventario {

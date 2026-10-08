@@ -76,6 +76,13 @@ async function crear() {
     );
     CREATE TABLE IF NOT EXISTS alm_folios (tipo TEXT PRIMARY KEY, consecutivo INTEGER NOT NULL DEFAULT 0);
   `);
+  // Aprobación de requisiciones: las anteriores a este cambio ya descontaron existencias ("Surtida").
+  await p.query(`
+    ALTER TABLE alm_requisiciones ADD COLUMN IF NOT EXISTS estado TEXT NOT NULL DEFAULT 'Surtida';
+    ALTER TABLE alm_requisiciones ADD COLUMN IF NOT EXISTS aprobado_por TEXT;
+    ALTER TABLE alm_requisiciones ADD COLUMN IF NOT EXISTS aprobado_at TIMESTAMPTZ;
+    ALTER TABLE alm_requisiciones ADD COLUMN IF NOT EXISTS motivo_rechazo TEXT;
+  `);
 }
 
 export function ensureAlmacenSchema(): Promise<void> {
@@ -128,4 +135,48 @@ export async function sumarExistencia(c: PoolClient, articulo: number, ubicacion
   );
   if (Number(r.rows[0].cantidad) < 0) throw new Error("No hay existencias suficientes.");
   return Number(r.rows[0].cantidad);
+}
+
+
+export type ItemSolicitado = { articulo_id: number; ubicacion_id: number; cantidad: number };
+export type DetalleRequisicion = ItemSolicitado & {
+  articulo: string; categoria: string | null; tipo: string; ubicacion: string; costo: number; importe: number; queda_ubicacion?: number; queda_total?: number;
+};
+
+// Valida artículos y existencias de una requisición y arma su detalle.
+// Con `descontar` (al aprobar) bloquea, descuenta existencias y registra las salidas con el folio.
+export async function procesarRequisicion(
+  c: PoolClient,
+  items: ItemSolicitado[],
+  opciones: { descontar: boolean; folio?: string; referencia?: string; usuario?: string | null }
+): Promise<{ detalle: DetalleRequisicion[]; total: number }> {
+  const detalle: DetalleRequisicion[] = [];
+  let total = 0;
+  for (const x of items) {
+    const cant = Number(x.cantidad);
+    if (!(cant > 0)) continue;
+    const a = await c.query(`SELECT a.id, a.nombre, a.categoria, a.tipo, a.costo::float AS costo, u.id AS uid, u.codigo FROM alm_articulos a, alm_ubicaciones u WHERE a.id = $1 AND u.id = $2`, [x.articulo_id, x.ubicacion_id]);
+    if (!a.rowCount) throw new Error("Artículo o ubicación no encontrados.");
+    const art = a.rows[0];
+    const ex = await c.query(`SELECT cantidad::float AS cantidad FROM alm_existencias WHERE articulo_id = $1 AND ubicacion_id = $2 ${opciones.descontar ? "FOR UPDATE" : ""}`, [x.articulo_id, x.ubicacion_id]);
+    const disponible = ex.rows[0]?.cantidad || 0;
+    if (disponible < cant) throw new Error(`No hay suficiente "${art.nombre}" en ${art.codigo} (disponible: ${disponible}).`);
+    const importe = cant * (art.costo || 0);
+    total += importe;
+    const base = { articulo_id: art.id, ubicacion_id: art.uid, articulo: art.nombre, categoria: art.categoria, tipo: art.tipo, ubicacion: art.codigo, cantidad: cant, costo: art.costo, importe };
+    if (!opciones.descontar) {
+      detalle.push(base);
+      continue;
+    }
+    const quedaUbic = await sumarExistencia(c, art.id, art.uid, -cant);
+    const totalArt = await c.query(`SELECT COALESCE(SUM(cantidad), 0)::float AS t FROM alm_existencias WHERE articulo_id = $1`, [art.id]);
+    await c.query(
+      `INSERT INTO alm_movimientos (tipo, folio, articulo_id, articulo, ubicacion_id, ubicacion, cantidad, costo_unitario, referencia, usuario)
+       VALUES ('Salida', $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [opciones.folio, art.id, art.nombre, art.uid, art.codigo, cant, art.costo, opciones.referencia, opciones.usuario ?? null]
+    );
+    detalle.push({ ...base, queda_ubicacion: quedaUbic, queda_total: totalArt.rows[0].t });
+  }
+  if (!detalle.length) throw new Error("La requisición no tiene artículos.");
+  return { detalle, total };
 }

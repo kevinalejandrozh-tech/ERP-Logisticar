@@ -31,12 +31,15 @@ export default function RequisicionPage() {
   const [eleccion, setEleccion] = useState<Record<number, { ubic: string; cant: string }>>({});
   const [guardando, setGuardando] = useState(false);
   const [historial, setHistorial] = useState<Requisicion[]>([]);
+  const [puedeAprobar, setPuedeAprobar] = useState(false);
+  const [atendiendo, setAtendiendo] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     const r = await fetch("/api/inventario/almacen/articulos", { cache: "no-store" }).then((x) => x.json());
     setArticulos(r.articulos || []);
     const h = await fetch("/api/inventario/almacen/requisicion", { cache: "no-store" }).then((x) => x.json());
     setHistorial(h.requisiciones || []);
+    setPuedeAprobar(!!h.puedeAprobar);
   }, []);
   useEffect(() => {
     setUbicFiltro(new URLSearchParams(window.location.search).get("ubicacion") || "");
@@ -77,22 +80,50 @@ export default function RequisicionPage() {
         body: JSON.stringify({ referencia, items: carrito.map((c) => ({ articulo_id: c.articulo_id, ubicacion_id: c.ubicacion_id, cantidad: c.cantidad })) }),
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.error || "No se pudo surtir la requisición.");
-      imprimirRequisicion(d.requisicion);
+      if (!res.ok) throw new Error(d.error || "No se pudo registrar la requisición.");
+      alert(`Requisición ${d.requisicion.folio} enviada para aprobación. Las existencias se descuentan al aprobarse.`);
       setCarrito([]);
       setReferencia("");
       cargar();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "No se pudo surtir la requisición.");
+      alert(e instanceof Error ? e.message : "No se pudo registrar la requisición.");
     } finally {
       setGuardando(false);
     }
   };
 
+  // Aprobar descuenta existencias; rechazar no las toca.
+  const atender = async (folio: string, accion: "aprobar" | "rechazar") => {
+    let motivo = "";
+    if (accion === "rechazar") {
+      motivo = (prompt("Motivo del rechazo:") || "").trim();
+      if (!motivo) return;
+    } else if (!confirm(`¿Aprobar la requisición ${folio}? Se descontarán las existencias.`)) return;
+    setAtendiendo(folio);
+    try {
+      const res = await fetch("/api/inventario/almacen/requisicion/aprobar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folio, accion, motivo }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "No se pudo atender la requisición.");
+      if (accion === "aprobar") imprimirRequisicion(d.requisicion);
+      cargar();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "No se pudo atender la requisición.");
+    } finally {
+      setAtendiendo(null);
+    }
+  };
+
+  const colorEstado = (e?: string) =>
+    e === "Pendiente de aprobación" ? "bg-[#fdf4e1] text-[#b7800f]" : e === "Rechazada" ? "bg-[#fdeaea] text-[var(--red)]" : "bg-[#e6f6ee] text-[var(--green)]";
+
   return (
     <div className="min-h-screen bg-[#eef1f6]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 pt-6 md:pt-10 pb-10">
-        <PageHeader titulo="Requisición de Almacén" subtitulo="Elige artículos del catálogo, agrégalos al carrito y confirma el surtido." backHref="/inventario" backLabel="Control de inventario" />
+        <PageHeader titulo="Requisición de Almacén" subtitulo="Elige artículos del catálogo, agrégalos al carrito y solicita la requisición. Las existencias se descuentan al aprobarse." backHref="/inventario" backLabel="Control de inventario" />
         <div className="grid lg:grid-cols-[1fr_360px] gap-5 items-start">
           <div>
             <div className="flex flex-wrap gap-3 mb-4">
@@ -141,16 +172,16 @@ export default function RequisicionPage() {
               <input value={referencia} onChange={(e) => setReferencia(e.target.value)} className="w-full border border-[var(--gray-300)] rounded-md px-3 py-2 text-[13px]" />
             </label>
             <button type="button" disabled={!carrito.length || guardando} onClick={confirmar} className="mt-3 w-full bg-[var(--green)] text-white rounded-lg py-2.5 text-[13px] font-bold disabled:opacity-40">
-              {guardando ? "Surtiendo…" : "Confirmar surtido de requisición"}
+              {guardando ? "Enviando…" : "Solicitar requisición"}
             </button>
           </div>
         </div>
 
         <div className="bg-white rounded-xl border border-[var(--gray-200)] p-4 mt-6">
-          <h3 className="text-[15px] font-bold text-[var(--navy)] m-0 mb-3">Requisiciones surtidas</h3>
+          <h3 className="text-[15px] font-bold text-[var(--navy)] m-0 mb-3">Requisiciones</h3>
           <div className="overflow-x-auto">
-            <table className="w-full text-[12.5px] border-collapse min-w-[620px]">
-              <thead className="text-left text-[var(--navy)] bg-[#f8fafc]"><tr><th className="p-2">Folio</th><th className="p-2">Fecha</th><th className="p-2">Referencia</th><th className="p-2">Usuario</th><th className="p-2 text-right">Total</th><th className="p-2" /></tr></thead>
+            <table className="w-full text-[12.5px] border-collapse min-w-[760px]">
+              <thead className="text-left text-[var(--navy)] bg-[#f8fafc]"><tr><th className="p-2">Folio</th><th className="p-2">Fecha</th><th className="p-2">Referencia</th><th className="p-2">Usuario</th><th className="p-2">Estado</th><th className="p-2 text-right">Total</th><th className="p-2" /></tr></thead>
               <tbody>
                 {historial.map((r) => (
                   <tr key={r.folio} className="border-t border-[var(--gray-200)]">
@@ -158,11 +189,29 @@ export default function RequisicionPage() {
                     <td className="p-2">{new Date(r.created_at).toLocaleString("es-MX", { timeZone: "America/Mexico_City" })}</td>
                     <td className="p-2">{r.referencia}</td>
                     <td className="p-2">{r.usuario || "—"}</td>
+                    <td className="p-2">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ${colorEstado(r.estado)}`}>{r.estado || "Surtida"}</span>
+                      {r.estado === "Rechazada" && r.motivo_rechazo && <span className="block text-[11px] text-[var(--gray-500)] mt-0.5">{r.motivo_rechazo}</span>}
+                      {r.aprobado_por && r.estado !== "Pendiente de aprobación" && <span className="block text-[11px] text-[var(--gray-500)] mt-0.5">por {r.aprobado_por}</span>}
+                    </td>
                     <td className="p-2 text-right">{moneda(Number(r.total))}</td>
-                    <td className="p-2 text-right"><button type="button" className="text-[var(--blue)] font-bold" onClick={() => imprimirRequisicion(r)}>Imprimir</button></td>
+                    <td className="p-2 text-right whitespace-nowrap">
+                      {r.estado === "Pendiente de aprobación" ? (
+                        puedeAprobar ? (
+                          <span className="inline-flex gap-2">
+                            <button type="button" disabled={atendiendo === r.folio} className="bg-[var(--green)] text-white rounded-md px-2.5 py-1 font-bold disabled:opacity-50" onClick={() => atender(r.folio, "aprobar")}>Aprobar</button>
+                            <button type="button" disabled={atendiendo === r.folio} className="bg-[#fdeaea] text-[var(--red)] rounded-md px-2.5 py-1 font-bold disabled:opacity-50" onClick={() => atender(r.folio, "rechazar")}>Rechazar</button>
+                          </span>
+                        ) : (
+                          <span className="text-[11.5px] text-[var(--gray-400)]">En espera</span>
+                        )
+                      ) : r.estado !== "Rechazada" ? (
+                        <button type="button" className="text-[var(--blue)] font-bold" onClick={() => imprimirRequisicion(r)}>Imprimir</button>
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
-                {historial.length === 0 && <tr><td colSpan={6} className="p-4 text-center text-[var(--gray-400)]">Sin requisiciones.</td></tr>}
+                {historial.length === 0 && <tr><td colSpan={7} className="p-4 text-center text-[var(--gray-400)]">Sin requisiciones.</td></tr>}
               </tbody>
             </table>
           </div>

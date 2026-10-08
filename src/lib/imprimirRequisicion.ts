@@ -1,7 +1,7 @@
 // Formato imprimible de requisición de almacén: media hoja carta (2 por hoja: original y copia),
 // mismo estilo que el recibo de nómina.
 type ItemReq = { articulo: string; categoria?: string | null; tipo?: string; ubicacion: string; cantidad: number; costo: number; importe: number; queda_ubicacion: number; queda_total: number };
-export type Requisicion = { folio: string; referencia: string; items: ItemReq[]; total: number | string; usuario: string | null; created_at: string };
+export type Requisicion = { folio: string; referencia: string; items: ItemReq[]; total: number | string; usuario: string | null; created_at: string; estado?: string; aprobado_por?: string | null; motivo_rechazo?: string | null };
 
 const esc = (t: unknown) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] as string);
 const moneda = (v: number | string) => new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(Number(v) || 0);

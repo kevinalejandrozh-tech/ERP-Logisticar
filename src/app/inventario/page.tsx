@@ -60,6 +60,7 @@ const sw = { fill: "none" as const, stroke: "#2f6fed", strokeWidth: 2 };
 
 const COLOR_ESTADO: Record<EstadoInventario, { bg: string; fg: string }> = {
   Activo: { bg: "#e6f6ee", fg: "var(--green)" },
+  Inactivo: { bg: "#eef0f4", fg: "#5b6478" },
   "En reparación": { bg: "#fdf4e1", fg: "#b7800f" },
   "En almacén": { bg: "var(--blue-light)", fg: "var(--blue)" },
   Baja: { bg: "#fdeaea", fg: "var(--red)" },
@@ -112,6 +113,12 @@ export default function InventarioPage() {
   const [categoriaNueva, setCategoriaNueva] = useState("");
   const [estadoNuevo, setEstadoNuevo] = useState<EstadoInventario>("Activo");
   const [datosNuevos, setDatosNuevos] = useState<Record<string, string>>({});
+  // Opcional: sumar el producto a las existencias de almacén (catálogo de requisiciones y entradas de OC).
+  const [sumarAlmacen, setSumarAlmacen] = useState(false);
+  const [almCantidad, setAlmCantidad] = useState("1");
+  const [almUbicacion, setAlmUbicacion] = useState("");
+  const [almCosto, setAlmCosto] = useState("");
+  const [ubicacionesAlm, setUbicacionesAlm] = useState<{ codigo: string; nombre?: string | null }[]>([]);
   const [errorForm, setErrorForm] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
@@ -193,6 +200,14 @@ export default function InventarioPage() {
     setEstadoNuevo("Activo");
     setDatosNuevos({});
     setErrorForm(null);
+    setSumarAlmacen(false);
+    setAlmCantidad("1");
+    setAlmUbicacion("");
+    setAlmCosto("");
+    fetch("/api/inventario/almacen/ubicaciones", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setUbicacionesAlm(Array.isArray(d.ubicaciones) ? d.ubicaciones : []))
+      .catch(() => setUbicacionesAlm([]));
     setModalAgregar(true);
   };
 
@@ -217,6 +232,7 @@ export default function InventarioPage() {
     if (!categoria) return setErrorForm("Selecciona una categoría.");
     const faltantes = [...CAMPOS_GENERALES, ...camposActivos(categoria)].filter((c) => c.requerido && !datosNuevos[c.clave]?.trim());
     if (faltantes.length > 0) return setErrorForm(`Completa: ${faltantes.map((c) => c.etiqueta).join(", ")}.`);
+    if (sumarAlmacen && (!(Number(almCantidad) > 0) || !almUbicacion)) return setErrorForm("Indica cantidad y ubicación de almacén.");
 
     setGuardando(true);
     setErrorForm(null);
@@ -224,7 +240,12 @@ export default function InventarioPage() {
       const res = await fetch("/api/inventario/equipos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ categoria: categoria.clave, estado: estadoNuevo, datos: datosNuevos }),
+        body: JSON.stringify({
+          categoria: categoria.clave,
+          estado: estadoNuevo,
+          datos: datosNuevos,
+          almacen: sumarAlmacen ? { cantidad: Number(almCantidad), ubicacion: almUbicacion, costo: Number(almCosto) || 0 } : null,
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "No se pudo guardar el equipo.");
@@ -350,7 +371,7 @@ export default function InventarioPage() {
 
         {vistaInv === "bienes" && (<>
         {/* Resumen */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-5">
           <div className="bg-[var(--navy)] rounded-2xl p-4 text-white">
             <p className="text-[11px] uppercase tracking-wide opacity-80 m-0">Total de equipos</p>
             <p className="text-[26px] font-bold m-0">{equipos.length}</p>
@@ -391,6 +412,10 @@ export default function InventarioPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
               Categorías
             </Link>
+            <button type="button" onClick={abrirAgregar} disabled={cargando || categoriasActivas.length === 0} className="flex-1 lg:flex-none flex items-center justify-center gap-2 bg-[var(--navy)] text-white rounded-lg px-5 py-2.5 text-[13px] font-bold whitespace-nowrap disabled:opacity-50">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>
+              Agregar producto
+            </button>
           </div>
         </div>
 
@@ -406,7 +431,7 @@ export default function InventarioPage() {
             </div>
           ) : equiposFiltrados.length === 0 ? (
             <p className="text-[13px] text-[var(--gray-400)] py-8 text-center">
-              {equipos.length === 0 ? "Aún no hay equipos registrados. Usa \"Entrada\" → \"Registrar equipo individual con QR\"." : "No hay equipos que coincidan con la búsqueda o los filtros."}
+              {equipos.length === 0 ? "Aún no hay equipos registrados. Usa \"Agregar producto\" para registrar el primero." : "No hay equipos que coincidan con la búsqueda o los filtros."}
             </p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5 md:gap-5">
@@ -458,7 +483,7 @@ export default function InventarioPage() {
       {modalAgregar && (
         <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => !guardando && setModalAgregar(false)}>
           <div className="bg-white rounded-2xl w-full max-w-[760px] max-h-[92vh] overflow-y-auto p-5 md:p-7" onClick={(ev) => ev.stopPropagation()}>
-            <h3 className="text-[17px] font-bold text-[var(--navy)] m-0 mb-1">Agregar equipo al inventario</h3>
+            <h3 className="text-[17px] font-bold text-[var(--navy)] m-0 mb-1">Agregar producto al inventario</h3>
             <p className="text-[12px] text-[var(--gray-400)] m-0 mb-5">Elige la categoría: solo se mostrarán los campos que le corresponden.</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-5">
@@ -503,6 +528,35 @@ export default function InventarioPage() {
                   <span className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Notas</span>
                   <textarea value={datosNuevos.notas || ""} onChange={(e) => setDatosNuevos((p) => ({ ...p, notas: e.target.value }))} rows={2} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
                 </label>
+
+                <div className="border border-[var(--gray-200)] rounded-xl p-3.5 mb-5">
+                  <label className="flex items-center gap-2 text-[13px] font-bold text-[var(--navy)] cursor-pointer">
+                    <input type="checkbox" checked={sumarAlmacen} onChange={(e) => setSumarAlmacen(e.target.checked)} />
+                    Sumar a existencias de almacén
+                  </label>
+                  <p className="text-[11.5px] text-[var(--gray-400)] m-0 mt-1">El producto queda disponible en Requisición de Almacén y las entradas de OC con el mismo nombre se suman a él.</p>
+                  {sumarAlmacen && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+                      <label className="block">
+                        <span className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Cantidad <span className="text-[var(--red)]">*</span></span>
+                        <input type="number" min={1} value={almCantidad} onChange={(e) => setAlmCantidad(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+                      </label>
+                      <label className="block">
+                        <span className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Ubicación <span className="text-[var(--red)]">*</span></span>
+                        <select value={almUbicacion} onChange={(e) => setAlmUbicacion(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px] bg-white">
+                          <option value="">{ubicacionesAlm.length ? "Selecciona…" : "Sin ubicaciones (créalas en Ubicaciones)"}</option>
+                          {ubicacionesAlm.map((u) => (
+                            <option key={u.codigo} value={u.codigo}>{u.codigo}{u.nombre ? ` · ${u.nombre}` : ""}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Costo unitario</span>
+                        <input type="number" min={0} step="0.01" value={almCosto} onChange={(e) => setAlmCosto(e.target.value)} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+                      </label>
+                    </div>
+                  )}
+                </div>
               </>
             )}
 

@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { ensureInventarioSchema } from "@/lib/inventarioDB";
+import { articuloId, ensureAlmacenSchema, siguienteFolio, sumarExistencia, ubicacionPorCodigo, usuarioDe } from "@/lib/almacenDB";
 import {
   CAMPOS_GENERALES,
   camposActivos,
@@ -112,14 +113,27 @@ export async function GET(req: Request) {
 }
 
 // POST /api/inventario/equipos
-// Body: { categoria: "laptop", estado: "Activo", datos: { nombre: "...", ... } }
+// Body: { categoria: "laptop", estado: "Activo", datos: { nombre: "...", ... },
+//         almacen?: { cantidad, ubicacion, costo } }
 // El folio lo genera el servidor con el prefijo y el consecutivo de la categoría.
-export async function POST(req: Request) {
+// Si viene `almacen`, en la misma transacción se suma el producto a las existencias de almacén
+// (artículo por nombre, movimiento de Entrada y folio de recibo REC-…).
+export async function POST(req: NextRequest) {
   const pool = getPool();
+  await ensureAlmacenSchema().catch(() => {}); // incluye ensureInventarioSchema
+  const usuario = await usuarioDe(req).catch(() => null);
   const client = await pool.connect();
   try {
     await ensureInventarioSchema();
     const body = await req.json();
+
+    const alm = body.almacen && typeof body.almacen === "object" ? body.almacen : null;
+    const almCantidad = alm ? Number(alm.cantidad) : 0;
+    const almUbicacion = alm ? String(alm.ubicacion || "").trim() : "";
+    const almCosto = alm ? Math.max(0, Number(alm.costo) || 0) : 0;
+    if (alm && (!(almCantidad > 0) || !almUbicacion)) {
+      return NextResponse.json({ error: "Indica cantidad y ubicación de almacén." }, { status: 400 });
+    }
 
     const claveCategoria = typeof body.categoria === "string" ? body.categoria.trim() : "";
     if (!claveCategoria) return NextResponse.json({ error: "Selecciona una categoría." }, { status: 400 });
@@ -130,8 +144,8 @@ export async function POST(req: Request) {
     await client.query("BEGIN");
 
     // FOR UPDATE bloquea la categoría mientras se asigna el folio (evita folios repetidos).
-    const cat = await client.query<{ clave: string; prefijo: string; campos: CampoInventario[]; activa: boolean; consecutivo: number }>(
-      `SELECT clave, prefijo, campos, activa, consecutivo FROM inventario_categorias WHERE clave = $1 FOR UPDATE`,
+    const cat = await client.query<{ clave: string; nombre: string; prefijo: string; campos: CampoInventario[]; activa: boolean; consecutivo: number }>(
+      `SELECT clave, nombre, prefijo, campos, activa, consecutivo FROM inventario_categorias WHERE clave = $1 FOR UPDATE`,
       [claveCategoria]
     );
     if (!cat.rowCount) {
@@ -170,8 +184,28 @@ export async function POST(req: Request) {
       [folio, categoria.clave, estado, JSON.stringify(validacion.datos)]
     );
 
+    let recibo: string | null = null;
+    if (alm) {
+      const nombre = validacion.datos.nombre;
+      const u = await ubicacionPorCodigo(client, almUbicacion);
+      const aid = await articuloId(client, nombre, "Inventario", categoria.nombre, almCosto);
+      await sumarExistencia(client, aid, u.id, almCantidad);
+      recibo = await siguienteFolio(client, "REC");
+      await client.query(
+        `INSERT INTO alm_movimientos (tipo, folio, articulo_id, articulo, ubicacion_id, ubicacion, cantidad, costo_unitario, referencia, fecha_compra, usuario)
+         VALUES ('Entrada', $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [recibo, aid, nombre, u.id, u.codigo, almCantidad, almCosto, `Alta de producto ${folio}`, validacion.datos.fecha_adquisicion || null, usuario]
+      );
+      await client.query(`INSERT INTO alm_recibos (folio, origen, oc_folios, items, total, usuario) VALUES ($1, 'Directo', '[]', $2, $3, $4)`, [
+        recibo,
+        JSON.stringify([{ cantidad: almCantidad, articulo: nombre, categoria: categoria.nombre, tipo: "Inventario", precio: almCosto, ubicacion: u.codigo, equipo: folio }]),
+        almCantidad * almCosto,
+        usuario,
+      ]);
+    }
+
     await client.query("COMMIT");
-    return NextResponse.json({ ok: true, registro: aEquipo(insertado.rows[0]) }, { status: 201 });
+    return NextResponse.json({ ok: true, registro: aEquipo(insertado.rows[0]), recibo }, { status: 201 });
   } catch (err) {
     await client.query("ROLLBACK").catch(() => {});
     return NextResponse.json({ error: mensajeError(err, "Error al registrar el equipo.") }, { status: 500 });

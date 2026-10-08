@@ -8,6 +8,7 @@ import type { EquipoPublico, EstadoInventario } from "@/lib/inventarioData";
 
 const COLOR_ESTADO: Record<EstadoInventario, { bg: string; fg: string }> = {
   Activo: { bg: "#e6f6ee", fg: "var(--green)" },
+  Inactivo: { bg: "#eef0f4", fg: "#5b6478" },
   "En reparación": { bg: "#fdf4e1", fg: "#b7800f" },
   "En almacén": { bg: "var(--blue-light)", fg: "var(--blue)" },
   Baja: { bg: "#fdeaea", fg: "var(--red)" },

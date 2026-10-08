@@ -37,7 +37,7 @@ function LoginForm() {
         <div className="flex flex-col items-center mb-6">
           <Logo size={54} enlace={false} />
           <p className="font-display font-medium text-[var(--red)] text-[12px] tracking-[0.12em] mt-3">TRANSPORTES LOGISTICAR</p>
-          <h1 className="font-display font-medium text-[var(--navy)] text-[20px] mt-1.5">Iniciar sesión en el servidor privado</h1>
+          <h1 className="font-display font-medium text-[var(--navy)] text-[20px] mt-1.5">Iniciar sesión</h1>
         </div>
         <form onSubmit={iniciarSesion} className="flex flex-col gap-3.5">
           <div>

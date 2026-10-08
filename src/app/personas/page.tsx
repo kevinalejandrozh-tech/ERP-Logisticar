@@ -37,6 +37,7 @@ export default function PersonasPage() {
   const [puestoSel, setPuestoSel] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [copiado, setCopiado] = useState(false);
+  const [esSysadmin, setEsSysadmin] = useState(false);
   const linkEvaluacion = (p: string) => `${typeof window !== "undefined" ? window.location.origin : ""}/personas/evaluacion-candidatos/formulario?puesto=${encodeURIComponent(p)}`;
 
   const elegirPuesto = (p: string) => {
@@ -57,6 +58,13 @@ export default function PersonasPage() {
     }
   };
 
+  useEffect(() => {
+    // Documentos de candidatos (enlace general): la tarjeta solo se muestra al sysadmin.
+    fetch("/api/auth/sesion", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setEsSysadmin(d?.rol === "sysadmin"))
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     fetch("/api/operadores/list", { cache: "no-store" })
       .then((res) => res.json())
@@ -162,6 +170,14 @@ export default function PersonasPage() {
               titulo="Evaluaciones enviadas"
               descripcion="Consulta resultados de candidatos e imprime su dictamen."
             />
+            {esSysadmin && (
+              <MenuCard
+                href="/personas/documentos-candidatos"
+                icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6M12 18v-6M9 15l3-3 3 3" /></svg>}
+                titulo="Documentos de candidatos"
+                descripcion="Comparte el enlace de carga y consulta los registros completos e incompletos."
+              />
+            )}
             <MenuCard
               href="/personas/nomina"
               icono={<svg width="22" height="22" viewBox="0 0 24 24" {...sw}><rect x="2" y="5" width="20" height="14" rx="2" /><circle cx="12" cy="12" r="2.8" /><path d="M6 9v.01M18 15v.01" /></svg>}

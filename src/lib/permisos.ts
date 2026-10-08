@@ -96,7 +96,7 @@ const API_COMUNES = [
 ];
 
 // Exclusivo del sysadmin (rol principal).
-export const PREFIJOS_SOLO_SYSADMIN = ["/admin", "/api/auth/usuarios", "/api/auth/registro", "/api/auth/password", "/api/auth/roles"];
+export const PREFIJOS_SOLO_SYSADMIN = ["/admin", "/api/auth/usuarios", "/api/auth/registro", "/api/auth/password", "/api/auth/roles", "/personas/documentos-candidatos", "/api/candidatos-documentos"]; // Documentos de candidatos (enlace general): solo el sysadmin consulta los registros
 
 export const ROLES_SISTEMA: { rol: string; etiqueta: string; descripcion: string }[] = [
   { rol: "sysadmin", etiqueta: "Sysadmin", descripcion: "Acceso total. Único rol con Gestión de usuarios." },

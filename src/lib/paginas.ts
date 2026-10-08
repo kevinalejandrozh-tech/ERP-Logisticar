@@ -26,6 +26,7 @@ export const PAGINAS_SISTEMA: PaginaSistema[] = [
   { ruta: "/personas/uniformes", titulo: "Uniformes", seccion: "Recursos Humanos", palabras: "responsiva ropa" },
   { ruta: "/personas/mochilas-covid", titulo: "Mochilas Covid", seccion: "Recursos Humanos", palabras: "covid mochila" },
   { ruta: "/personas/evaluaciones-candidatos", titulo: "Evaluaciones de candidatos", seccion: "Recursos Humanos", palabras: "reclutamiento candidatos psicometrica" },
+  { ruta: "/personas/documentos-candidatos", titulo: "Documentos de candidatos", seccion: "Recursos Humanos", palabras: "reclutamiento candidatos documentacion expediente enlace" },
   { ruta: "/personas/documentos", titulo: "Documentos de RH", seccion: "Recursos Humanos", palabras: "documentos formatos" },
   { ruta: "/personas/nomina", titulo: "Nómina", seccion: "Recursos Humanos", palabras: "nomina sueldos recibos pagos" },
   { ruta: "/personas/nomina/semana", titulo: "Nómina semanal", seccion: "Recursos Humanos", palabras: "nomina captura semana" },

@@ -938,4 +938,26 @@ created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 `);
 await p.query(`CREATE INDEX IF NOT EXISTS idx_evaluacion_documentos_ev ON evaluacion_documentos (evaluacion_id);`);
+// Registro de documentos de candidatos por enlace general (sin evaluación). Solo lo consulta el sysadmin.
+await p.query(`
+CREATE TABLE IF NOT EXISTS candidato_registros (
+id SERIAL PRIMARY KEY,
+nombre TEXT NOT NULL,
+puesto TEXT NOT NULL,
+token TEXT NOT NULL UNIQUE,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`
+CREATE TABLE IF NOT EXISTS candidato_registro_documentos (
+id SERIAL PRIMARY KEY,
+registro_id INTEGER NOT NULL REFERENCES candidato_registros(id) ON DELETE CASCADE,
+tipo TEXT NOT NULL,
+nombre TEXT,
+mime TEXT NOT NULL,
+contenido TEXT NOT NULL,
+created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+`);
+await p.query(`CREATE INDEX IF NOT EXISTS idx_candidato_registro_documentos_reg ON candidato_registro_documentos (registro_id);`);
 }

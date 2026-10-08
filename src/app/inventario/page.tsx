@@ -130,6 +130,11 @@ export default function InventarioPage() {
   const [estadoEditado, setEstadoEditado] = useState<EstadoInventario>("Activo");
   const [guardandoEstado, setGuardandoEstado] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
+  // Edición de datos del equipo (folio, categoría y QR no cambian).
+  const [editando, setEditando] = useState(false);
+  const [datosEditados, setDatosEditados] = useState<Record<string, string>>({});
+  const [guardandoDatos, setGuardandoDatos] = useState(false);
+  const [errorEdicion, setErrorEdicion] = useState<string | null>(null);
 
   // Carga categorías (incluidas las desactivadas, para mostrar su nombre) y equipos.
   const cargar = useCallback(() => {
@@ -225,6 +230,39 @@ export default function InventarioPage() {
     setEquipoSeleccionado(equipo);
     setEstadoEditado(equipo.estado);
     setMensajeEstado(null);
+    setEditando(false);
+    setErrorEdicion(null);
+  };
+
+  const iniciarEdicion = (equipo: EquipoInventario) => {
+    setDatosEditados({ ...equipo.datos });
+    setErrorEdicion(null);
+    setEditando(true);
+  };
+
+  const guardarDatos = async () => {
+    if (!equipoSeleccionado) return;
+    if (!datosEditados.nombre?.trim()) return setErrorEdicion("El nombre es obligatorio.");
+    setGuardandoDatos(true);
+    setErrorEdicion(null);
+    try {
+      const res = await fetch("/api/inventario/equipos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: equipoSeleccionado.id, datos: datosEditados }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "No se pudieron guardar los cambios.");
+      const actualizado: EquipoInventario = data.registro;
+      setEquipos((prev) => prev.map((e) => (e.id === actualizado.id ? actualizado : e)));
+      setEquipoSeleccionado(actualizado);
+      setEditando(false);
+      setMensajeEstado({ tipo: "ok", texto: "Datos actualizados." });
+    } catch (err) {
+      setErrorEdicion(err instanceof Error ? err.message : "No se pudieron guardar los cambios.");
+    } finally {
+      setGuardandoDatos(false);
+    }
   };
 
   const guardarEquipo = async () => {
@@ -472,9 +510,23 @@ export default function InventarioPage() {
             <div className="w-[210px] h-[210px] rounded-xl bg-white border border-[var(--gray-200)] flex items-center justify-center mx-auto mb-4 p-2.5">
               <canvas id="qr-inv-modal" />
             </div>
-            <button type="button" onClick={() => setQrEquipo(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
-              Cerrar
-            </button>
+            <div className="flex gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  const eq = qrEquipo;
+                  setQrEquipo(null);
+                  abrirDetalle(eq);
+                  iniciarEdicion(eq);
+                }}
+                className="bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-5 py-2.5 text-[13px] font-bold"
+              >
+                Editar datos
+              </button>
+              <button type="button" onClick={() => setQrEquipo(null)} className="bg-[var(--navy)] text-white rounded-lg px-6 py-2.5 text-[13px] font-bold">
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -574,7 +626,7 @@ export default function InventarioPage() {
 
       {/* Modal: detalle + QR + cambio de estado */}
       {equipoSeleccionado && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => !guardandoEstado && setEquipoSeleccionado(null)}>
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-3" onClick={() => !guardandoEstado && !guardandoDatos && setEquipoSeleccionado(null)}>
           <div className="bg-white rounded-2xl w-full max-w-[720px] max-h-[92vh] overflow-y-auto p-5 md:p-7" onClick={(ev) => ev.stopPropagation()}>
             <div className="flex flex-col sm:flex-row gap-5">
               <div className="flex flex-col items-center shrink-0">
@@ -589,7 +641,15 @@ export default function InventarioPage() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-[11px] font-bold text-[var(--blue)] m-0">{nombreCategoria(equipoSeleccionado.categoria)}</p>
-                <h3 className="text-[18px] font-bold text-[var(--navy)] m-0 mb-3 break-words">{equipoSeleccionado.datos.nombre}</h3>
+                <div className="flex items-start gap-2 mb-3">
+                  <h3 className="flex-1 text-[18px] font-bold text-[var(--navy)] m-0 break-words">{equipoSeleccionado.datos.nombre}</h3>
+                  {!editando && (
+                    <button type="button" onClick={() => iniciarEdicion(equipoSeleccionado)} className="shrink-0 flex items-center gap-1.5 bg-[var(--blue-light)] text-[var(--blue)] rounded-lg px-3 py-1.5 text-[12.5px] font-bold">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2.2"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>
+                      Editar
+                    </button>
+                  )}
+                </div>
 
                 {/* Cambio de estado */}
                 <div className="bg-[var(--gray-100)] rounded-xl p-3 mb-4">
@@ -622,6 +682,26 @@ export default function InventarioPage() {
                   )}
                 </div>
 
+                {editando ? (
+                  <div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[CAMPOS_GENERALES[0], ...camposDetalle].map((c) => (
+                        <Campo key={c.clave} campo={c} valor={datosEditados[c.clave] || ""} onChange={(v) => setDatosEditados((p) => ({ ...p, [c.clave]: v }))} />
+                      ))}
+                    </div>
+                    <label className="block mt-3">
+                      <span className="block text-[11.5px] font-bold text-[var(--navy)] mb-1">Notas</span>
+                      <textarea value={datosEditados.notas || ""} onChange={(e) => setDatosEditados((p) => ({ ...p, notas: e.target.value }))} rows={3} className="w-full border border-[var(--gray-200)] rounded-lg px-3 py-2 text-[13px]" />
+                    </label>
+                    {errorEdicion && <p className="text-[12.5px] text-[var(--red)] font-semibold mt-2 mb-0">{errorEdicion}</p>}
+                    <div className="flex justify-end gap-2 mt-3">
+                      <button type="button" disabled={guardandoDatos} onClick={() => { setEditando(false); setErrorEdicion(null); }} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)] disabled:opacity-50">Cancelar</button>
+                      <button type="button" disabled={guardandoDatos} onClick={guardarDatos} className="px-5 py-2 rounded-lg text-[13px] font-bold text-white bg-[var(--navy)] disabled:opacity-50">
+                        {guardandoDatos ? "Guardando…" : "Guardar cambios"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (<>
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 m-0">
                   {camposDetalle.map((c) => (
                     <div key={c.clave}>
@@ -631,10 +711,11 @@ export default function InventarioPage() {
                   ))}
                 </dl>
                 {equipoSeleccionado.datos.notas && <p className="text-[12.5px] text-[var(--text)] mt-3 bg-[var(--gray-100)] rounded-lg p-2.5 whitespace-pre-wrap">{equipoSeleccionado.datos.notas}</p>}
+                </>)}
               </div>
             </div>
             <div className="flex justify-end mt-5">
-              <button type="button" disabled={guardandoEstado} onClick={() => setEquipoSeleccionado(null)} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)] disabled:opacity-50">Cerrar</button>
+              <button type="button" disabled={guardandoEstado || guardandoDatos} onClick={() => setEquipoSeleccionado(null)} className="px-4 py-2 rounded-lg text-[13px] font-bold text-[var(--navy)] bg-[var(--gray-100)] disabled:opacity-50">Cerrar</button>
             </div>
           </div>
         </div>

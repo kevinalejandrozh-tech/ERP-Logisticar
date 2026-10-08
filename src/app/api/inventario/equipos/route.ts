@@ -213,3 +213,39 @@ export async function POST(req: NextRequest) {
     client.release();
   }
 }
+// PATCH /api/inventario/equipos
+// Body: { id: 12, datos: { nombre: "...", ... } } — edita los datos de un equipo ya registrado.
+// Folio y categoría no cambian (el QR sigue siendo el mismo). Se validan los campos generales y los
+// de la categoría (incluidos los desactivados); lo capturado en campos que ya no existen se conserva.
+export async function PATCH(req: NextRequest) {
+  try {
+    await ensureInventarioSchema();
+    const body = await req.json();
+    const id = Number(body?.id);
+    if (!Number.isInteger(id) || id <= 0) return NextResponse.json({ error: "Equipo inválido." }, { status: 400 });
+
+    const pool = getPool();
+    const actual = await pool.query<{ datos: Record<string, string>; campos: CampoInventario[] }>(
+      `SELECT e.datos, c.campos FROM inventario_equipos e JOIN inventario_categorias c ON c.clave = e.categoria_clave WHERE e.id = $1`,
+      [id]
+    );
+    if (!actual.rowCount) return NextResponse.json({ error: "El equipo no existe." }, { status: 404 });
+
+    const campos = [...CAMPOS_GENERALES, ...(actual.rows[0].campos || []).map((c) => ({ ...c, requerido: c.activo === false ? false : c.requerido }))];
+    const validacion = validarDatos(body?.datos, campos);
+    if (!validacion.ok) return NextResponse.json({ error: validacion.error }, { status: 400 });
+
+    const editables = new Set([...campos.map((c) => c.clave), "notas"]);
+    const conservados = Object.fromEntries(Object.entries(actual.rows[0].datos || {}).filter(([k]) => !editables.has(k)));
+    const datos = { ...conservados, ...validacion.datos };
+
+    const r = await pool.query<FilaEquipo>(
+      `UPDATE inventario_equipos SET datos = $2::jsonb, updated_at = now() WHERE id = $1
+       RETURNING id, folio, categoria_clave, estado, datos, created_at, updated_at`,
+      [id, JSON.stringify(datos)]
+    );
+    return NextResponse.json({ ok: true, registro: aEquipo(r.rows[0]) });
+  } catch (err) {
+    return NextResponse.json({ error: mensajeError(err, "Error al actualizar el equipo.") }, { status: 500 });
+  }
+}

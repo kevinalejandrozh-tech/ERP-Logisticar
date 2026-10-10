@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
+import AsistenciaDia from "./AsistenciaDia";
 
 type Dispositivo = { ip: string; modelo: string | null; serie: string | null; firmware: string | null; ultimo_error: string | null };
 type Fila = {
@@ -47,6 +48,7 @@ function Marca({ ok, texto }: { ok: boolean; texto: string }) {
 }
 
 export default function RelojChecadorPage() {
+  const [vista, setVista] = useState<"dia" | "personal">("dia");
   const [estado, setEstado] = useState<Estado | null>(null);
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
@@ -68,8 +70,8 @@ export default function RelojChecadorPage() {
   }, []);
 
   useEffect(() => {
-    cargar();
-  }, [cargar]);
+    if (vista === "personal" && !estado) cargar();
+  }, [vista, estado, cargar]);
 
   const accion = async (cuerpo: Record<string, unknown>, confirmar?: string) => {
     if (confirmar && !window.confirm(confirmar)) return;
@@ -119,7 +121,23 @@ export default function RelojChecadorPage() {
   return (
     <div className="min-h-screen bg-[var(--gray-50)]">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14">
-        <PageHeader titulo="Reloj checador" subtitulo="Alta del personal en el reloj biométrico (rostro, huella y tarjeta)." backHref="/asistencia" backLabel="Asistencia" />
+        <PageHeader titulo="Reloj checador" subtitulo="Asistencia diaria desde el reloj biométrico y alta del personal (rostro, huella y tarjeta)." backHref="/asistencia" backLabel="Asistencia" />
+
+        <div className="flex flex-wrap gap-2 mb-4" role="tablist">
+          {[
+            { k: "dia" as const, t: "Asistencia del día" },
+            { k: "personal" as const, t: "Personal y biometría" },
+          ].map((o) => (
+            <button key={o.k} type="button" role="tab" aria-selected={vista === o.k} onClick={() => setVista(o.k)} className={`btn ${vista === o.k ? "btn-primario" : "btn-secundario"}`}>
+              {o.t}
+            </button>
+          ))}
+        </div>
+
+        {vista === "dia" ? (
+          <AsistenciaDia />
+        ) : (
+        <>
 
         {/* Estado del dispositivo */}
         <div className="bg-white border border-[var(--gray-200)] rounded-lg mb-4 p-4 flex flex-wrap items-center gap-x-8 gap-y-2">
@@ -297,6 +315,8 @@ export default function RelojChecadorPage() {
           <p className="m-0"><b className="text-[var(--navy)] font-medium">No. reloj:</b> es el número del expediente en el ERP; así cada checada se asigna automáticamente a la persona correcta.</p>
           <p className="m-0"><b className="text-[var(--navy)] font-medium">Bajas:</b> al dar de baja a alguien en el ERP, quítalo del reloj con el botón “Quitar bajas del reloj”.</p>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

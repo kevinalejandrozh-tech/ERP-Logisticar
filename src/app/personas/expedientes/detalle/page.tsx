@@ -105,6 +105,15 @@ export default function DetalleExpedientePage() {
   const [catalogo, setCatalogo] = useState<CapacitacionCatalogo[]>([]);
   const [evaluacionesPersona, setEvaluacionesPersona] = useState<Record<string, { aciertos: number; fecha: string }>>({});
   const [asignarCursoAbierto, setAsignarCursoAbierto] = useState(false);
+  const [fotoAmpliada, setFotoAmpliada] = useState(false);
+
+  // La fotografía ampliada se cierra también con la tecla Escape.
+  useEffect(() => {
+    if (!fotoAmpliada) return;
+    const alPresionar = (e: KeyboardEvent) => { if (e.key === "Escape") setFotoAmpliada(false); };
+    window.addEventListener("keydown", alPresionar);
+    return () => window.removeEventListener("keydown", alPresionar);
+  }, [fotoAmpliada]);
 
   const cargar = () => {
     const id = new URLSearchParams(window.location.search).get("id");
@@ -359,12 +368,30 @@ export default function DetalleExpedientePage() {
 
         {registro && (
           <>
+            {/* Fotografía ampliada al dar clic en la foto del colaborador */}
+            {fotoAmpliada && registro.fotografia && (
+              <div className="fixed inset-0 bg-[rgba(22,33,92,0.55)] backdrop-blur-[2px] flex flex-col items-center justify-center gap-4 p-4 z-[70]" onClick={() => setFotoAmpliada(false)}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={registro.fotografia}
+                  alt={registro.nombre}
+                  onClick={(e) => e.stopPropagation()}
+                  className="max-w-[92vw] max-h-[78vh] w-auto h-auto rounded-[28px] object-contain bg-white shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
+                />
+                <button type="button" onClick={() => setFotoAmpliada(false)} className="bg-[var(--navy)] text-white rounded-xl px-8 py-2.5 text-[14px] font-bold shadow-[0_6px_18px_rgba(22,33,92,0.35)]">
+                  Cerrar
+                </button>
+              </div>
+            )}
+
             {/* Encabezado del colaborador */}
             <div className="bg-white rounded-2xl p-4 sm:p-5 shadow-[0_1px_3px_rgba(22,33,92,0.06)] mb-4">
               <div className="flex items-start gap-4 flex-wrap">
                 {registro.fotografia ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={registro.fotografia} alt={registro.nombre} className="w-[92px] h-[92px] rounded-2xl object-cover border border-[var(--gray-200)] shrink-0" />
+                  <button type="button" onClick={() => setFotoAmpliada(true)} title="Ver fotografía" className="shrink-0 rounded-2xl cursor-zoom-in">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={registro.fotografia} alt={registro.nombre} className="w-[92px] h-[92px] rounded-2xl object-cover border border-[var(--gray-200)] transition hover:opacity-90" />
+                  </button>
                 ) : (
                   <div className="w-[92px] h-[92px] rounded-2xl bg-[var(--blue-light)] flex items-center justify-center shrink-0">
                     <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#2f6fed" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" /></svg>

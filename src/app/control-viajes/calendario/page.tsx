@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import CampoMoneda from "@/components/CampoMoneda";
@@ -225,6 +225,30 @@ export default function CalendarioViajesPage() {
     const ini = hoy;
     setDesde(ini);
     setHasta(sumarDiasIso(ini, n - 1));
+  };
+
+  // Días visibles: semana configurada o un rango fijo desde el día inicial.
+  const verDias = (n: number) => {
+    if (!n) {
+      cambiarModo("semana");
+      return;
+    }
+    setModo("rango");
+    setHasta(sumarDiasIso(desde, Math.min(MAX_DIAS, n) - 1));
+  };
+  // Desplazamiento lateral: al llegar al borde derecho se agregan 7 días más (hasta el máximo).
+  const extendiendo = useRef(false);
+  useEffect(() => {
+    extendiendo.current = false;
+  }, [dias.length]);
+  const alDesplazar = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    if (extendiendo.current || dias.length >= MAX_DIAS) return;
+    if (el.scrollWidth > el.clientWidth && el.scrollLeft + el.clientWidth >= el.scrollWidth - 40) {
+      extendiendo.current = true;
+      setModo("rango");
+      setHasta(sumarDiasIso(ultimo, 7));
+    }
   };
 
   const porCelda = useMemo(() => {
@@ -493,7 +517,7 @@ export default function CalendarioViajesPage() {
 
   return (
     <div className="min-h-screen bg-[var(--gray-50)]">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14">
+      <div className="max-w-[1920px] mx-auto px-4 sm:px-6 md:px-10 lg:px-14">
         <PageHeader
           titulo="Calendario de viajes"
           subtitulo="Programa y da seguimiento a los viajes por unidad. Los viajes foráneos quedan en Asistencia como “Viaje foráneo”."
@@ -587,6 +611,20 @@ export default function CalendarioViajesPage() {
                 </button>
               ))}
             </div>
+            <select
+              value={modo === "semana" ? 0 : [14, 21, 31, MAX_DIAS].includes(dias.length) ? dias.length : -1}
+              onChange={(e) => verDias(Number(e.target.value))}
+              className={barraCls}
+              title="Días visibles en el calendario"
+              aria-label="Días visibles"
+            >
+              <option value={0}>Ver: 1 semana</option>
+              <option value={14}>Ver: 2 semanas</option>
+              <option value={21}>Ver: 3 semanas</option>
+              <option value={31}>Ver: 1 mes</option>
+              <option value={MAX_DIAS}>Ver: 2 meses</option>
+              {modo === "rango" && ![14, 21, 31, MAX_DIAS].includes(dias.length) && <option value={-1} disabled>Ver: {dias.length} días</option>}
+            </select>
             <button type="button" title="Configurar semana" aria-label="Configurar semana" onClick={() => { setCfgTmp(semanaCfg); setConfigAbierta(true); }} className="btn btn-secundario px-2.5 py-1.5">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /><circle cx="12" cy="16" r="2" /></svg>
             </button>
@@ -713,7 +751,7 @@ export default function CalendarioViajesPage() {
             </div>
           ) : (
             // Desplazamiento en ambos sentidos: encabezados de días fijos arriba y columna "Unidad" fija a la izquierda.
-            <div className="overflow-auto max-h-[calc(100vh-240px)] min-h-[320px]">
+            <div className="overflow-auto max-h-[calc(100vh-240px)] min-h-[320px]" onScroll={alDesplazar}>
               <table className="text-[13px] border-separate border-spacing-0 table-fixed" style={{ width: anchoTabla }}>
                 <colgroup>
                   <col style={{ width: ANCHO_UNIDAD }} />

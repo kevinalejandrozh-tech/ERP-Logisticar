@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sesionAsistencia } from "@/lib/asistenciaDB";
 import { dispositivoConfigurado, personalParaReloj, refrescarInfoDispositivo } from "@/lib/biometricoDB";
-import { ErrorReloj, eliminarUsuariosReloj, guardarUsuarioReloj, listarUsuariosReloj, UsuarioReloj } from "@/lib/hikvision";
+import { ErrorReloj, credencialesReloj, eliminarUsuariosReloj, guardarUsuarioReloj, listarUsuariosReloj, UsuarioReloj } from "@/lib/hikvision";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -18,6 +18,8 @@ const mensaje = (e: unknown) => (e instanceof Error ? e.message : "Ocurrió un e
 export async function GET(req: NextRequest) {
   const s = await sesionAsistencia(req);
   if (s instanceof NextResponse) return s;
+  // ?info=1 → solo la IP configurada (para el enlace a la página del reloj), sin consultar el dispositivo.
+  if (req.nextUrl.searchParams.get("info") === "1") return NextResponse.json({ ok: true, ip: credencialesReloj()?.ip || null });
   try {
     const disp = await dispositivoConfigurado();
     const personal = await personalParaReloj();

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import AsistenciaDia from "./AsistenciaDia";
+import AsistenciaSemana from "./AsistenciaSemana";
 
 type Dispositivo = { ip: string; modelo: string | null; serie: string | null; firmware: string | null; ultimo_error: string | null };
 type Fila = {
@@ -48,7 +49,14 @@ function Marca({ ok, texto }: { ok: boolean; texto: string }) {
 }
 
 export default function RelojChecadorPage() {
-  const [vista, setVista] = useState<"dia" | "personal">("dia");
+  const [vista, setVista] = useState<"dia" | "semana" | "personal">("dia");
+  const [ipReloj, setIpReloj] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/asistencia/reloj?info=1", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setIpReloj(d.ip || null))
+      .catch(() => {});
+  }, []);
   const [estado, setEstado] = useState<Estado | null>(null);
   const [cargando, setCargando] = useState(true);
   const [trabajando, setTrabajando] = useState(false);
@@ -126,16 +134,25 @@ export default function RelojChecadorPage() {
         <div className="flex flex-wrap gap-2 mb-4" role="tablist">
           {[
             { k: "dia" as const, t: "Asistencia del día" },
+            { k: "semana" as const, t: "Asistencia semanal" },
             { k: "personal" as const, t: "Personal y biometría" },
           ].map((o) => (
             <button key={o.k} type="button" role="tab" aria-selected={vista === o.k} onClick={() => setVista(o.k)} className={`btn ${vista === o.k ? "btn-primario" : "btn-secundario"}`}>
               {o.t}
             </button>
           ))}
+          {ipReloj && (
+            <a href={`http://${ipReloj}`} target="_blank" rel="noopener noreferrer" className="btn btn-secundario ml-auto" title="Abre la página del reloj (solo funciona dentro de la red de la empresa)">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 3h7v7M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" /></svg>
+              Abrir reloj checador ({ipReloj})
+            </a>
+          )}
         </div>
 
         {vista === "dia" ? (
           <AsistenciaDia />
+        ) : vista === "semana" ? (
+          <AsistenciaSemana />
         ) : (
         <>
 

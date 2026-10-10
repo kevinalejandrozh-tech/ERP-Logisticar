@@ -19,9 +19,14 @@ export async function GET(req: NextRequest) {
     // Las personas dadas de "Baja" no aparecen en ningun lado por defecto (list es el endpoint que
     // consumen tanto el listado de Expedientes como el selector de nombres en Capacitaciones, etc.),
     // salvo que se pida explicitamente incluirlas (usado por el filtro "Baja" del listado de Expedientes).
-    const incluirBaja = req.nextUrl.searchParams.get("incluirBaja") === "true";
+    // Sin sesión (página pública de tomar capacitación) solo se entregan id y nombre del personal activo:
+    // RFC, CURP, fotografía y demás datos del expediente requieren haber iniciado sesión.
+    const publico = !sesion;
+    const incluirBaja = !publico && req.nextUrl.searchParams.get("incluirBaja") === "true";
 
-    const campos = "id, nombre, puesto, categoria, cuenta, rfc, curp, tipo_personal, estatus, asistencia, area, estatus_laboral, fecha_ingreso, motivo_baja, fotografia";
+    const campos = publico
+      ? "id, nombre"
+      : "id, nombre, puesto, categoria, cuenta, rfc, curp, tipo_personal, estatus, asistencia, area, estatus_laboral, fecha_ingreso, motivo_baja, fotografia";
     const condiciones: string[] = [];
     if (soloTms) condiciones.push(`cuenta = 'TMS'`);
     if (!incluirBaja) condiciones.push(`estatus_laboral != 'Baja'`);

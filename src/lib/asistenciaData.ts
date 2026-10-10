@@ -22,7 +22,7 @@ export type AsistenciaRegistro = {
   hora_entrada: string | null;
   hora_salida: string | null;
   retardo: boolean;
-  origen: "QR" | "Manual" | "Programada" | "Viaje";
+  origen: "QR" | "Manual" | "Programada" | "Viaje" | "Biométrico";
   notas: string | null;
   entrada_ts: string | null; // "YYYY-MM-DDTHH:MM" (hora local)
   salida_ts: string | null;

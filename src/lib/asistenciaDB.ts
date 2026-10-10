@@ -58,6 +58,51 @@ async function crearEsquema() {
   await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS hora_entrada TEXT;`);
   await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS hora_salida TEXT;`);
 
+  // Reloj checador biométrico (Hikvision, ISAPI por red local).
+  // Número de empleado en el reloj: si biometrico_id está vacío se usa el id del expediente.
+  await p.query(`ALTER TABLE expedientes ADD COLUMN IF NOT EXISTS biometrico_id TEXT;`);
+  await p.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_expedientes_biometrico_id ON expedientes (biometrico_id) WHERE biometrico_id IS NOT NULL;`);
+  // Dispositivos: la contraseña NO se guarda aquí (va en variables de entorno del servidor).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS biometrico_dispositivos (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT NOT NULL DEFAULT 'Reloj checador',
+      ip TEXT NOT NULL,
+      usuario TEXT NOT NULL DEFAULT 'admin',
+      modelo TEXT,
+      serie TEXT,
+      firmware TEXT,
+      activo BOOLEAN NOT NULL DEFAULT true,
+      ultimo_serial BIGINT NOT NULL DEFAULT 0,
+      ultima_sincronizacion TIMESTAMPTZ,
+      ultimo_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  // Checadas crudas tal como las entrega el reloj (una fila por evento, sin duplicados por serie).
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS asistencia_checadas (
+      id SERIAL PRIMARY KEY,
+      dispositivo_id INTEGER NOT NULL REFERENCES biometrico_dispositivos(id) ON DELETE CASCADE,
+      serial_no BIGINT NOT NULL,
+      employee_no TEXT,
+      expediente_id INTEGER REFERENCES expedientes(id) ON DELETE SET NULL,
+      nombre_reloj TEXT,
+      fecha_hora TIMESTAMP NOT NULL,
+      metodo TEXT,
+      minor INTEGER,
+      estado_reloj TEXT,
+      procesada BOOLEAN NOT NULL DEFAULT false,
+      resultado TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      UNIQUE (dispositivo_id, serial_no)
+    );
+  `);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_asistencia_checadas_fecha ON asistencia_checadas (fecha_hora);`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_asistencia_checadas_expediente ON asistencia_checadas (expediente_id, fecha_hora);`);
+  await p.query(`CREATE INDEX IF NOT EXISTS idx_asistencia_checadas_pendientes ON asistencia_checadas (procesada) WHERE procesada = false;`);
+
   // Catálogo de rutas con bono por ruta.
   await p.query(`
     CREATE TABLE IF NOT EXISTS rutas (

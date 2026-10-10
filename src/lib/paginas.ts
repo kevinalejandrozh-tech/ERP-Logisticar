@@ -33,6 +33,7 @@ export const PAGINAS_SISTEMA: PaginaSistema[] = [
   { ruta: "/personas/nomina/dashboard", titulo: "Dashboard de nómina", seccion: "Recursos Humanos", palabras: "nomina indicadores" },
   { ruta: "/asistencia", titulo: "Asistencia", seccion: "Asistencia", palabras: "qr entradas salidas calendario permisos faltas" },
   { ruta: "/asistencia/vacaciones", titulo: "Vacaciones", seccion: "Asistencia", palabras: "vacaciones descansos" },
+  { ruta: "/asistencia/reloj", titulo: "Reloj checador", seccion: "Asistencia", palabras: "reloj checador biometrico huella rostro hikvision alta personal" },
   { ruta: "/control-viajes", titulo: "Control de Viajes", seccion: "Viajes", palabras: "viajes viaticos casetas combustible" },
   { ruta: "/control-viajes/calendario", titulo: "Calendario de viajes", seccion: "Viajes", palabras: "calendario viajes" },
   { ruta: "/control-viajes/gastos-totales", titulo: "Gastos totales de viajes", seccion: "Viajes", palabras: "gastos viaticos" },

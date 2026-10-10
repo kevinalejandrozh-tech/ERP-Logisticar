@@ -318,6 +318,10 @@ h1{font-weight:500;font-size:26px;margin:0 0 6px}p{color:#4b5563;margin:0 0 24px
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3v2M5.6 5.6l1.4 1.4M3 12h2M18.4 5.6 17 7M21 12h-2" /><circle cx="12" cy="12" r="4" /><path d="M4 20h16" /></svg>
             Vacaciones
           </Link>
+          <Link href="/asistencia/reloj" className="btn btn-secundario">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="6" y="2" width="12" height="20" rx="2" /><circle cx="12" cy="14" r="3" /><path d="M10 6h4" /></svg>
+            Reloj checador
+          </Link>
           <button type="button" className="btn btn-secundario" onClick={exportar} disabled={cargando}>Exportar Excel</button>
           <button type="button" className="btn btn-secundario" onClick={() => { setCfgEdit(config); setModalConfig(true); }}>Horario y tolerancia</button>
         </div>
